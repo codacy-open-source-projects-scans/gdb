@@ -48,7 +48,7 @@
 	r3 s>>= -666
 	r4 s>>= 2125315823
 	r5 s>>= r6
-	r2 = - r3
+	r2 = - r2
 	r9 = le16 r9
 	r8 = le32 r8
 	r7 = le64 r7
@@ -61,3 +61,7 @@
         r1 = bswap16 r1
         r2 = bswap32 r2
         r3 = bswap64 r3
+        ;; Note that the next instruction gets processed by the GAS
+        ;; preprocessor into r1 =-0xf00, which parses into a %dr = %i32
+        ;; instruction instead of a neg :/
+	r1 = - 0xf00

@@ -7564,8 +7564,8 @@ remote_target::discard_pending_stop_replies (struct inferior *inf)
   for (auto it = iter; it != rs->stop_reply_queue.end (); ++it)
     remote_debug_printf
       ("discarding queued stop reply: ptid: %s, ws: %s\n",
-       reply->ptid.to_string().c_str(),
-       reply->ws.to_string ().c_str ());
+       (*it)->ptid.to_string().c_str(),
+       (*it)->ws.to_string ().c_str ());
   rs->stop_reply_queue.erase (iter, rs->stop_reply_queue.end ());
 }
 
@@ -9648,7 +9648,7 @@ remote_target::readchar (int timeout)
       /* no return */
     case SERIAL_ERROR:
       unpush_and_perror (this, _("Remote communication error.  "
-				 "Target disconnected."));
+				 "Target disconnected"));
       /* no return */
     case SERIAL_TIMEOUT:
       break;
@@ -9677,7 +9677,7 @@ remote_target::remote_serial_write (const char *str, int len)
   if (serial_write (rs->remote_desc, str, len))
     {
       unpush_and_perror (this, _("Remote communication error.  "
-				 "Target disconnected."));
+				 "Target disconnected"));
     }
 
   if (rs->got_ctrlc_during_io)

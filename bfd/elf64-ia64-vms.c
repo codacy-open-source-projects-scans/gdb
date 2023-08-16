@@ -4703,7 +4703,7 @@ elf64_vms_write_shdrs_and_ehdr (bfd *abfd)
   bfd_putl64 (elf_ia64_vms_tdata (abfd)->needed_count, needed_count);
 
   if (bfd_seek (abfd, sizeof (Elf64_External_Ehdr), SEEK_SET) != 0
-      || bfd_bwrite (needed_count, 8, abfd) != 8)
+      || bfd_write (needed_count, 8, abfd) != 8)
     return false;
 
   return true;
@@ -4712,6 +4712,7 @@ elf64_vms_write_shdrs_and_ehdr (bfd *abfd)
 static bool
 elf64_vms_close_and_cleanup (bfd *abfd)
 {
+  bool ret = true;
   if (bfd_get_format (abfd) == bfd_object)
     {
       long isize;
@@ -4720,15 +4721,16 @@ elf64_vms_close_and_cleanup (bfd *abfd)
       isize = bfd_get_size (abfd);
       if ((isize & 7) != 0)
 	{
-	  int ishort = 8 - (isize & 7);
+	  unsigned int ishort = 8 - (isize & 7);
 	  uint64_t pad = 0;
 
-	  bfd_seek (abfd, isize, SEEK_SET);
-	  bfd_bwrite (&pad, ishort, abfd);
+	  if (bfd_seek (abfd, isize, SEEK_SET) != 0
+	      || bfd_write (&pad, ishort, abfd) != ishort)
+	    ret = false;
 	}
     }
 
-  return _bfd_generic_close_and_cleanup (abfd);
+  return _bfd_generic_close_and_cleanup (abfd) && ret;
 }
 
 /* Add symbols from an ELF object file to the linker hash table.  */

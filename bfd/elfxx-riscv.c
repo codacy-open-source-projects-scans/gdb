@@ -1254,6 +1254,7 @@ static struct riscv_supported_ext riscv_supported_std_z_ext[] =
   {"zicsr",		ISA_SPEC_CLASS_20190608,	2, 0,  0 },
   {"zifencei",		ISA_SPEC_CLASS_20191213,	2, 0,  0 },
   {"zifencei",		ISA_SPEC_CLASS_20190608,	2, 0,  0 },
+  {"zihintntl",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zihintpause",	ISA_SPEC_CLASS_DRAFT,		2, 0,  0 },
   {"zmmul",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zawrs",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
@@ -1284,7 +1285,6 @@ static struct riscv_supported_ext riscv_supported_std_z_ext[] =
   {"zkt",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zve32x",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zve32f",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
-  {"zve32d",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zve64x",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zve64f",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zve64d",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
@@ -1317,7 +1317,7 @@ static struct riscv_supported_ext riscv_supported_std_z_ext[] =
   {"zvl16384b",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zvl32768b",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zvl65536b",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
-  {"ztso",		ISA_SPEC_CLASS_DRAFT,		0, 1,  0 },
+  {"ztso",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zca",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zcb",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
   {"zcf",		ISA_SPEC_CLASS_DRAFT,		1, 0,  0 },
@@ -2392,6 +2392,12 @@ riscv_multi_subset_supports (riscv_parse_subset_t *rps,
       return riscv_subset_supports (rps, "zicsr");
     case INSN_CLASS_ZIFENCEI:
       return riscv_subset_supports (rps, "zifencei");
+    case INSN_CLASS_ZIHINTNTL:
+      return riscv_subset_supports (rps, "zihintntl");
+    case INSN_CLASS_ZIHINTNTL_AND_C:
+      return (riscv_subset_supports (rps, "zihintntl")
+	      && (riscv_subset_supports (rps, "c")
+		  || riscv_subset_supports (rps, "zca")));
     case INSN_CLASS_ZIHINTPAUSE:
       return riscv_subset_supports (rps, "zihintpause");
     case INSN_CLASS_M:
@@ -2456,6 +2462,10 @@ riscv_multi_subset_supports (riscv_parse_subset_t *rps,
 	     && riscv_subset_supports (rps, "zfa");
     case INSN_CLASS_ZFH_AND_ZFA:
       return riscv_subset_supports (rps, "zfh")
+	     && riscv_subset_supports (rps, "zfa");
+    case INSN_CLASS_ZFH_OR_ZVFH_AND_ZFA:
+      return (riscv_subset_supports (rps, "zfh")
+	      || riscv_subset_supports (rps, "zvfh"))
 	     && riscv_subset_supports (rps, "zfa");
     case INSN_CLASS_ZBA:
       return riscv_subset_supports (rps, "zba");
@@ -2585,6 +2595,19 @@ riscv_multi_subset_supports_ext (riscv_parse_subset_t *rps,
       return "zicsr";
     case INSN_CLASS_ZIFENCEI:
       return "zifencei";
+    case INSN_CLASS_ZIHINTNTL:
+      return "zihintntl";
+    case INSN_CLASS_ZIHINTNTL_AND_C:
+      if (!riscv_subset_supports (rps, "zihintntl"))
+	{
+	  if (!riscv_subset_supports (rps, "c")
+	      && !riscv_subset_supports (rps, "zca"))
+	    return _("zihintntl' and `c', or `zihintntl' and `zca");
+	  else
+	    return "zihintntl";
+	}
+      else
+	return _("c' or `zca");
     case INSN_CLASS_ZIHINTPAUSE:
       return "zihintpause";
     case INSN_CLASS_M:
@@ -2685,6 +2708,17 @@ riscv_multi_subset_supports_ext (riscv_parse_subset_t *rps,
 	return "zfh";
       else
 	return "zfa";
+    case INSN_CLASS_ZFH_OR_ZVFH_AND_ZFA:
+      if (!riscv_subset_supports (rps, "zfa"))
+	{
+	  if (!riscv_subset_supports (rps, "zfh")
+	      && !riscv_subset_supports (rps, "zvfh"))
+	    return _("zfh' and `zfa', or `zvfh' and `zfa");
+	  else
+	    return "zfa";
+	}
+      else
+	return _("zfh' or `zvfh");
     case INSN_CLASS_ZBA:
       return "zba";
     case INSN_CLASS_ZBB:

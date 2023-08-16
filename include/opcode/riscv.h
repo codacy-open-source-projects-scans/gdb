@@ -354,7 +354,7 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 
 /* Extract the operand given by FIELD from integer INSN.  */
 #define EXTRACT_OPERAND(FIELD, INSN) \
-  EXTRACT_BITS ((INSN), OP_MASK_##FIELD, OP_SH_##FIELD)
+  ((unsigned int) EXTRACT_BITS ((INSN), OP_MASK_##FIELD, OP_SH_##FIELD))
 
 /* Extract an unsigned immediate operand on position s with n bits.  */
 #define EXTRACT_U_IMM(n, s, l) \
@@ -392,6 +392,8 @@ enum riscv_insn_class
   INSN_CLASS_ZICOND,
   INSN_CLASS_ZICSR,
   INSN_CLASS_ZIFENCEI,
+  INSN_CLASS_ZIHINTNTL,
+  INSN_CLASS_ZIHINTNTL_AND_C,
   INSN_CLASS_ZIHINTPAUSE,
   INSN_CLASS_ZMMUL,
   INSN_CLASS_ZAWRS,
@@ -407,6 +409,7 @@ enum riscv_insn_class
   INSN_CLASS_D_AND_ZFA,
   INSN_CLASS_Q_AND_ZFA,
   INSN_CLASS_ZFH_AND_ZFA,
+  INSN_CLASS_ZFH_OR_ZVFH_AND_ZFA,
   INSN_CLASS_ZBA,
   INSN_CLASS_ZBB,
   INSN_CLASS_ZBC,
@@ -574,14 +577,16 @@ enum riscv_seg_mstate
   MAP_INSN,		/* Instructions.  */
 };
 
-extern const char * const riscv_gpr_names_numeric[NGPR];
-extern const char * const riscv_gpr_names_abi[NGPR];
-extern const char * const riscv_fpr_names_numeric[NFPR];
-extern const char * const riscv_fpr_names_abi[NFPR];
+#define NRC (4 + 1)     /* Max characters in register names, incl nul.  */
+
+extern const char riscv_gpr_names_numeric[NGPR][NRC];
+extern const char riscv_gpr_names_abi[NGPR][NRC];
+extern const char riscv_fpr_names_numeric[NFPR][NRC];
+extern const char riscv_fpr_names_abi[NFPR][NRC];
 extern const char * const riscv_rm[8];
 extern const char * const riscv_pred_succ[16];
-extern const char * const riscv_vecr_names_numeric[NVECR];
-extern const char * const riscv_vecm_names_numeric[NVECM];
+extern const char riscv_vecr_names_numeric[NVECR][NRC];
+extern const char riscv_vecm_names_numeric[NVECM][NRC];
 extern const char * const riscv_vsew[8];
 extern const char * const riscv_vlmul[8];
 extern const char * const riscv_vta[2];

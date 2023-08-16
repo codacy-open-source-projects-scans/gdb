@@ -26,7 +26,7 @@
 
 /* Register names used by gas and objdump.  */
 
-const char * const riscv_gpr_names_numeric[NGPR] =
+const char riscv_gpr_names_numeric[NGPR][NRC] =
 {
   "x0",   "x1",   "x2",   "x3",   "x4",   "x5",   "x6",   "x7",
   "x8",   "x9",   "x10",  "x11",  "x12",  "x13",  "x14",  "x15",
@@ -34,7 +34,7 @@ const char * const riscv_gpr_names_numeric[NGPR] =
   "x24",  "x25",  "x26",  "x27",  "x28",  "x29",  "x30",  "x31"
 };
 
-const char * const riscv_gpr_names_abi[NGPR] =
+const char riscv_gpr_names_abi[NGPR][NRC] =
 {
   "zero", "ra",   "sp",   "gp",   "tp",   "t0",   "t1",   "t2",
   "s0",   "s1",   "a0",   "a1",   "a2",   "a3",   "a4",   "a5",
@@ -42,7 +42,7 @@ const char * const riscv_gpr_names_abi[NGPR] =
   "s8",   "s9",   "s10",  "s11",  "t3",   "t4",   "t5",   "t6"
 };
 
-const char * const riscv_fpr_names_numeric[NFPR] =
+const char riscv_fpr_names_numeric[NFPR][NRC] =
 {
   "f0",   "f1",   "f2",   "f3",   "f4",   "f5",   "f6",   "f7",
   "f8",   "f9",   "f10",  "f11",  "f12",  "f13",  "f14",  "f15",
@@ -50,7 +50,7 @@ const char * const riscv_fpr_names_numeric[NFPR] =
   "f24",  "f25",  "f26",  "f27",  "f28",  "f29",  "f30",  "f31"
 };
 
-const char * const riscv_fpr_names_abi[NFPR] =
+const char riscv_fpr_names_abi[NFPR][NRC] =
 {
   "ft0",  "ft1",  "ft2",  "ft3",  "ft4",  "ft5",  "ft6",  "ft7",
   "fs0",  "fs1",  "fa0",  "fa1",  "fa2",  "fa3",  "fa4",  "fa5",
@@ -72,7 +72,7 @@ const char * const riscv_pred_succ[16] =
 };
 
 /* RVV registers.  */
-const char * const riscv_vecr_names_numeric[NVECR] =
+const char riscv_vecr_names_numeric[NVECR][NRC] =
 {
   "v0",   "v1",   "v2",   "v3",   "v4",   "v5",   "v6",   "v7",
   "v8",   "v9",   "v10",  "v11",  "v12",  "v13",  "v14",  "v15",
@@ -81,7 +81,7 @@ const char * const riscv_vecr_names_numeric[NVECR] =
 };
 
 /* RVV mask registers.  */
-const char * const riscv_vecm_names_numeric[NVECM] =
+const char riscv_vecm_names_numeric[NVECM][NRC] =
 {
   "v0.t"
 };
@@ -130,16 +130,6 @@ const float riscv_fli_numval[32] =
   0x1p+0, 0x1.4p+0, 0x1.8p+0, 0x1.cp+0, 0x1p+1, 0x1.4p+1, 0x1.8p+1, 0x1p+2,
   0x1p+3, 0x1p+4, 0x1p+7, 0x1p+8, 0x1p+15, 0x1p+16, 0x0p+0, 0x0p+0
 };
-
-/* The order of overloaded instructions matters.  Label arguments and
-   register arguments look the same. Instructions that can have either
-   for arguments must apear in the correct order in this table for the
-   assembler to pick the right one. In other words, entries with
-   immediate operands must apear after the same instruction with
-   registers.
-
-   Because of the lookup algorithm used, entries with the same opcode
-   name must be contiguous.  */
 
 #define MASK_RS1 (OP_MASK_RS1 << OP_SH_RS1)
 #define MASK_RS2 (OP_MASK_RS2 << OP_SH_RS2)
@@ -329,6 +319,16 @@ match_th_load_pair(const struct riscv_opcode *op,
   return rd1 != rd2 && rd1 != rs && rd2 != rs && match_opcode (op, insn);
 }
 
+/* The order of overloaded instructions matters.  Label arguments and
+   register arguments look the same. Instructions that can have either
+   for arguments must apear in the correct order in this table for the
+   assembler to pick the right one. In other words, entries with
+   immediate operands must apear after the same instruction with
+   registers.
+
+   Because of the lookup algorithm used, entries with the same opcode
+   name must be contiguous.  */
+
 const struct riscv_opcode riscv_opcodes[] =
 {
 /* name, xlen, isa, operands, match, mask, match_func, pinfo.  */
@@ -337,6 +337,18 @@ const struct riscv_opcode riscv_opcodes[] =
 {"prefetch.i",  0, INSN_CLASS_ZICBOP, "Wif(s)", MATCH_PREFETCH_I, MASK_PREFETCH_I, match_opcode, 0 },
 {"prefetch.r",  0, INSN_CLASS_ZICBOP, "Wif(s)", MATCH_PREFETCH_R, MASK_PREFETCH_R, match_opcode, 0 },
 {"prefetch.w",  0, INSN_CLASS_ZICBOP, "Wif(s)", MATCH_PREFETCH_W, MASK_PREFETCH_W, match_opcode, 0 },
+{"ntl.p1",      0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_P1, MASK_C_NTL_P1, match_opcode, INSN_ALIAS },
+{"ntl.p1",      0, INSN_CLASS_ZIHINTNTL,       "", MATCH_NTL_P1, MASK_NTL_P1, match_opcode, 0 },
+{"ntl.pall",    0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_PALL, MASK_C_NTL_PALL, match_opcode, INSN_ALIAS },
+{"ntl.pall",    0, INSN_CLASS_ZIHINTNTL,       "", MATCH_NTL_PALL, MASK_NTL_PALL, match_opcode, 0 },
+{"ntl.s1",      0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_S1, MASK_C_NTL_S1, match_opcode, INSN_ALIAS },
+{"ntl.s1",      0, INSN_CLASS_ZIHINTNTL,       "", MATCH_NTL_S1, MASK_NTL_S1, match_opcode, 0 },
+{"ntl.all",     0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_ALL, MASK_C_NTL_ALL, match_opcode, INSN_ALIAS },
+{"ntl.all",     0, INSN_CLASS_ZIHINTNTL,       "", MATCH_NTL_ALL, MASK_NTL_ALL, match_opcode, 0 },
+{"c.ntl.p1",    0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_P1, MASK_C_NTL_P1, match_opcode, 0 },
+{"c.ntl.pall",  0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_PALL, MASK_C_NTL_PALL, match_opcode, 0 },
+{"c.ntl.s1",    0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_S1, MASK_C_NTL_S1, match_opcode, 0 },
+{"c.ntl.all",   0, INSN_CLASS_ZIHINTNTL_AND_C, "", MATCH_C_NTL_ALL, MASK_C_NTL_ALL, match_opcode, 0 },
 {"pause",       0, INSN_CLASS_ZIHINTPAUSE, "", MATCH_PAUSE, MASK_PAUSE, match_opcode, 0 },
 
 /* Basic RVI instructions and aliases.  */
@@ -978,7 +990,7 @@ const struct riscv_opcode riscv_opcodes[] =
 {"fli.s",       0, INSN_CLASS_ZFA,         "D,Wfv", MATCH_FLI_S, MASK_FLI_S, match_opcode, 0 },
 {"fli.d",       0, INSN_CLASS_D_AND_ZFA,   "D,Wfv", MATCH_FLI_D, MASK_FLI_D, match_opcode, 0 },
 {"fli.q",       0, INSN_CLASS_Q_AND_ZFA,   "D,Wfv", MATCH_FLI_Q, MASK_FLI_Q, match_opcode, 0 },
-{"fli.h",       0, INSN_CLASS_ZFH_AND_ZFA, "D,Wfv", MATCH_FLI_H, MASK_FLI_H, match_opcode, 0 },
+{"fli.h",       0, INSN_CLASS_ZFH_OR_ZVFH_AND_ZFA, "D,Wfv", MATCH_FLI_H, MASK_FLI_H, match_opcode, 0 },
 {"fminm.s",     0, INSN_CLASS_ZFA,         "D,S,T", MATCH_FMINM_S, MASK_FMINM_S, match_opcode, 0 },
 {"fmaxm.s",     0, INSN_CLASS_ZFA,         "D,S,T", MATCH_FMAXM_S, MASK_FMAXM_S, match_opcode, 0 },
 {"fminm.d",     0, INSN_CLASS_D_AND_ZFA,   "D,S,T", MATCH_FMINM_D, MASK_FMINM_D, match_opcode, 0 },
@@ -1606,10 +1618,10 @@ const struct riscv_opcode riscv_opcodes[] =
 {"vmsgeu.vi",  0, INSN_CLASS_V,  "Vd,Vu,0Vm", MATCH_VMSEQVV, MASK_VMSEQVV, match_vs1_eq_vs2, INSN_ALIAS },
 {"vmsgeu.vi",  0, INSN_CLASS_V,  "Vd,Vt,VkVm", MATCH_VMSGTUVI, MASK_VMSGTUVI, match_opcode, INSN_ALIAS },
 
-{"vmsge.vx",   0, INSN_CLASS_V, "Vd,Vt,sVm", 0, (int) M_VMSGE, match_opcode, INSN_MACRO },
-{"vmsge.vx",   0, INSN_CLASS_V, "Vd,Vt,s,VM,VT", 0, (int) M_VMSGE, match_opcode, INSN_MACRO },
-{"vmsgeu.vx",  0, INSN_CLASS_V, "Vd,Vt,sVm", 0, (int) M_VMSGEU, match_opcode, INSN_MACRO },
-{"vmsgeu.vx",  0, INSN_CLASS_V, "Vd,Vt,s,VM,VT", 0, (int) M_VMSGEU, match_opcode, INSN_MACRO },
+{"vmsge.vx",   0, INSN_CLASS_V, "Vd,Vt,sVm", 0, (int) M_VMSGE, match_never, INSN_MACRO },
+{"vmsge.vx",   0, INSN_CLASS_V, "Vd,Vt,s,VM,VT", 0, (int) M_VMSGE, match_never, INSN_MACRO },
+{"vmsgeu.vx",  0, INSN_CLASS_V, "Vd,Vt,sVm", 0, (int) M_VMSGEU, match_never, INSN_MACRO },
+{"vmsgeu.vx",  0, INSN_CLASS_V, "Vd,Vt,s,VM,VT", 0, (int) M_VMSGEU, match_never, INSN_MACRO },
 
 {"vminu.vv",   0, INSN_CLASS_V,  "Vd,Vt,VsVm", MATCH_VMINUVV, MASK_VMINUVV, match_opcode, 0},
 {"vminu.vx",   0, INSN_CLASS_V,  "Vd,Vt,sVm", MATCH_VMINUVX, MASK_VMINUVX, match_opcode, 0},

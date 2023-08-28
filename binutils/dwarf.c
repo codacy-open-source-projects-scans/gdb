@@ -2970,6 +2970,9 @@ read_and_display_attr_value (unsigned long attribute,
 		  debug_info_p->range_lists = (uint64_t *)
 		    xcrealloc (debug_info_p->range_lists,
 			       lmax, sizeof (*debug_info_p->range_lists));
+		  debug_info_p->range_versions = (unsigned int *)
+		    xcrealloc (debug_info_p->range_versions,
+			       lmax, sizeof (*debug_info_p->range_versions));
 		  debug_info_p->max_range_lists = lmax;
 		}
 
@@ -2977,6 +2980,7 @@ read_and_display_attr_value (unsigned long attribute,
 		uvalue = fetch_indexed_value (uvalue, rnglists, 0);
 
 	      debug_info_p->range_lists [num] = uvalue;
+	      debug_info_p->range_versions [num] = dwarf_version;
 	      debug_info_p->num_range_lists++;
 	    }
 	  break;
@@ -4313,10 +4317,10 @@ display_formatted_table (unsigned char *data,
       printf (_("\n The %s is empty.\n"), table_name);
       return data;
     }
-  else if (data >= end)
+  else if (data >= end
+	   || data_count > (size_t) (end - data))
     {
-      warn (_("%s: Corrupt entry count - expected %#" PRIx64
-	      " but none found\n"), table_name, data_count);
+      warn (_("%s: Corrupt entry count %#" PRIx64 "\n"), table_name, data_count);
       return data;
     }
 
@@ -8256,6 +8260,18 @@ display_debug_rnglists (struct dwarf_section *section)
   return 1;
 }
 
+static bool
+is_range_list_for_this_section (bool is_rnglists, unsigned int version)
+{
+  if (is_rnglists && version > 4)
+    return true;
+
+  if (! is_rnglists && version < 5)
+    return true;
+
+  return false;
+}
+
 static int
 display_debug_ranges (struct dwarf_section *section,
 		      void *file ATTRIBUTE_UNUSED)
@@ -8268,7 +8284,7 @@ display_debug_ranges (struct dwarf_section *section,
   unsigned int num_range_list, i;
   struct range_entry *range_entries;
   struct range_entry *range_entry_fill;
-  int is_rnglists = strstr (section->name, "debug_rnglists") != NULL;
+  bool is_rnglists = strstr (section->name, "debug_rnglists") != NULL;
   /* Initialize it due to a false compiler warning.  */
   unsigned char address_size = 0;
   uint64_t last_offset = 0;
@@ -8299,7 +8315,7 @@ display_debug_ranges (struct dwarf_section *section,
     {
       /* This can happen when the file was compiled with -gsplit-debug
 	 which removes references to range lists from the primary .o file.  */
-      printf (_("No range lists in .debug_info section.\n"));
+      printf (_("No range lists referenced by .debug_info section.\n"));
       return 1;
     }
 
@@ -8314,12 +8330,16 @@ display_debug_ranges (struct dwarf_section *section,
 
       for (j = 0; j < debug_info_p->num_range_lists; j++)
 	{
-	  range_entry_fill->ranges_offset = debug_info_p->range_lists[j];
-	  range_entry_fill->debug_info_p = debug_info_p;
-	  range_entry_fill++;
+	  if (is_range_list_for_this_section (is_rnglists, debug_info_p->range_versions[j]))
+	    {
+	      range_entry_fill->ranges_offset = debug_info_p->range_lists[j];
+	      range_entry_fill->debug_info_p = debug_info_p;
+	      range_entry_fill++;
+	    }
 	}
     }
 
+  num_range_list = range_entry_fill - range_entries;
   qsort (range_entries, num_range_list, sizeof (*range_entries),
 	 range_entry_compar);
 

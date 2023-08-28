@@ -394,11 +394,11 @@ changequote([,])dnl
 	esac
 	# Decide which ABI to target by default.
 	case ${target} in
-	  mips64*-openbsd* | mips64*-linux-gnuabi64)
+	  mips64*-openbsd* | mips64*-linux-gnuabi64 | mipsisa64*-linux-gnuabi64)
 	    mips_default_abi=N64_ABI
 	    ;;
-	  mips64*-linux* | mips-sgi-irix6* | mips64*-freebsd* \
-	  | mips64*-kfreebsd*-gnu | mips64*-ps2-elf*)
+	  mips64*-linux* | mipsisa64*-linux* | mips-sgi-irix6* \
+	  | mips64*-freebsd* | mips64*-kfreebsd*-gnu | mips64*-ps2-elf*)
 	    mips_default_abi=N32_ABI
 	    ;;
 	  mips*-linux* | mips*-freebsd* | mips*-kfreebsd*-gnu)
@@ -474,6 +474,14 @@ changequote([,])dnl
 	;;
       frv)
 	using_cgen=yes
+	;;
+      kvx)
+	for f in config/kvx-parse.o; do
+	  case " $extra_objects " in
+	    *" $f "*) ;;
+	    *) extra_objects="$extra_objects $f" ;;
+	  esac
+	done
 	;;
       m68k)
 	f=config/m68k-parse.o

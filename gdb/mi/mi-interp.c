@@ -95,7 +95,7 @@ mi_interp::init (bool top_level)
   mi->log = mi->err;
   mi->targ = new mi_console_file (mi->raw_stdout, "@", '"');
   mi->event_channel = new mi_console_file (mi->raw_stdout, "=", 0);
-  mi->mi_uiout = mi_out_new (name ());
+  mi->mi_uiout = mi_out_new (name ()).release ();
   gdb_assert (mi->mi_uiout != nullptr);
   mi->cli_uiout = new cli_ui_out (mi->out);
 
@@ -277,7 +277,9 @@ mi_interp::on_new_thread (thread_info *t)
 }
 
 void
-mi_interp::on_thread_exited (thread_info *t, int silent)
+mi_interp::on_thread_exited (thread_info *t,
+			     gdb::optional<ULONGEST> /* exit_code */,
+			     int /* silent */)
 {
   target_terminal::scoped_restore_terminal_state term_state;
   target_terminal::ours_for_output ();

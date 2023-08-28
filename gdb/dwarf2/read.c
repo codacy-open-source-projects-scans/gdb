@@ -2706,7 +2706,7 @@ static const char *test_symbols[] = {
   /* A UTF-8 name with multi-byte sequences to make sure that
      cp-name-parser understands this as a single identifier ("função"
      is "function" in PT).  */
-  u8"u8função",
+  (const char *)u8"u8função",
 
   /* Test a symbol name that ends with a 0xff character, which is a
      valid character in non-UTF-8 source character sets (e.g. Latin1
@@ -4535,7 +4535,7 @@ allocate_type_unit_groups_table ()
 static std::unique_ptr<type_unit_group>
 create_type_unit_group (struct dwarf2_cu *cu, sect_offset line_offset_struct)
 {
-  std::unique_ptr<type_unit_group> tu_group (new type_unit_group);
+  auto tu_group = gdb::make_unique<type_unit_group> ();
 
   tu_group->hash.dwo_unit = cu->dwo_unit;
   tu_group->hash.line_sect_off = line_offset_struct;
@@ -16375,9 +16375,15 @@ cooked_indexer::scan_attributes (dwarf2_per_cu_data *scanning_per_cu,
 							   new_info_ptr,
 							   &bytes_read);
 	  new_info_ptr += bytes_read;
-	  scan_attributes (scanning_per_cu, new_reader, new_info_ptr, new_info_ptr,
-			   new_abbrev, name, linkage_name, flags, nullptr,
-			   parent_entry, maybe_defer, true);
+
+	  if (new_reader->cu == reader->cu && new_info_ptr == watermark_ptr)
+	    {
+	      /* Self-reference, we're done.  */
+	    }
+	  else
+	    scan_attributes (scanning_per_cu, new_reader, new_info_ptr,
+			     new_info_ptr, new_abbrev, name, linkage_name,
+			     flags, nullptr, parent_entry, maybe_defer, true);
 	}
     }
 
@@ -17888,7 +17894,11 @@ dwarf2_attr (struct die_info *die, unsigned int name, struct dwarf2_cu *cu)
       if (!spec)
 	break;
 
+      struct die_info *prev_die = die;
       die = follow_die_ref (die, spec, &cu);
+      if (die == prev_die)
+	/* Self-reference, we're done.  */
+	break;
     }
 
   return NULL;
@@ -20539,6 +20549,12 @@ follow_die_ref (struct die_info *src_die, const struct attribute *attr,
   sect_offset sect_off = attr->get_ref_die_offset ();
   struct dwarf2_cu *cu = *ref_cu;
   struct die_info *die;
+
+  if (attr->form != DW_FORM_GNU_ref_alt && src_die->sect_off == sect_off)
+    {
+      /* Self-reference, we're done.  */
+      return src_die;
+    }
 
   die = follow_die_offset (sect_off,
 			   (attr->form == DW_FORM_GNU_ref_alt

@@ -57,6 +57,7 @@
 #include "cli/cli-utils.h"
 #include "gdbsupport/function-view.h"
 #include "gdbsupport/byte-vector.h"
+#include "gdbsupport/selftest.h"
 #include <algorithm>
 #include "ada-exp.h"
 #include "charset.h"
@@ -1377,7 +1378,7 @@ ada_decode (const char *encoded, bool wrap, bool operators)
 	i -= 1;
       if (i > 1 && encoded[i] == '_' && encoded[i - 1] == '_')
 	len0 = i - 1;
-      else if (encoded[i] == '$')
+      else if (i >= 0 && encoded[i] == '$')
 	len0 = i;
     }
 
@@ -1573,6 +1574,18 @@ Suppress:
     decoded = '<' + std::string(encoded) + '>';
   return decoded;
 }
+
+#ifdef GDB_SELF_TEST
+
+static void
+ada_decode_tests ()
+{
+  /* This isn't valid, but used to cause a crash.  PR gdb/30639.  The
+     result does not really matter very much.  */
+  SELF_CHECK (ada_decode ("44") == "44");
+}
+
+#endif
 
 /* Table for keeping permanent unique copies of decoded names.  Once
    allocated, names in this table are never released.  While this is a
@@ -9575,9 +9588,16 @@ ada_name_association::assign (struct value *container,
 	{
 	  ada_var_value_operation *vvo
 	    = dynamic_cast<ada_var_value_operation *> (m_val.get ());
-	  if (vvo != nullptr)
+	  if (vvo == nullptr)
 	    error (_("Invalid record component association."));
 	  name = vvo->get_symbol ()->natural_name ();
+	  /* In this scenario, the user wrote (name => expr), but
+	     write_name_assoc found some fully-qualified name and
+	     substituted it.  This happens because, at parse time, the
+	     meaning of the expression isn't known; but here we know
+	     that just the base name was supplied and it refers to the
+	     name of a field.  */
+	  name = ada_unqualified_name (name);
 	}
 
       index = 0;
@@ -10710,7 +10730,7 @@ ada_binop_addsub_operation::evaluate (struct type *expect_type,
   value *arg1 = std::get<1> (m_storage)->evaluate_with_coercion (exp, noside);
   value *arg2 = std::get<2> (m_storage)->evaluate_with_coercion (exp, noside);
 
-  auto do_op = [=] (LONGEST x, LONGEST y)
+  auto do_op = [this] (LONGEST x, LONGEST y)
     {
       if (std::get<0> (m_storage) == BINOP_ADD)
 	return x + y;
@@ -13977,4 +13997,8 @@ DWARF attribute."),
   gdb::observers::new_objfile.attach (ada_new_objfile_observer, "ada-lang");
   gdb::observers::free_objfile.attach (ada_free_objfile_observer, "ada-lang");
   gdb::observers::inferior_exit.attach (ada_inferior_exit, "ada-lang");
+
+#ifdef GDB_SELF_TEST
+  selftests::register_test ("ada-decode", ada_decode_tests);
+#endif
 }

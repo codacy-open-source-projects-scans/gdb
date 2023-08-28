@@ -40,7 +40,6 @@
 
 #include "coff-pe-read.h"
 
-#include "psymtab.h"
 #include "build-id.h"
 
 /* The objfile we are currently reading.  */
@@ -65,8 +64,8 @@ static const registry<objfile>::key<coff_symfile_info> coff_objfile_data_key;
 
 /* Translate an external name string into a user-visible name.  */
 #define	EXTERNAL_NAME(string, abfd) \
-	(string[0] == bfd_get_symbol_leading_char (abfd) \
-	? string + 1 : string)
+  (*string != '\0' && *string == bfd_get_symbol_leading_char (abfd)	\
+   ? string + 1 : string)
 
 /* To be an sdb debug type, type must have at least a basic or primary
    derived type.  Using this rather than checking against T_NULL is
@@ -160,6 +159,7 @@ static file_ptr linetab_offset;
 static file_ptr linetab_size;
 
 static char *stringtab = NULL;
+static long stringtab_length = 0;
 
 extern void stabsread_clear_cache (void);
 
@@ -1304,6 +1304,7 @@ init_stringtab (bfd *abfd, file_ptr offset, gdb::unique_xmalloc_ptr<char> *stora
   /* This is in target format (probably not very useful, and not
      currently used), not host format.  */
   memcpy (stringtab, lengthbuf, sizeof lengthbuf);
+  stringtab_length = length;
   if (length == sizeof length)	/* Empty table -- just the count.  */
     return 0;
 
@@ -1323,8 +1324,9 @@ getsymname (struct internal_syment *symbol_entry)
 
   if (symbol_entry->_n._n_n._n_zeroes == 0)
     {
-      /* FIXME: Probably should be detecting corrupt symbol files by
-	 seeing whether offset points to within the stringtab.  */
+      if (symbol_entry->_n._n_n._n_offset > stringtab_length)
+	error (_("COFF Error: string table offset (%" PRIxPTR ") outside string table (length %ld)"),
+	       symbol_entry->_n._n_n._n_offset, stringtab_length);
       result = stringtab + symbol_entry->_n._n_n._n_offset;
     }
   else

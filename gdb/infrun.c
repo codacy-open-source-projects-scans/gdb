@@ -713,7 +713,7 @@ holding the child stopped.  Try \"set detach-on-fork\" or \
 	 (do not restore the parent as the current inferior).  */
       gdb::optional<scoped_restore_current_thread> maybe_restore;
 
-      if (!follow_child)
+      if (!follow_child && !sched_multi)
 	maybe_restore.emplace ();
 
       switch_to_thread (*child_inf->threads ().begin ());
@@ -1328,7 +1328,7 @@ follow_exec (ptid_t ptid, const char *exec_file_target)
       following_inferior = add_inferior_with_spaces ();
 
       swap_terminal_info (following_inferior, execing_inferior);
-      exit_inferior_silent (execing_inferior);
+      exit_inferior (execing_inferior);
 
       following_inferior->pid = pid;
     }
@@ -3400,8 +3400,10 @@ proceed (CORE_ADDR addr, enum gdb_signal siggnal)
   struct gdbarch *gdbarch;
   CORE_ADDR pc;
 
-  /* If we're stopped at a fork/vfork, follow the branch set by the
-     "set follow-fork-mode" command; otherwise, we'll just proceed
+  /* If we're stopped at a fork/vfork, switch to either the parent or child
+     thread as defined by the "set follow-fork-mode" command, or, if both
+     the parent and child are controlled by GDB, and schedule-multiple is
+     on, follow the child.  If none of the above apply then we just proceed
      resuming the current thread.  */
   if (!follow_fork ())
     {

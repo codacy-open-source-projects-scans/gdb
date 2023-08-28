@@ -784,8 +784,8 @@ public:
 					     int handle_len,
 					     inferior *inf) override;
 
-  gdb::byte_vector thread_info_to_thread_handle (struct thread_info *tp)
-						 override;
+  gdb::array_view<const gdb_byte> thread_info_to_thread_handle (struct thread_info *tp)
+    override;
 
   void stop (ptid_t) override;
 
@@ -10850,7 +10850,8 @@ remote_target::insert_watchpoint (CORE_ADDR addr, int len,
   char *p;
   enum Z_packet_type packet = watchpoint_to_Z_packet (type);
 
-  if (m_features.packet_support (PACKET_Z0 + packet) == PACKET_DISABLE)
+  if (m_features.packet_support ((to_underlying (PACKET_Z0)
+				  + to_underlying (packet))) == PACKET_DISABLE)
     return 1;
 
   /* Make sure the remote is pointing at the right process, if
@@ -10867,7 +10868,8 @@ remote_target::insert_watchpoint (CORE_ADDR addr, int len,
   putpkt (rs->buf);
   getpkt (&rs->buf, 0);
 
-  switch (m_features.packet_ok (rs->buf, PACKET_Z0 + packet))
+  switch (m_features.packet_ok (rs->buf, (to_underlying (PACKET_Z0)
+					  + to_underlying (packet))))
     {
     case PACKET_ERROR:
       return -1;
@@ -10898,7 +10900,8 @@ remote_target::remove_watchpoint (CORE_ADDR addr, int len,
   char *p;
   enum Z_packet_type packet = watchpoint_to_Z_packet (type);
 
-  if (m_features.packet_support (PACKET_Z0 + packet) == PACKET_DISABLE)
+  if (m_features.packet_support ((to_underlying (PACKET_Z0)
+				  + to_underlying (packet))) == PACKET_DISABLE)
     return -1;
 
   /* Make sure the remote is pointing at the right process, if
@@ -10914,7 +10917,8 @@ remote_target::remove_watchpoint (CORE_ADDR addr, int len,
   putpkt (rs->buf);
   getpkt (&rs->buf, 0);
 
-  switch (m_features.packet_ok (rs->buf, PACKET_Z0 + packet))
+  switch (m_features.packet_ok (rs->buf, (to_underlying (PACKET_Z0)
+					  + to_underlying (packet))))
     {
     case PACKET_ERROR:
     case PACKET_UNKNOWN:
@@ -11605,7 +11609,7 @@ remote_target::search_memory (CORE_ADDR start_addr, ULONGEST search_space_len,
   int found;
   ULONGEST found_addr;
 
-  auto read_memory = [=] (CORE_ADDR addr, gdb_byte *result, size_t len)
+  auto read_memory = [this] (CORE_ADDR addr, gdb_byte *result, size_t len)
     {
       return (target_read (this, TARGET_OBJECT_MEMORY, NULL, result, addr, len)
 	      == len);
@@ -14546,7 +14550,7 @@ remote_target::thread_handle_to_thread_info (const gdb_byte *thread_handle,
   return NULL;
 }
 
-gdb::byte_vector
+gdb::array_view<const gdb_byte>
 remote_target::thread_info_to_thread_handle (struct thread_info *tp)
 {
   remote_thread_info *priv = get_remote_thread_info (tp);

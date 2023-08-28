@@ -545,6 +545,7 @@ enum elf_target_id
   HPPA64_ELF_DATA,
   I386_ELF_DATA,
   IA64_ELF_DATA,
+  KVX_ELF_DATA,
   LM32_ELF_DATA,
   LARCH_ELF_DATA,
   M32R_ELF_DATA,
@@ -2938,6 +2939,12 @@ extern char *elfcore_write_aarch_sve
 extern char *elfcore_write_aarch_pauth
   (bfd *, char *, int *, const void *, int);
 extern char *elfcore_write_aarch_mte
+  (bfd *, char *, int *, const void *, int);
+extern char *elfcore_write_aarch_ssve
+  (bfd *, char *, int *, const void *, int);
+extern char *elfcore_write_aarch_za
+  (bfd *, char *, int *, const void *, int);
+extern char *elfcore_write_aarch_zt
   (bfd *, char *, int *, const void *, int);
 extern char *elfcore_write_arc_v2
   (bfd *, char *, int *, const void *, int);

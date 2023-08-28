@@ -254,9 +254,9 @@ enum linespec_token_type
 
 /* List of keywords.  This is NULL-terminated so that it can be used
    as enum completer.  */
-const char * const linespec_keywords[] = { "if", "thread", "task", "-force-condition", NULL };
+const char * const linespec_keywords[] = { "if", "thread", "task", "inferior", "-force-condition", NULL };
 #define IF_KEYWORD_INDEX 0
-#define FORCE_KEYWORD_INDEX 3
+#define FORCE_KEYWORD_INDEX 4
 
 /* A token of the linespec lexer  */
 
@@ -3220,7 +3220,8 @@ decode_line_with_current_source (const char *string, int flags)
   location_spec_up locspec = string_to_location_spec (&string,
 						      current_language);
   std::vector<symtab_and_line> sals
-    = decode_line_1 (locspec.get (), flags, NULL, cursal.symtab, cursal.line);
+    = decode_line_1 (locspec.get (), flags, cursal.pspace, cursal.symtab,
+		    cursal.line);
 
   if (*string)
     error (_("Junk at end of line specification: %s"), string);

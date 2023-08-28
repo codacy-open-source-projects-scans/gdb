@@ -166,6 +166,8 @@ TARGET32_LIBOPCODES_CFILES = \
 	iq2000-dis.c \
 	iq2000-ibld.c \
 	iq2000-opc.c \
+	kvx-opc.c \
+	kvx-dis.c \
 	lm32-asm.c \
 	lm32-desc.c \
 	lm32-dis.c \
@@ -334,7 +336,7 @@ CLEANFILES = \
 
 CGENDIR = @cgendir@
 CPUDIR = $(srcdir)/../cpu
-GUILE = `if test -f ../guile/libguile/guile ; then echo ../guile/libguile/guile; else echo guile ; fi`
+GUILE = guile
 CGEN = "$(GUILE) -l ${cgendir}/guile.scm -s"
 CGENFLAGS = -v
 

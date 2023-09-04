@@ -564,6 +564,31 @@ struct field
     m_name = name;
   }
 
+  bool is_artificial () const
+  {
+    return m_artificial;
+  }
+
+  void set_is_artificial (bool is_artificial)
+  {
+    m_artificial = is_artificial;
+  }
+
+  unsigned int bitsize () const
+  {
+    return m_bitsize;
+  }
+
+  void set_bitsize (unsigned int bitsize)
+  {
+    m_bitsize = bitsize;
+  }
+
+  bool is_packed () const
+  {
+    return m_bitsize != 0;
+  }
+
   /* Return true if this field is static; false if not.  */
   bool is_static () const
   {
@@ -650,7 +675,7 @@ struct field
      to the user.  For TYPE_CODE_RANGE it is set if the specific
      bound is not defined.  */
 
-  unsigned int artificial : 1;
+  unsigned int m_artificial : 1;
 
   /* * Discriminant for union field_location.  */
 
@@ -662,7 +687,7 @@ struct field
      For an unpacked field, the field's type's length
      says how many bytes the field occupies.  */
 
-  unsigned int bitsize : 28;
+  unsigned int m_bitsize : 28;
 
   /* * In a struct or union type, type of this field.
      - In a function or member type, type of this argument.
@@ -992,6 +1017,14 @@ struct type
     this->main_type->flds_bnds.fields = fields;
   }
 
+  /* Allocate the fields array of this type, with NFIELDS elements.  If INIT,
+     zero-initialize the allocated memory.  */
+  void alloc_fields (unsigned int nfields, bool init = true);
+
+  /* Allocate the fields array of this type, and copy the fields from SRC.  */
+  void copy_fields (struct type *src);
+  void copy_fields (std::vector<struct field> &src);
+
   type *index_type () const
   {
     return this->field (0).type ();
@@ -1052,8 +1085,8 @@ struct type
 
   ULONGEST bit_stride () const
   {
-    if (this->code () == TYPE_CODE_ARRAY && this->field (0).bitsize != 0)
-      return this->field (0).bitsize;
+    if (this->code () == TYPE_CODE_ARRAY && this->field (0).bitsize () != 0)
+      return this->field (0).bitsize ();
     return this->bounds ()->bit_stride ();
   }
 
@@ -1904,13 +1937,6 @@ extern void set_type_vptr_basetype (struct type *, struct type *);
 #define BASETYPE_VIA_VIRTUAL(thistype, index) \
   (TYPE_CPLUS_SPECIFIC(thistype)->virtual_field_bits == NULL ? 0 \
     : B_TST(TYPE_CPLUS_SPECIFIC(thistype)->virtual_field_bits, (index)))
-
-#define FIELD_ARTIFICIAL(thisfld) ((thisfld).artificial)
-#define FIELD_BITSIZE(thisfld) ((thisfld).bitsize)
-
-#define TYPE_FIELD_ARTIFICIAL(thistype, n) FIELD_ARTIFICIAL((thistype)->field (n))
-#define TYPE_FIELD_BITSIZE(thistype, n) FIELD_BITSIZE((thistype)->field (n))
-#define TYPE_FIELD_PACKED(thistype, n) (FIELD_BITSIZE((thistype)->field (n))!=0)
 
 #define TYPE_FIELD_PRIVATE_BITS(thistype) \
   TYPE_CPLUS_SPECIFIC(thistype)->private_field_bits

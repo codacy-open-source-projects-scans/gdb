@@ -435,7 +435,7 @@ compunit_symtab::language () const
 CORE_ADDR
 minimal_symbol::value_address (objfile *objfile) const
 {
-  if (this->maybe_copied)
+  if (this->maybe_copied (objfile))
     return get_msymbol_address (objfile, this);
   else
     return (CORE_ADDR (this->unrelocated_address ())
@@ -465,6 +465,16 @@ minimal_symbol::text_p () const
     || m_type == mst_slot_got_plt
     || m_type == mst_solib_trampoline
     || m_type == mst_file_text;
+}
+
+/* See symtab.h.  */
+
+bool
+minimal_symbol::maybe_copied (objfile *objfile) const
+{
+  return (objfile->object_format_has_copy_relocs
+	  && (objfile->flags & OBJF_MAINLINE) == 0
+	  && (m_type == mst_data || m_type == mst_bss));
 }
 
 /* See whether FILENAME matches SEARCH_NAME using the rule that we
@@ -2278,8 +2288,7 @@ lookup_symbol_in_objfile_symtabs (struct objfile *objfile,
 	  other = result;
 	  break;
 	}
-      if (symbol_matches_domain (result.symbol->language (),
-				 result.symbol->domain (), domain))
+      if (result.symbol->matches (domain))
 	{
 	  struct symbol *better
 	    = better_symbol (other.symbol, result.symbol, domain);
@@ -2767,7 +2776,7 @@ iterate_over_symbols (const struct block *block,
 {
   for (struct symbol *sym : block_iterator_range (block, &name))
     {
-      if (symbol_matches_domain (sym->language (), sym->domain (), domain))
+      if (sym->matches (domain))
 	{
 	  struct block_symbol block_sym = {sym, block};
 
@@ -6515,7 +6524,7 @@ get_symbol_address (const struct symbol *sym)
 CORE_ADDR
 get_msymbol_address (struct objfile *objf, const struct minimal_symbol *minsym)
 {
-  gdb_assert (minsym->maybe_copied);
+  gdb_assert (minsym->maybe_copied (objf));
   gdb_assert ((objf->flags & OBJF_MAINLINE) == 0);
 
   const char *linkage_name = minsym->linkage_name ();

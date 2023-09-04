@@ -1225,8 +1225,8 @@ inline struct value *value_string (const char *ptr, ssize_t count,
   return value_string ((const gdb_byte *) ptr, count, char_type);
 }
 
-extern struct value *value_array (int lowbound, int highbound,
-				  struct value **elemvec);
+extern struct value *value_array (int lowbound,
+				  gdb::array_view<struct value *> elemvec);
 
 extern struct value *value_concat (struct value *arg1, struct value *arg2);
 

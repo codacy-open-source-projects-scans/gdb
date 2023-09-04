@@ -1684,17 +1684,16 @@ value_ind (struct value *arg1)
 /* Create a value for an array by allocating space in GDB, copying the
    data into that space, and then setting up an array value.
 
-   The array bounds are set from LOWBOUND and HIGHBOUND, and the array
-   is populated from the values passed in ELEMVEC.
+   The array bounds are set from LOWBOUND and the size of ELEMVEC, and
+   the array is populated from the values passed in ELEMVEC.
 
    The element type of the array is inherited from the type of the
    first element, and all elements must have the same size (though we
    don't currently enforce any restriction on their types).  */
 
 struct value *
-value_array (int lowbound, int highbound, struct value **elemvec)
+value_array (int lowbound, gdb::array_view<struct value *> elemvec)
 {
-  int nelem;
   int idx;
   ULONGEST typelength;
   struct value *val;
@@ -1703,28 +1702,23 @@ value_array (int lowbound, int highbound, struct value **elemvec)
   /* Validate that the bounds are reasonable and that each of the
      elements have the same size.  */
 
-  nelem = highbound - lowbound + 1;
-  if (nelem <= 0)
-    {
-      error (_("bad array bounds (%d, %d)"), lowbound, highbound);
-    }
   typelength = type_length_units (elemvec[0]->enclosing_type ());
-  for (idx = 1; idx < nelem; idx++)
+  for (struct value *other : elemvec.slice (1))
     {
-      if (type_length_units (elemvec[idx]->enclosing_type ())
-	  != typelength)
+      if (type_length_units (other->enclosing_type ()) != typelength)
 	{
 	  error (_("array elements must all be the same size"));
 	}
     }
 
   arraytype = lookup_array_range_type (elemvec[0]->enclosing_type (),
-				       lowbound, highbound);
+				       lowbound,
+				       lowbound + elemvec.size () - 1);
 
   if (!current_language->c_style_arrays_p ())
     {
       val = value::allocate (arraytype);
-      for (idx = 0; idx < nelem; idx++)
+      for (idx = 0; idx < elemvec.size (); idx++)
 	elemvec[idx]->contents_copy (val, idx * typelength, 0, typelength);
       return val;
     }
@@ -1733,7 +1727,7 @@ value_array (int lowbound, int highbound, struct value **elemvec)
      copying in each element.  */
 
   val = value::allocate (arraytype);
-  for (idx = 0; idx < nelem; idx++)
+  for (idx = 0; idx < elemvec.size (); idx++)
     elemvec[idx]->contents_copy (val, idx * typelength, 0, typelength);
   return val;
 }
@@ -3470,7 +3464,7 @@ compare_parameters (struct type *t1, struct type *t2, int skip_artificial)
 {
   int start = 0;
 
-  if (t1->num_fields () > 0 && TYPE_FIELD_ARTIFICIAL (t1, 0))
+  if (t1->num_fields () > 0 && t1->field (0).is_artificial ())
     ++start;
 
   /* If skipping artificial fields, find the first real field
@@ -3478,7 +3472,7 @@ compare_parameters (struct type *t1, struct type *t2, int skip_artificial)
   if (skip_artificial)
     {
       while (start < t1->num_fields ()
-	     && TYPE_FIELD_ARTIFICIAL (t1, start))
+	     && t1->field (start).is_artificial ())
 	++start;
     }
 
@@ -3587,7 +3581,7 @@ value_struct_elt_for_reference (struct type *domain, int offset,
 		v = value_addr (v);
 	      return v;
 	    }
-	  if (TYPE_FIELD_PACKED (t, i))
+	  if (t->field (i).is_packed ())
 	    error (_("pointers to bitfield members not allowed"));
 
 	  if (want_address)

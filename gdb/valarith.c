@@ -28,6 +28,8 @@
 #include "infcall.h"
 #include "gdbsupport/byte-vector.h"
 #include "gdbarch.h"
+#include "rust-lang.h"
+#include "ada-lang.h"
 
 /* Forward declarations.  */
 static struct value *value_subscripted_rvalue (struct value *array,
@@ -247,6 +249,23 @@ value_subscripted_rvalue (struct value *array, LONGEST index,
     }
 
   return value_from_component (array, elt_type, elt_offs);
+}
+
+/* See value.h.  */
+
+struct value *
+value_to_array (struct value *val)
+{
+  struct type *type = check_typedef (val->type ());
+  if (type->code () == TYPE_CODE_ARRAY)
+    return val;
+
+  if (type->is_array_like ())
+    {
+      const language_defn *defn = language_def (type->language ());
+      return defn->to_array (val);
+    }
+  return nullptr;
 }
 
 

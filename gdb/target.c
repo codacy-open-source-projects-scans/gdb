@@ -116,10 +116,9 @@ static struct target_ops *the_debug_target;
 
 static struct cmd_list_element *targetlist = NULL;
 
-/* True if we should trust readonly sections from the
-   executable when reading memory.  */
+/* See target.h.  */
 
-static bool trust_readonly = false;
+bool trust_readonly = false;
 
 /* Nonzero if we should show true memory content including
    memory breakpoint inserted by gdb.  */
@@ -668,7 +667,7 @@ target_get_trace_status (trace_status *ts)
 }
 
 void
-target_get_tracepoint_status (breakpoint *tp, uploaded_tp *utp)
+target_get_tracepoint_status (tracepoint *tp, uploaded_tp *utp)
 {
   return current_inferior ()->top_target ()->get_tracepoint_status (tp, utp);
 }

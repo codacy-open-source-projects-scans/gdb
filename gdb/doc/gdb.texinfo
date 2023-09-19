@@ -9212,9 +9212,9 @@ Same as using with no arguments.
 Print lines just before the lines last printed.
 
 @item list .
-Print the lines surrounding the location that is where the inferior
-is stopped.  If the inferior is not running, print around the main
-function instead.
+Print the lines surrounding the point of execution within the
+currently selected frame.  If the inferior is not running, print lines
+around the start of the main function instead.
 @end table
 
 @cindex @code{list}, how many lines to display
@@ -26096,7 +26096,7 @@ all uses of @value{GDBN} with the architecture, both native and cross.
 
 @menu
 * AArch64::
-* i386::
+* x86::
 * Alpha::
 * MIPS::
 * HPPA::               HP PA architecture
@@ -26206,8 +26206,8 @@ information automatically from the core file, and will show one of the above
 messages depending on whether the synchronous or asynchronous mode is selected.
 @xref{Memory Tagging}. @xref{Memory}.
 
-@node i386
-@subsection x86 Architecture-specific Issues
+@node x86
+@subsection x86
 
 @table @code
 @item set struct-convention @var{mode}
@@ -26309,6 +26309,25 @@ continuing the execution.  For example:
 At this last step the value of bnd0 can be changed for investigation of bound
 violations caused along the execution of the call.  In order to know how to
 set the bound registers or bound table for the call consult the ABI.
+
+@subsubsection x87 registers
+
+@value{GDBN} provides access to the x87 state through the following registers:
+
+@itemize
+
+@item @code{$st0} to @code{st7}: @code{ST(0)} to @code{ST(7)} floating-point
+registers
+@item @code{$fctrl}: control word register (@code{FCW})
+@item @code{$fstat}: status word register (@code{FSW})
+@item @code{$ftag}: tag word (@code{FTW})
+@item @code{$fiseg}: last instruction pointer segment
+@item @code{$fioff}: last instruction pointer
+@item @code{$foseg}: last data pointer segment
+@item @code{$fooff}: last data pointer
+@item @code{$fop}: last opcode
+
+@end itemize
 
 @node Alpha
 @subsection Alpha
@@ -26774,6 +26793,49 @@ either not mapped or accessed with incompatible permissions.
 
 If a single instruction raises more than one signal, they will be
 reported one at a time each time the wavefront is continued.
+
+@subsubsection @acronym{AMD GPU} Memory Violation Reporting
+
+A wavefront can report memory violation events.  However, the program
+location at which they are reported may be after the machine instruction
+that caused them.  This can result in the reported source statement
+being incorrect.  The following commands can be used to control this
+behavior:
+
+@table @code
+
+@kindex set amdgpu precise-memory
+@cindex AMD GPU precise memory event reporting
+@item set amdgpu precise-memory @var{mode}
+Controls how @acronym{AMD GPU} devices detect memory violations, where
+@var{mode} can be:
+
+@table @code
+
+@item off
+The program location may not be immediately after the instruction that
+caused the memory violation.  This is the default.
+
+@item on
+Requests that the program location will be immediately after the
+instruction that caused a memory violation.  Enabling this mode may make
+the @acronym{AMD GPU} device execution significantly slower as it has to
+wait for each memory operation to complete before executing the next
+instruction.
+
+@end table
+
+The @code{amdgpu precise-memory} parameter is per-inferior.  When an
+inferior forks or execs, or the user uses the @code{clone-inferior} command,
+and an inferior is created as a result, the newly created inferior inherits
+the parameter value of the original inferior.
+
+@kindex show amdgpu precise-memory
+@cindex AMD GPU precise memory event reporting
+@item show amdgpu precise-memory
+Displays the currently requested AMD GPU precise memory setting.
+
+@end table
 
 @subsubsection @acronym{AMD GPU} Logging
 

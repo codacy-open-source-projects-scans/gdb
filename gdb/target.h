@@ -1043,7 +1043,7 @@ struct target_ops
     virtual int get_trace_status (struct trace_status *ts)
       TARGET_DEFAULT_RETURN (-1);
 
-    virtual void get_tracepoint_status (struct breakpoint *tp,
+    virtual void get_tracepoint_status (tracepoint *tp,
 					struct uploaded_tp *utp)
       TARGET_DEFAULT_NORETURN (tcomplain ());
 
@@ -2255,7 +2255,7 @@ extern void target_trace_set_readonly_regions ();
 
 extern int target_get_trace_status (trace_status *ts);
 
-extern void target_get_tracepoint_status (breakpoint *tp, uploaded_tp *utp);
+extern void target_get_tracepoint_status (tracepoint *tp, uploaded_tp *utp);
 
 extern void target_trace_stop ();
 
@@ -2476,6 +2476,10 @@ extern int remote_timeout;
    scoped_restore to restore it back to the current value.  */
 extern scoped_restore_tmpl<int>
     make_scoped_restore_show_memory_breakpoints (int show);
+
+/* True if we should trust readonly sections from the
+   executable when reading memory.  */
+extern bool trust_readonly;
 
 extern bool may_write_registers;
 extern bool may_write_memory;

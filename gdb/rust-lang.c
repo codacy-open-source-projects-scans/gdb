@@ -153,10 +153,10 @@ rust_tuple_struct_type_p (struct type *type)
   return type->num_fields () > 0 && rust_underscore_fields (type);
 }
 
-/* Return true if TYPE is a slice type, otherwise false.  */
+/* See rust-lang.h.  */
 
-static bool
-rust_slice_type_p (struct type *type)
+bool
+rust_slice_type_p (const struct type *type)
 {
   if (type->code () == TYPE_CODE_STRUCT
       && type->name () != NULL
@@ -319,6 +319,30 @@ static const struct generic_val_print_decorations rust_decorations =
   "]"
 };
 
+/* See rust-lang.h.  */
+
+struct value *
+rust_slice_to_array (struct value *val)
+{
+  struct type *type = check_typedef (val->type ());
+  /* This must have been checked by the caller.  */
+  gdb_assert (rust_slice_type_p (type));
+
+  struct value *base = value_struct_elt (&val, {}, "data_ptr", NULL,
+					 "slice");
+  struct value *len = value_struct_elt (&val, {}, "length", NULL, "slice");
+  LONGEST llen = value_as_long (len);
+
+  struct type *elt_type = base->type ()->target_type ();
+  struct type *array_type = lookup_array_range_type (elt_type, 0,
+						     llen - 1);
+  struct value *array = value::allocate_lazy (array_type);
+  array->set_lval (lval_memory);
+  array->set_address (value_as_address (base));
+
+  return array;
+}
+
 /* Helper function to print a slice.  */
 
 static void
@@ -345,12 +369,7 @@ rust_val_print_slice (struct value *val, struct ui_file *stream, int recurse,
 	gdb_printf (stream, "[]");
       else
 	{
-	  struct type *elt_type = base->type ()->target_type ();
-	  struct type *array_type = lookup_array_range_type (elt_type, 0,
-							     llen - 1);
-	  struct value *array = value::allocate_lazy (array_type);
-	  array->set_lval (lval_memory);
-	  array->set_address (value_as_address (base));
+	  struct value *array = rust_slice_to_array (val);
 	  array->fetch_lazy ();
 	  generic_value_print (array, stream, recurse, options,
 			       &rust_decorations);
@@ -1673,6 +1692,43 @@ rust_language::is_string_type_p (struct type *type) const
 	      && !rust_enum_p (type)
 	      && rust_slice_type_p (type)
 	      && strcmp (type->name (), "&str") == 0));
+}
+
+/* See language.h.  */
+
+struct block_symbol
+rust_language::lookup_symbol_nonlocal
+     (const char *name, const struct block *block,
+      const domain_enum domain) const
+{
+  struct block_symbol result = {};
+
+  const char *scope = block == nullptr ? "" : block->scope ();
+  symbol_lookup_debug_printf
+    ("rust_lookup_symbol_non_local (%s, %s (scope %s), %s)",
+     name, host_address_to_string (block), scope,
+     domain_name (domain));
+
+  /* Look up bare names in the block's scope.  */
+  std::string scopedname;
+  if (name[cp_find_first_component (name)] == '\0')
+    {
+      if (scope[0] != '\0')
+	{
+	  scopedname = std::string (scope) + "::" + name;
+	  name = scopedname.c_str ();
+	}
+      else
+	name = NULL;
+    }
+
+  if (name != NULL)
+    {
+      result = lookup_symbol_in_static_block (name, block, domain);
+      if (result.symbol == NULL)
+	result = lookup_global_symbol (name, block, domain);
+    }
+  return result;
 }
 
 /* Single instance of the Rust language class.  */

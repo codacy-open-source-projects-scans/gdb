@@ -132,16 +132,11 @@ interp_set (struct interp *interp, bool top_level)
   if (interpreter_p != interp->name ())
     interpreter_p = interp->name ();
 
-  bool warn_about_mi1 = false;
-
   /* Run the init proc.  */
   if (!interp->inited)
     {
       interp->init (top_level);
       interp->inited = true;
-
-      if (streq (interp->name (), "mi1"))
-	warn_about_mi1 = true;
     }
 
   /* Do this only after the interpreter is initialized.  */
@@ -151,11 +146,6 @@ interp_set (struct interp *interp, bool top_level)
   clear_interpreter_hooks ();
 
   interp->resume ();
-
-  if (warn_about_mi1)
-    warning (_("MI version 1 is deprecated in GDB 13 and "
-	       "will be removed in GDB 14.  Please upgrade "
-	       "to a newer version of MI."));
 }
 
 /* Look up the interpreter for NAME.  If no such interpreter exists,
@@ -260,24 +250,6 @@ command_interp (void)
     return current_ui->command_interpreter;
   else
     return current_ui->current_interpreter;
-}
-
-/* See interps.h.  */
-
-void
-interp_pre_command_loop (struct interp *interp)
-{
-  gdb_assert (interp != NULL);
-
-  interp->pre_command_loop ();
-}
-
-/* See interp.h  */
-
-int
-interp_supports_command_editing (struct interp *interp)
-{
-  return interp->supports_command_editing ();
 }
 
 /* interp_exec - This executes COMMAND_STR in the current 

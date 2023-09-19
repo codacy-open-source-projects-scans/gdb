@@ -202,6 +202,10 @@ static struct type *ada_find_any_type (const char *name);
 static symbol_name_matcher_ftype *ada_get_symbol_name_matcher
   (const lookup_name_info &lookup_name);
 
+static int symbols_are_identical_enums
+  (const std::vector<struct block_symbol> &syms);
+
+static int ada_identical_enum_types_p (struct type *type1, struct type *type2);
 
 
 /* The character set used for source files.  */
@@ -814,6 +818,13 @@ ada_main_name ()
       if (main_program_name_addr == 0)
 	error (_("Invalid address for Ada main program name."));
 
+      /* Force trust_readonly, because we always want to fetch this
+	 string from the executable, not from inferior memory.  If the
+	 user changes the exec-file and invokes "start", we want to
+	 pick the "main" from the new executable, not one that may
+	 come from the still-live inferior.  */
+      scoped_restore save_trust_readonly
+	= make_scoped_restore (&trust_readonly, true);
       main_program_name = target_read_string (main_program_name_addr, 1024);
       return main_program_name.get ();
     }
@@ -2134,6 +2145,7 @@ ada_type_of_array (struct value *arr, int bounds)
 					longest_to_int (value_as_long (low)),
 					longest_to_int (value_as_long (high)));
 	  elt_type = create_array_type (alloc, elt_type, range_type);
+	  INIT_GNAT_SPECIFIC (elt_type);
 
 	  if (ada_is_unconstrained_packed_array_type (arr->type ()))
 	    {
@@ -3791,11 +3803,24 @@ ada_resolve_enum (std::vector<struct block_symbol> &syms,
   gdb_assert (context_type->code () == TYPE_CODE_ENUM);
   context_type = ada_check_typedef (context_type);
 
+  /* We already know the name matches, so we're just looking for
+     an element of the correct enum type.  */
+  struct type *type1 = context_type;
   for (int i = 0; i < syms.size (); ++i)
     {
-      /* We already know the name matches, so we're just looking for
-	 an element of the correct enum type.  */
-      if (ada_check_typedef (syms[i].symbol->type ()) == context_type)
+      struct type *type2 = ada_check_typedef (syms[i].symbol->type ());
+      if (type1 == type2)
+	return i;
+    }
+
+  for (int i = 0; i < syms.size (); ++i)
+    {
+      struct type *type2 = ada_check_typedef (syms[i].symbol->type ());
+      if (type1->num_fields () != type2->num_fields ())
+	continue;
+      if (strcmp (type1->name (), type2->name ()) != 0)
+	continue;
+      if (ada_identical_enum_types_p (type1, type2))
 	return i;
     }
 
@@ -3867,6 +3892,24 @@ ada_resolve_variable (struct symbol *sym, const struct block *block,
 	   && context_type->code () == TYPE_CODE_ENUM)
     i = ada_resolve_enum (candidates, sym->linkage_name (), context_type,
 			  parse_completion);
+  else if (context_type == nullptr
+	   && symbols_are_identical_enums (candidates))
+    {
+      /* If all the remaining symbols are identical enumerals, then
+	 just keep the first one and discard the rest.
+
+	 Unlike what we did previously, we do not discard any entry
+	 unless they are ALL identical.  This is because the symbol
+	 comparison is not a strict comparison, but rather a practical
+	 comparison.  If all symbols are considered identical, then
+	 we can just go ahead and use the first one and discard the rest.
+	 But if we cannot reduce the list to a single element, we have
+	 to ask the user to disambiguate anyways.  And if we have to
+	 present a multiple-choice menu, it's less confusing if the list
+	 isn't missing some choices that were identical and yet distinct.  */
+      candidates.resize (1);
+      i = 0;
+    }
   else if (deprocedure_p && !is_nonfunction (candidates))
     {
       i = ada_resolve_function
@@ -5083,21 +5126,6 @@ remove_extra_symbols (std::vector<struct block_symbol> &syms)
       else
 	i += 1;
     }
-
-  /* If all the remaining symbols are identical enumerals, then
-     just keep the first one and discard the rest.
-
-     Unlike what we did previously, we do not discard any entry
-     unless they are ALL identical.  This is because the symbol
-     comparison is not a strict comparison, but rather a practical
-     comparison.  If all symbols are considered identical, then
-     we can just go ahead and use the first one and discard the rest.
-     But if we cannot reduce the list to a single element, we have
-     to ask the user to disambiguate anyways.  And if we have to
-     present a multiple-choice menu, it's less confusing if the list
-     isn't missing some choices that were identical and yet distinct.  */
-  if (symbols_are_identical_enums (syms))
-    syms.resize (1);
 }
 
 /* Given a type that corresponds to a renaming entity, use the type name
@@ -12175,7 +12203,7 @@ ada_catchpoint::allocate_location ()
 bool
 ada_catchpoint::should_stop_exception (const struct bp_location *bl) const
 {
-  struct ada_catchpoint *c = (struct ada_catchpoint *) bl->owner;
+  ada_catchpoint *c = gdb::checked_static_cast<ada_catchpoint *> (bl->owner);
   const struct ada_catchpoint_location *ada_loc
     = (const struct ada_catchpoint_location *) bl;
   bool stop;
@@ -13799,6 +13827,19 @@ public:
   {
     return ada_is_string_type (type);
   }
+
+  /* See language.h.  */
+
+  bool is_array_like (struct type *type) const override
+  {
+    return (ada_is_constrained_packed_array_type (type)
+	    || ada_is_array_descriptor_type (type));
+  }
+
+  /* See language.h.  */
+
+  struct value *to_array (struct value *val) const override
+  { return ada_coerce_to_simple_array (val); }
 
   /* See language.h.  */
 

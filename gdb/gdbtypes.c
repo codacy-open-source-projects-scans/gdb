@@ -43,6 +43,8 @@
 #include "f-lang.h"
 #include <algorithm>
 #include "gmp-utils.h"
+#include "rust-lang.h"
+#include "ada-lang.h"
 
 /* The value of an invalid conversion badness.  */
 #define INVALID_CONVERSION 100
@@ -215,6 +217,7 @@ type_allocator::new_type ()
   /* Alloc the structure and start off with all fields zeroed.  */
   struct type *type = OBSTACK_ZALLOC (obstack, struct type);
   TYPE_MAIN_TYPE (type) = OBSTACK_ZALLOC (obstack, struct main_type);
+  TYPE_MAIN_TYPE (type)->m_lang = m_lang;
 
   if (m_is_objfile)
     {
@@ -3496,12 +3499,12 @@ init_pointer_type (type_allocator &alloc,
    NAME is the type name.  */
 
 struct type *
-init_fixed_point_type (struct objfile *objfile,
+init_fixed_point_type (type_allocator &alloc,
 		       int bit, int unsigned_p, const char *name)
 {
   struct type *t;
 
-  t = type_allocator (objfile).new_type (TYPE_CODE_FIXED_POINT, bit, name);
+  t = alloc.new_type (TYPE_CODE_FIXED_POINT, bit, name);
   if (unsigned_p)
     t->set_is_unsigned (true);
 
@@ -5938,6 +5941,27 @@ type::copy_fields (std::vector<struct field> &src)
   size_t size = nfields * sizeof (*this->fields ());
   memcpy (this->fields (), src.data (), size);
 }
+
+/* See gdbtypes.h.  */
+
+bool
+type::is_string_like ()
+{
+  const language_defn *defn = language_def (this->language ());
+  return defn->is_string_type_p (this);
+}
+
+/* See gdbtypes.h.  */
+
+bool
+type::is_array_like ()
+{
+  if (code () == TYPE_CODE_ARRAY)
+    return true;
+  const language_defn *defn = language_def (this->language ());
+  return defn->is_array_like (this);
+}
+
 
 
 static const registry<gdbarch>::key<struct builtin_type> gdbtypes_data;

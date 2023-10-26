@@ -647,12 +647,12 @@ execute_fn_to_string (std::string &res, std::function<void(void)> fn,
   catch (...)
     {
       /* Finally.  */
-      res = std::move (str_file.string ());
+      res = str_file.release ();
       throw;
     }
 
   /* And finally.  */
-  res = std::move (str_file.string ());
+  res = str_file.release ();
 }
 
 /* See gdbcmd.h.  */
@@ -1586,6 +1586,12 @@ This GDB was configured as follows:\n\
     gdb_printf (stream, _("\
 	     --with-separate-debug-dir=%s%s\n\
 "), DEBUGDIR, DEBUGDIR_RELOCATABLE ? " (relocatable)" : "");
+
+#ifdef ADDITIONAL_DEBUG_DIRS
+  gdb_printf (stream, _ ("\
+	     --with-additional-debug-dirs=%s\n\
+"), ADDITIONAL_DEBUG_DIRS);
+#endif
 
   if (TARGET_SYSTEM_ROOT[0])
     gdb_printf (stream, _("\

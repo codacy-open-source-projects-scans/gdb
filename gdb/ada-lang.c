@@ -4673,9 +4673,9 @@ make_array_descriptor (struct type *type, struct value *arr)
 /* Clear all entries from the symbol cache.  */
 
 static void
-ada_clear_symbol_cache ()
+ada_clear_symbol_cache (program_space *pspace)
 {
-  ada_pspace_data_handle.clear (current_program_space);
+  ada_pspace_data_handle.clear (pspace);
 }
 
 /* Search the symbol cache for an entry matching NAME and DOMAIN.
@@ -4914,7 +4914,7 @@ ada_lookup_simple_minsym (const char *name, struct objfile *objfile)
     = ada_get_symbol_name_matcher (lookup_name);
 
   gdbarch_iterate_over_objfiles_in_search_order
-    (objfile != NULL ? objfile->arch () : target_gdbarch (),
+    (objfile != NULL ? objfile->arch () : current_inferior ()->arch (),
      [&result, lookup_name, match_name] (struct objfile *obj)
        {
 	 for (minimal_symbol *msymbol : obj->msymbols ())
@@ -6448,7 +6448,8 @@ ada_tag_value_at_base_address (struct value *obj)
 
   struct type *offset_type
     = language_lookup_primitive_type (language_def (language_ada),
-				      target_gdbarch(), "storage_offset");
+				      current_inferior ()->arch (),
+				      "storage_offset");
   ptr_type = lookup_pointer_type (offset_type);
   val = value_cast (ptr_type, tag);
   if (!val)
@@ -13766,7 +13767,7 @@ public:
 	struct gdbarch *gdbarch;
 
 	if (block == NULL)
-	  gdbarch = target_gdbarch ();
+	  gdbarch = current_inferior ()->arch ();
 	else
 	  gdbarch = block->gdbarch ();
 	sym.symbol
@@ -13884,7 +13885,7 @@ static struct cmd_list_element *show_ada_list;
 static void
 ada_new_objfile_observer (struct objfile *objfile)
 {
-  ada_clear_symbol_cache ();
+  ada_clear_symbol_cache (objfile->pspace);
 }
 
 /* This module's 'free_objfile' observer.  */
@@ -13892,7 +13893,7 @@ ada_new_objfile_observer (struct objfile *objfile)
 static void
 ada_free_objfile_observer (struct objfile *objfile)
 {
-  ada_clear_symbol_cache ();
+  ada_clear_symbol_cache (objfile->pspace);
 }
 
 /* Charsets known to GNAT.  */
@@ -14025,6 +14026,8 @@ DWARF attribute."),
 
   /* The ada-lang observers.  */
   gdb::observers::new_objfile.attach (ada_new_objfile_observer, "ada-lang");
+  gdb::observers::all_objfiles_removed.attach (ada_clear_symbol_cache,
+					       "ada-lang");
   gdb::observers::free_objfile.attach (ada_free_objfile_observer, "ada-lang");
   gdb::observers::inferior_exit.attach (ada_inferior_exit, "ada-lang");
 

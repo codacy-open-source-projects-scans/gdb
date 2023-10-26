@@ -36,7 +36,7 @@
 #include "interps.h"
 #include "gdbsupport/event-loop.h"
 #include "event-top.h"
-#include "gdbcore.h"		/* For write_memory().  */
+#include "gdbcore.h"
 #include "value.h"
 #include "regcache.h"
 #include "frame.h"
@@ -2714,7 +2714,7 @@ mi_cmd_trace_frame_collected (const char *command, const char *const *argv,
 
     for (const mem_range &r : available_memory)
       {
-	struct gdbarch *gdbarch = target_gdbarch ();
+	gdbarch *gdbarch = current_inferior ()->arch ();
 
 	ui_out_emit_tuple tuple_emitter (uiout, NULL);
 

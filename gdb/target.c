@@ -57,47 +57,13 @@
 
 static void generic_tls_error (void) ATTRIBUTE_NORETURN;
 
-static void default_terminal_info (struct target_ops *, const char *, int);
-
-static int default_watchpoint_addr_within_range (struct target_ops *,
-						 CORE_ADDR, CORE_ADDR, int);
-
-static int default_region_ok_for_hw_watchpoint (struct target_ops *,
-						CORE_ADDR, int);
-
 static void default_rcmd (struct target_ops *, const char *, struct ui_file *);
-
-static ptid_t default_get_ada_task_ptid (struct target_ops *self,
-					 long lwp, ULONGEST tid);
-
-static void default_mourn_inferior (struct target_ops *self);
-
-static int default_search_memory (struct target_ops *ops,
-				  CORE_ADDR start_addr,
-				  ULONGEST search_space_len,
-				  const gdb_byte *pattern,
-				  ULONGEST pattern_len,
-				  CORE_ADDR *found_addrp);
 
 static int default_verify_memory (struct target_ops *self,
 				  const gdb_byte *data,
 				  CORE_ADDR memaddr, ULONGEST size);
 
 static void tcomplain (void) ATTRIBUTE_NORETURN;
-
-static struct target_ops *find_default_run_target (const char *);
-
-static int dummy_find_memory_regions (struct target_ops *self,
-				      find_memory_region_ftype ignore1,
-				      void *ignore2);
-
-static gdb::unique_xmalloc_ptr<char> dummy_make_corefile_notes
-  (struct target_ops *self, bfd *ignore1, int *ignore2);
-
-static std::string default_pid_to_str (struct target_ops *ops, ptid_t ptid);
-
-static enum exec_direction_kind default_execution_direction
-    (struct target_ops *self);
 
 /* Mapping between target_info objects (which have address identity)
    and corresponding open/factory function/callback.  Each add_target
@@ -1281,7 +1247,7 @@ target_translate_tls_address (struct objfile *objfile, CORE_ADDR offset)
 {
   volatile CORE_ADDR addr = 0;
   struct target_ops *target = current_inferior ()->top_target ();
-  struct gdbarch *gdbarch = target_gdbarch ();
+  gdbarch *gdbarch = current_inferior ()->arch ();
 
   /* If OBJFILE is a separate debug object file, look for the
      original object file.  */
@@ -1381,7 +1347,7 @@ target_xfer_status_to_string (enum target_xfer_status status)
 };
 
 
-const target_section_table *
+const std::vector<target_section> *
 target_get_section_table (struct target_ops *target)
 {
   return target->get_section_table ();
@@ -1392,7 +1358,7 @@ target_get_section_table (struct target_ops *target)
 const struct target_section *
 target_section_by_addr (struct target_ops *target, CORE_ADDR addr)
 {
-  const target_section_table *table = target_get_section_table (target);
+  const std::vector<target_section> *table = target_get_section_table (target);
 
   if (table == NULL)
     return NULL;
@@ -1407,7 +1373,7 @@ target_section_by_addr (struct target_ops *target, CORE_ADDR addr)
 
 /* See target.h.  */
 
-const target_section_table *
+const std::vector<target_section> *
 default_get_section_table ()
 {
   return &current_program_space->target_sections ();
@@ -1541,7 +1507,7 @@ memory_xfer_partial_1 (struct target_ops *ops, enum target_object object,
 
       if (pc_in_unmapped_range (memaddr, section))
 	{
-	  const target_section_table *table = target_get_section_table (ops);
+	  const std::vector<target_section> *table = target_get_section_table (ops);
 	  const char *section_name = section->the_bfd_section->name;
 
 	  memaddr = overlay_mapped_address (memaddr, section);
@@ -1565,7 +1531,7 @@ memory_xfer_partial_1 (struct target_ops *ops, enum target_object object,
       if (secp != NULL
 	  && (bfd_section_flags (secp->the_bfd_section) & SEC_READONLY))
 	{
-	  const target_section_table *table = target_get_section_table (ops);
+	  const std::vector<target_section> *table = target_get_section_table (ops);
 	  return section_table_xfer_memory_partial (readbuf, writebuf,
 						    memaddr, len, xfered_len,
 						    *table);
@@ -1631,7 +1597,8 @@ memory_xfer_partial (struct target_ops *ops, enum target_object object,
   if (len == 0)
     return TARGET_XFER_EOF;
 
-  memaddr = gdbarch_remove_non_address_bits (target_gdbarch (), memaddr);
+  memaddr = gdbarch_remove_non_address_bits (current_inferior ()->arch (),
+					     memaddr);
 
   /* Fill in READBUF with breakpoint shadows, or WRITEBUF with
      breakpoint insns, thus hiding out from higher layers whether
@@ -1803,8 +1770,9 @@ target_read_uint32 (CORE_ADDR memaddr, uint32_t *result)
   r = target_read_memory (memaddr, buf, sizeof buf);
   if (r != 0)
     return r;
-  *result = extract_unsigned_integer (buf, sizeof buf,
-				      gdbarch_byte_order (target_gdbarch ()));
+  *result = extract_unsigned_integer
+	      (buf, sizeof buf,
+	       gdbarch_byte_order (current_inferior ()->arch ()));
   return 0;
 }
 
@@ -1981,7 +1949,8 @@ target_read (struct target_ops *ops,
       || object == TARGET_OBJECT_STACK_MEMORY
       || object == TARGET_OBJECT_CODE_MEMORY
       || object == TARGET_OBJECT_RAW_MEMORY)
-    unit_size = gdbarch_addressable_memory_unit_size (target_gdbarch ());
+    unit_size = gdbarch_addressable_memory_unit_size
+		  (current_inferior ()->arch ());
 
   while (xfered_total < len)
     {
@@ -2140,7 +2109,8 @@ read_memory_robust (struct target_ops *ops,
 		    const ULONGEST offset, const LONGEST len)
 {
   std::vector<memory_read_result> result;
-  int unit_size = gdbarch_addressable_memory_unit_size (target_gdbarch ());
+  int unit_size
+    = gdbarch_addressable_memory_unit_size (current_inferior ()->arch ());
 
   LONGEST xfered_total = 0;
   while (xfered_total < len)
@@ -2215,7 +2185,8 @@ target_write_with_progress (struct target_ops *ops,
       || object == TARGET_OBJECT_STACK_MEMORY
       || object == TARGET_OBJECT_CODE_MEMORY
       || object == TARGET_OBJECT_RAW_MEMORY)
-    unit_size = gdbarch_addressable_memory_unit_size (target_gdbarch ());
+    unit_size = gdbarch_addressable_memory_unit_size
+		  (current_inferior ()->arch ());
 
   /* Give the progress callback a chance to set up.  */
   if (progress)
@@ -2468,7 +2439,7 @@ target_pre_inferior (int from_tty)
   /* In some OSs, the shared library list is the same/global/shared
      across inferiors.  If code is shared between processes, so are
      memory regions and features.  */
-  if (!gdbarch_has_global_solist (target_gdbarch ()))
+  if (!gdbarch_has_global_solist (current_inferior ()->arch ()))
     {
       no_shared_libraries (NULL, from_tty);
 
@@ -2539,10 +2510,9 @@ target_detach (inferior *inf, int from_tty)
   ptid_t save_pid_ptid = ptid_t (inf->pid);
 
   /* As long as some to_detach implementations rely on the current_inferior
-     (either directly, or indirectly, like through target_gdbarch or by
-     reading memory), INF needs to be the current inferior.  When that
-     requirement will become no longer true, then we can remove this
-     assertion.  */
+     (either directly, or indirectly, like through reading memory), INF needs
+     to be the current inferior.  When that requirement will become no longer
+     true, then we can remove this assertion.  */
   gdb_assert (inf == current_inferior ());
 
   prepare_for_detach ();
@@ -3582,7 +3552,8 @@ static int
 default_region_ok_for_hw_watchpoint (struct target_ops *self,
 				     CORE_ADDR addr, int len)
 {
-  return (len <= gdbarch_ptr_bit (target_gdbarch ()) / TARGET_CHAR_BIT);
+  gdbarch *arch = current_inferior ()->arch ();
+  return (len <= gdbarch_ptr_bit (arch) / TARGET_CHAR_BIT);
 }
 
 static int
@@ -4284,7 +4255,7 @@ flash_erase_command (const char *cmd, int from_tty)
 {
   /* Used to communicate termination of flash operations to the target.  */
   bool found_flash_region = false;
-  struct gdbarch *gdbarch = target_gdbarch ();
+  gdbarch *gdbarch = current_inferior ()->arch ();
 
   std::vector<mem_region> mem_regions = target_memory_map ();
 

@@ -1475,6 +1475,17 @@ Specify that the object's filters be processed immediately at runtime.
 @item max-page-size=@var{value}
 Set the maximum memory page size supported to @var{value}.
 
+@item mark-plt
+@itemx nomark-plt
+Mark PLT entries with dynamic tags, DT_X86_64_PLT, DT_X86_64_PLTSZ and
+DT_X86_64_PLTENT.  Since this option stores a non-zero value in the
+r_addend field of R_X86_64_JUMP_SLOT relocations, the resulting
+executables and shared libraries are incompatible with dynamic linkers,
+such as those in older versions of glibc without the change to ignore
+r_addend in R_X86_64_GLOB_DAT and R_X86_64_JUMP_SLOT relocations, which
+don't ignore the r_addend field of R_X86_64_JUMP_SLOT relocations.
+Supported for x86_64.
+
 @item muldefs
 Allow multiple definitions.
 
@@ -3056,7 +3067,7 @@ specification.  For more information see:
 https://systemd.io/ELF_PACKAGE_METADATA/
 If the JSON argument is missing/empty then this will disable the
 creation of the metadata note, if one had been enabled by an earlier
-occurrence of the --package-metdata option.
+occurrence of the --package-metadata option.
 If the linker has been built with libjansson, then the JSON string
 will be validated.
 @end table
@@ -5505,10 +5516,10 @@ expression.
 
 @kindex LINKER_VERSION
 @cindex LINKER_VERSION
-Inserts a string containing the version of the linker at the current
-point.  Note - by default this directive is disabled and will do
-nothing.  It only becomes active if the
-@option{--enable-linker-version} command line option is used.
+The @code{LINKER_VERSION} command inserts a string containing the
+version of the linker at the current point.  Note - by default this
+directive is disabled and will do nothing.  It only becomes active if
+the @option{--enable-linker-version} command line option is used.
 
 Built-in linker scripts for ELF based targets already include this
 directive in their @samp{.comment} section.

@@ -34,7 +34,7 @@
 #include "demangle.h"
 #include "inferior.h"
 #include "source.h"
-#include "filenames.h"		/* for FILENAME_CMP */
+#include "filenames.h"
 #include "objc-lang.h"
 #include "d-lang.h"
 #include "ada-lang.h"
@@ -99,6 +99,9 @@ static struct block_symbol
   lookup_symbol_in_objfile (struct objfile *objfile,
 			    enum block_enum block_index,
 			    const char *name, const domain_enum domain);
+
+static void set_main_name (program_space *pspace, const char *name,
+			   language lang);
 
 /* Type of the data stored on the program space.  */
 
@@ -436,7 +439,7 @@ CORE_ADDR
 minimal_symbol::value_address (objfile *objfile) const
 {
   if (this->maybe_copied (objfile))
-    return get_msymbol_address (objfile, this);
+    return this->get_maybe_copied_address (objfile);
   else
     return (CORE_ADDR (this->unrelocated_address ())
 	    + objfile->section_offsets[this->section_index ()]);
@@ -1692,8 +1695,18 @@ maintenance_print_symbol_cache_statistics (const char *args, int from_tty)
 static void
 symtab_new_objfile_observer (struct objfile *objfile)
 {
-  /* Ideally we'd use OBJFILE->pspace, but OBJFILE may be NULL.  */
-  symbol_cache_flush (current_program_space);
+  symbol_cache_flush (objfile->pspace);
+}
+
+/* This module's 'all_objfiles_removed' observer.  */
+
+static void
+symtab_all_objfiles_removed (program_space *pspace)
+{
+  symbol_cache_flush (pspace);
+
+  /* Forget everything we know about the main function.  */
+  set_main_name (pspace, nullptr, language_unknown);
 }
 
 /* This module's 'free_objfile' observer.  */
@@ -2447,7 +2460,7 @@ language_defn::lookup_symbol_nonlocal (const char *name,
       struct gdbarch *gdbarch;
 
       if (block == NULL)
-	gdbarch = target_gdbarch ();
+	gdbarch = current_inferior ()->arch ();
       else
 	gdbarch = block->gdbarch ();
       result.symbol = language_lookup_primitive_type_as_symbol (this,
@@ -2569,7 +2582,7 @@ lookup_global_or_static_symbol (const char *name,
   /* Do a global search (of global blocks, heh).  */
   if (result.symbol == NULL)
     gdbarch_iterate_over_objfiles_in_search_order
-      (objfile != NULL ? objfile->arch () : target_gdbarch (),
+      (objfile != NULL ? objfile->arch () : current_inferior ()->arch (),
        [&result, block_index, name, domain] (struct objfile *objfile_iter)
 	 {
 	   result = lookup_symbol_in_objfile (objfile_iter, block_index,
@@ -6171,10 +6184,10 @@ make_source_files_completion_list (const char *text, const char *word)
    the object has not yet been created, create it and fill in some
    default values.  */
 
-static struct main_info *
-get_main_info (void)
+static main_info *
+get_main_info (program_space *pspace)
 {
-  struct main_info *info = main_progspace_key.get (current_program_space);
+  main_info *info = main_progspace_key.get (pspace);
 
   if (info == NULL)
     {
@@ -6184,16 +6197,16 @@ get_main_info (void)
 	 gdb returned "main" as the name even if no function named
 	 "main" was defined the program; and this approach lets us
 	 keep compatibility.  */
-      info = main_progspace_key.emplace (current_program_space);
+      info = main_progspace_key.emplace (pspace);
     }
 
   return info;
 }
 
 static void
-set_main_name (const char *name, enum language lang)
+set_main_name (program_space *pspace, const char *name, enum language lang)
 {
-  struct main_info *info = get_main_info ();
+  main_info *info = get_main_info (pspace);
 
   if (!info->name_of_main.empty ())
     {
@@ -6214,6 +6227,7 @@ static void
 find_main_name (void)
 {
   const char *new_main_name;
+  program_space *pspace = current_program_space;
 
   /* First check the objfiles to see whether a debuginfo reader has
      picked up the appropriate main name.  Historically the main name
@@ -6225,7 +6239,8 @@ find_main_name (void)
     {
       if (objfile->per_bfd->name_of_main != NULL)
 	{
-	  set_main_name (objfile->per_bfd->name_of_main,
+	  set_main_name (pspace,
+			 objfile->per_bfd->name_of_main,
 			 objfile->per_bfd->language_of_main);
 	  return;
 	}
@@ -6250,28 +6265,28 @@ find_main_name (void)
   new_main_name = ada_main_name ();
   if (new_main_name != NULL)
     {
-      set_main_name (new_main_name, language_ada);
+      set_main_name (pspace, new_main_name, language_ada);
       return;
     }
 
   new_main_name = d_main_name ();
   if (new_main_name != NULL)
     {
-      set_main_name (new_main_name, language_d);
+      set_main_name (pspace, new_main_name, language_d);
       return;
     }
 
   new_main_name = go_main_name ();
   if (new_main_name != NULL)
     {
-      set_main_name (new_main_name, language_go);
+      set_main_name (pspace, new_main_name, language_go);
       return;
     }
 
   new_main_name = pascal_main_name ();
   if (new_main_name != NULL)
     {
-      set_main_name (new_main_name, language_pascal);
+      set_main_name (pspace, new_main_name, language_pascal);
       return;
     }
 
@@ -6281,15 +6296,15 @@ find_main_name (void)
   /* Try to find language for main in psymtabs.  */
   bool symbol_found_p = false;
   gdbarch_iterate_over_objfiles_in_search_order
-    (target_gdbarch (),
-     [&symbol_found_p] (objfile *obj)
+    (current_inferior ()->arch (),
+     [&symbol_found_p, pspace] (objfile *obj)
        {
 	 language lang
 	   = obj->lookup_global_symbol_language ("main", VAR_DOMAIN,
 						 &symbol_found_p);
 	 if (symbol_found_p)
 	   {
-	     set_main_name ("main", lang);
+	     set_main_name (pspace, "main", lang);
 	     return 1;
 	   }
 
@@ -6299,7 +6314,7 @@ find_main_name (void)
   if (symbol_found_p)
     return;
 
-  set_main_name ("main", language_unknown);
+  set_main_name (pspace, "main", language_unknown);
 }
 
 /* See symtab.h.  */
@@ -6307,7 +6322,7 @@ find_main_name (void)
 const char *
 main_name ()
 {
-  struct main_info *info = get_main_info ();
+  main_info *info = get_main_info (current_program_space);
 
   if (info->name_of_main.empty ())
     find_main_name ();
@@ -6321,21 +6336,12 @@ main_name ()
 enum language
 main_language (void)
 {
-  struct main_info *info = get_main_info ();
+  main_info *info = get_main_info (current_program_space);
 
   if (info->name_of_main.empty ())
     find_main_name ();
 
   return info->language_of_main;
-}
-
-/* Handle ``executable_changed'' events for the symtab module.  */
-
-static void
-symtab_observer_executable_changed (void)
-{
-  /* NAME_OF_MAIN may no longer be the same, so reset it for now.  */
-  set_main_name (NULL, language_unknown);
 }
 
 /* Return 1 if the supplied producer string matches the ARM RealView
@@ -6511,34 +6517,34 @@ symbol::set_symtab (struct symtab *symtab)
 /* See symtab.h.  */
 
 CORE_ADDR
-get_symbol_address (const struct symbol *sym)
+symbol::get_maybe_copied_address () const
 {
-  gdb_assert (sym->maybe_copied);
-  gdb_assert (sym->aclass () == LOC_STATIC);
+  gdb_assert (this->maybe_copied);
+  gdb_assert (this->aclass () == LOC_STATIC);
 
-  const char *linkage_name = sym->linkage_name ();
+  const char *linkage_name = this->linkage_name ();
   bound_minimal_symbol minsym = lookup_minimal_symbol_linkage (linkage_name,
 							       false);
   if (minsym.minsym != nullptr)
     return minsym.value_address ();
-  return sym->m_value.address;
+  return this->m_value.address;
 }
 
 /* See symtab.h.  */
 
 CORE_ADDR
-get_msymbol_address (struct objfile *objf, const struct minimal_symbol *minsym)
+minimal_symbol::get_maybe_copied_address (objfile *objf) const
 {
-  gdb_assert (minsym->maybe_copied (objf));
+  gdb_assert (this->maybe_copied (objf));
   gdb_assert ((objf->flags & OBJF_MAINLINE) == 0);
 
-  const char *linkage_name = minsym->linkage_name ();
+  const char *linkage_name = this->linkage_name ();
   bound_minimal_symbol found = lookup_minimal_symbol_linkage (linkage_name,
 							      true);
   if (found.minsym != nullptr)
     return found.value_address ();
-  return (minsym->m_value.address
-	  + objf->section_offsets[minsym->section_index ()]);
+  return (this->m_value.address
+	  + objf->section_offsets[this->section_index ()]);
 }
 
 
@@ -7020,8 +7026,8 @@ the use of prologue scanners."),
 		     class_maintenance, 0, &maintenancelist);
   deprecate_cmd (c, "maintenancelist flush symbol-cache");
 
-  gdb::observers::executable_changed.attach (symtab_observer_executable_changed,
-					     "symtab");
   gdb::observers::new_objfile.attach (symtab_new_objfile_observer, "symtab");
+  gdb::observers::all_objfiles_removed.attach (symtab_all_objfiles_removed,
+					       "symtab");
   gdb::observers::free_objfile.attach (symtab_free_objfile_observer, "symtab");
 }

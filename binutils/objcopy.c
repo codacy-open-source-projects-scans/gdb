@@ -2878,7 +2878,7 @@ copy_object (bfd *ibfd, bfd *obfd, const bfd_arch_info_type *input_arch)
 	pe->pe_opthdr.SizeOfStackCommit = pe_stack_commit;
 
       if (pe_stack_reserve != (bfd_vma) -1)
-	pe->pe_opthdr.SizeOfStackCommit = pe_stack_reserve;
+	pe->pe_opthdr.SizeOfStackReserve = pe_stack_reserve;
 
       if (pe_subsystem != -1)
 	pe->pe_opthdr.Subsystem = pe_subsystem;
@@ -5910,7 +5910,7 @@ copy_main (int argc, char *argv[])
 	    char *end;
 	    pe_heap_reserve = strtoul (optarg, &end, 0);
 	    if (end == optarg
-		|| (*end != '.' && *end != '\0'))
+		|| (*end != ',' && *end != '\0'))
 	      non_fatal (_("%s: invalid reserve value for --heap"),
 			 optarg);
 	    else if (*end != '\0')
@@ -5941,7 +5941,7 @@ copy_main (int argc, char *argv[])
 	    char *end;
 	    pe_stack_reserve = strtoul (optarg, &end, 0);
 	    if (end == optarg
-		|| (*end != '.' && *end != '\0'))
+		|| (*end != ',' && *end != '\0'))
 	      non_fatal (_("%s: invalid reserve value for --stack"),
 			 optarg);
 	    else if (*end != '\0')

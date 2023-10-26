@@ -2102,9 +2102,11 @@ _bfd_elf_get_dynamic_symbols (bfd *abfd, Elf_Internal_Phdr *phdr,
     goto error_return;
 
   /* Dynamic string table must be valid until ABFD is closed.  */
-  strbuf = (char *) _bfd_alloc_and_read (abfd, dt_strsz, dt_strsz);
+  strbuf = (char *) _bfd_alloc_and_read (abfd, dt_strsz + 1, dt_strsz);
   if (strbuf == NULL)
     goto error_return;
+  /* Since this is a string table, make sure that it is terminated.  */
+  strbuf[dt_strsz] = 0;
 
   /* Get the real symbol count from DT_HASH or DT_GNU_HASH.  Prefer
      DT_HASH since it is simpler than DT_GNU_HASH.  */
@@ -2225,7 +2227,7 @@ _bfd_elf_get_dynamic_symbols (bfd *abfd, Elf_Internal_Phdr *phdr,
 	goto error_return;
 
       gnuchains = get_hash_table_data (abfd, maxchain, 4, filesize);
-      if (gnubuckets == NULL)
+      if (gnuchains == NULL)
 	goto error_return;
       ngnuchains = maxchain;
 
@@ -2356,6 +2358,7 @@ _bfd_elf_get_dynamic_symbols (bfd *abfd, Elf_Internal_Phdr *phdr,
 
  empty_gnu_hash:
   elf_tdata (abfd)->dt_strtab = strbuf;
+  elf_tdata (abfd)->dt_strsz = dt_strsz;
   elf_tdata (abfd)->dt_symtab = isymbuf;
   elf_tdata (abfd)->dt_symtab_count = symcount;
   elf_tdata (abfd)->dt_versym = versym;
@@ -9396,6 +9399,7 @@ bool
 _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 {
   bfd_byte *contents = NULL;
+  bool free_contents = false;
   unsigned int freeidx = 0;
   size_t amt;
 
@@ -9438,6 +9442,7 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	  if (contents == NULL)
 	    goto error_return_verref;
 
+	  free_contents = true;
 	  verneed_size = hdr->sh_size;
 	  verneed_count = hdr->sh_info;
 	}
@@ -9471,8 +9476,15 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	  iverneed->vn_bfd = abfd;
 
 	  if (elf_use_dt_symtab_p (abfd))
-	    iverneed->vn_filename
-	      = elf_tdata (abfd)->dt_strtab + iverneed->vn_file;
+	    {
+	      if (iverneed->vn_file < elf_tdata (abfd)->dt_strsz)
+		iverneed->vn_filename
+		  = elf_tdata (abfd)->dt_strtab + iverneed->vn_file;
+	      else
+		iverneed->vn_filename = NULL;
+	    }
+	  else if (hdr == NULL)
+	    goto error_return_bad_verref;
 	  else
 	    iverneed->vn_filename
 	      = bfd_elf_string_from_elf_section (abfd, hdr->sh_link,
@@ -9508,8 +9520,15 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	      _bfd_elf_swap_vernaux_in (abfd, evernaux, ivernaux);
 
 	      if (elf_use_dt_symtab_p (abfd))
-		ivernaux->vna_nodename
-		  = elf_tdata (abfd)->dt_strtab + ivernaux->vna_name;
+		{
+		  if (ivernaux->vna_name < elf_tdata (abfd)->dt_strsz)
+		    ivernaux->vna_nodename
+		      = elf_tdata (abfd)->dt_strtab + ivernaux->vna_name;
+		  else
+		    ivernaux->vna_nodename = NULL;
+		}
+	      else if (hdr == NULL)
+		goto error_return_bad_verref;
 	      else
 		ivernaux->vna_nodename
 		  = bfd_elf_string_from_elf_section (abfd, hdr->sh_link,
@@ -9540,7 +9559,7 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	  iverneed->vn_nextref = NULL;
 	  if (iverneed->vn_next == 0)
 	    break;
-	  if (i + 1 < hdr->sh_info)
+	  if (hdr != NULL && (i + 1 < hdr->sh_info))
 	    iverneed->vn_nextref = iverneed + 1;
 
 	  if (iverneed->vn_next
@@ -9552,7 +9571,7 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	}
       elf_tdata (abfd)->cverrefs = i;
 
-      if (elf_tdata (abfd)->dt_verneed == NULL)
+      if (free_contents)
 	free (contents);
       contents = NULL;
     }
@@ -9599,6 +9618,7 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	  if (contents == NULL)
 	    goto error_return_verdef;
 
+	  free_contents = true;
 	  BFD_ASSERT (sizeof (Elf_External_Verdef)
 		      >= sizeof (Elf_External_Verdaux));
 
@@ -9703,8 +9723,13 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 	      _bfd_elf_swap_verdaux_in (abfd, everdaux, iverdaux);
 
 	      if (elf_use_dt_symtab_p (abfd))
-		iverdaux->vda_nodename
-		  = elf_tdata (abfd)->dt_strtab + iverdaux->vda_name;
+		{
+		  if (iverdaux->vda_name < elf_tdata (abfd)->dt_strsz)
+		    iverdaux->vda_nodename
+		      = elf_tdata (abfd)->dt_strtab + iverdaux->vda_name;
+		  else
+		    iverdaux->vda_nodename = NULL;
+		}
 	      else
 		iverdaux->vda_nodename
 		  = bfd_elf_string_from_elf_section (abfd, hdr->sh_link,
@@ -9743,7 +9768,7 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
 		     ((bfd_byte *) everdef + iverdef->vd_next));
 	}
 
-      if (elf_tdata (abfd)->dt_verdef == NULL)
+      if (free_contents)
 	free (contents);
       contents = NULL;
     }
@@ -9799,7 +9824,8 @@ _bfd_elf_slurp_version_tables (bfd *abfd, bool default_imported_symver)
   return true;
 
  error_return:
-  free (contents);
+  if (free_contents)
+    free (contents);
   return false;
 }
 

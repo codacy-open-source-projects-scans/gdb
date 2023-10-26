@@ -755,7 +755,7 @@ parse_imm (char * s, expressionS * e, offsetT min, offsetT max)
       if ((e->X_add_number >> 31) == 1)
 	e->X_add_number |= -((addressT) (1U << 31));
 
-      if (e->X_add_number < min || e->X_add_number > max)
+      if ((int)e->X_add_number < min || (int)e->X_add_number > max)
 	{
 	  as_fatal (_("operand must be absolute in range %lx..%lx, not %lx"),
 		    (long) min, (long) max, (long) e->X_add_number);
@@ -915,7 +915,7 @@ md_assemble (char * str)
   unsigned reg2;
   unsigned reg3;
   unsigned isize;
-  unsigned int immed = 0, temp;
+  unsigned int immed = 0, immed2 = 0, temp;
   expressionS exp;
   char name[20];
 
@@ -1175,6 +1175,87 @@ md_assemble (char * str)
       inst |= (reg1 << RD_LOW) & RD_MASK;
       inst |= (reg2 << RA_LOW) & RA_MASK;
       inst |= (immed << IMM_LOW) & IMM5_MASK;
+      break;
+
+    case INST_TYPE_RD_R1_IMMW_IMMS:
+      if (strcmp (op_end, ""))
+	op_end = parse_reg (op_end + 1, &reg1);  /* Get rd.  */
+      else
+	{
+	  as_fatal (_("Error in statement syntax"));
+	  reg1 = 0;
+	}
+
+      if (strcmp (op_end, ""))
+	op_end = parse_reg (op_end + 1, &reg2);  /* Get r1.  */
+      else
+	{
+	  as_fatal (_("Error in statement syntax"));
+	  reg2 = 0;
+	}
+
+      /* Check for spl registers.  */
+      if (check_spl_reg (&reg1))
+	as_fatal (_("Cannot use special register with this instruction"));
+      if (check_spl_reg (&reg2))
+	as_fatal (_("Cannot use special register with this instruction"));
+
+      /* Width immediate value.  */
+      if (strcmp (op_end, ""))
+	op_end = parse_imm (op_end + 1, &exp, MIN_IMM_WIDTH, MAX_IMM_WIDTH);
+      else
+	as_fatal (_("Error in statement syntax"));
+
+      if (exp.X_op != O_constant)
+	{
+	  as_warn (_(
+	  "Symbol used as immediate width value for bit field instruction"));
+	  immed = 1;
+	}
+      else
+	immed = exp.X_add_number;
+
+      if (opcode->instr == bsefi && immed > 31)
+	as_fatal (_("Width value must be less than 32"));
+
+      /* Shift immediate value.  */
+      if (strcmp (op_end, ""))
+	op_end = parse_imm (op_end + 1, &exp, MIN_IMM, MAX_IMM);
+      else
+	as_fatal (_("Error in statement syntax"));
+
+      if (exp.X_op != O_constant)
+	{
+	  as_warn (_(
+	  "Symbol used as immediate shift value for bit field instruction"));
+	  immed2 = 0;
+	}
+      else
+	{
+	  output = frag_more (isize);
+	  immed2 = exp.X_add_number;
+	}
+
+      if (immed2 != (immed2 % 32))
+	{
+	  as_warn (_("Shift value greater than 32. using <value %% 32>"));
+	  immed2 = immed2 % 32;
+	}
+
+      /* Check combined value.  */
+      if (immed + immed2 > 32)
+	as_fatal (_("Width value + shift value must not be greater than 32"));
+
+      inst |= (reg1 << RD_LOW) & RD_MASK;
+      inst |= (reg2 << RA_LOW) & RA_MASK;
+
+      if (opcode->instr == bsefi)
+	inst |= (immed & IMM5_MASK) << IMM_WIDTH_LOW; /* bsefi */
+      else
+	inst |= ((immed + immed2 - 1) & IMM5_MASK)
+		<< IMM_WIDTH_LOW; /* bsifi */
+
+      inst |= (immed2 << IMM_LOW) & IMM5_MASK;
       break;
 
     case INST_TYPE_R1_R2:
@@ -1854,6 +1935,8 @@ struct option md_longopts[] =
 {
   {"EB", no_argument, NULL, OPTION_EB},
   {"EL", no_argument, NULL, OPTION_EL},
+  {"mlittle-endian", no_argument, NULL, OPTION_EL},
+  {"mbig-endian", no_argument, NULL, OPTION_EB},
   { NULL,          no_argument, NULL, 0}
 };
 
@@ -2207,6 +2290,8 @@ md_apply_fix (fixS *   fixP,
 	 moves code around due to relaxing.  */
       if (fixP->fx_r_type == BFD_RELOC_64_PCREL)
 	fixP->fx_r_type = BFD_RELOC_MICROBLAZE_64_NONE;
+      else if (fixP->fx_r_type == BFD_RELOC_32)
+	fixP->fx_r_type = BFD_RELOC_MICROBLAZE_32_NONE;
       else
 	fixP->fx_r_type = BFD_RELOC_NONE;
       fixP->fx_addsy = section_symbol (absolute_section);
@@ -2430,6 +2515,7 @@ tc_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
   switch (fixp->fx_r_type)
     {
     case BFD_RELOC_NONE:
+    case BFD_RELOC_MICROBLAZE_32_NONE:
     case BFD_RELOC_MICROBLAZE_64_NONE:
     case BFD_RELOC_32:
     case BFD_RELOC_MICROBLAZE_32_LO:
@@ -2524,6 +2610,9 @@ md_show_usage (FILE * stream ATTRIBUTE_UNUSED)
   /*  fprintf(stream, _("\
       MicroBlaze options:\n\
       -noSmall         Data in the comm and data sections do not go into the small data section\n")); */
+  fprintf (stream, _(" MicroBlaze specific assembler options:\n"));
+  fprintf (stream, "  -%-23s%s\n", "mbig-endian", N_("assemble for a big endian cpu"));
+  fprintf (stream, "  -%-23s%s\n", "mlittle-endian", N_("assemble for a little endian cpu"));      
 }
 
 

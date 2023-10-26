@@ -21,7 +21,7 @@
 
 #include "arch-utils.h"
 #include "gdbcmd.h"
-#include "inferior.h"		/* enum CALL_DUMMY_LOCATION et al.  */
+#include "inferior.h"
 #include "infrun.h"
 #include "regcache.h"
 #include "sim-regno.h"
@@ -609,7 +609,7 @@ gdbarch_update_p (struct gdbarch_info info)
 
   /* If it is the same old architecture, accept the request (but don't
      swap anything).  */
-  if (new_gdbarch == target_gdbarch ())
+  if (new_gdbarch == current_inferior ()->arch ())
     {
       if (gdbarch_debug)
 	gdb_printf (gdb_stdlog, "gdbarch_update_p: "
@@ -625,7 +625,8 @@ gdbarch_update_p (struct gdbarch_info info)
 		"New architecture %s (%s) selected\n",
 		host_address_to_string (new_gdbarch),
 		gdbarch_bfd_arch_info (new_gdbarch)->printable_name);
-  set_target_gdbarch (new_gdbarch);
+
+  current_inferior ()->set_arch (new_gdbarch);
 
   return 1;
 }
@@ -657,7 +658,8 @@ set_gdbarch_from_file (bfd *abfd)
 
   if (gdbarch == NULL)
     error (_("Architecture of file not recognized."));
-  set_target_gdbarch (gdbarch);
+
+  current_inferior ()->set_arch (gdbarch);
 }
 
 /* Initialize the current architecture.  Update the ``set
@@ -848,7 +850,7 @@ get_current_arch (void)
   if (has_stack_frames ())
     return get_frame_arch (get_selected_frame (NULL));
   else
-    return target_gdbarch ();
+    return current_inferior ()->arch ();
 }
 
 int
@@ -1092,6 +1094,16 @@ default_read_core_file_mappings
 {
 }
 
+/* See arch-utils.h.  */
+bool
+default_use_target_description_from_corefile_notes (struct gdbarch *gdbarch,
+						    struct bfd *corefile_bfd)
+{
+  /* Always trust the corefile target description contained in the target
+     description note.  */
+  return true;
+}
+
 CORE_ADDR
 default_get_return_buf_addr (struct type *val_type, frame_info_ptr cur_frame)
 {
@@ -1211,7 +1223,6 @@ gdbarch_obstack_strdup (struct gdbarch *arch, const char *string)
 {
   return obstack_strdup (&arch->obstack, string);
 }
-
 
 /* Free a gdbarch struct.  This should never happen in normal
    operation --- once you've created a gdbarch, you keep it around.
@@ -1468,27 +1479,17 @@ gdbarch_find_by_info (struct gdbarch_info info)
   if (gdbarch_debug)
     gdbarch_dump (new_gdbarch, gdb_stdlog);
 
+  gdb::observers::new_architecture.notify (new_gdbarch);
+
   return new_gdbarch;
 }
 
-/* Make the specified architecture current.  */
+/* See gdbarch.h.  */
 
-void
-set_target_gdbarch (struct gdbarch *new_gdbarch)
+bool
+gdbarch_initialized_p (gdbarch *arch)
 {
-  gdb_assert (new_gdbarch != NULL);
-  gdb_assert (new_gdbarch->initialized_p);
-  current_inferior ()->gdbarch = new_gdbarch;
-  gdb::observers::architecture_changed.notify (new_gdbarch);
-  registers_changed ();
-}
-
-/* Return the current inferior's arch.  */
-
-struct gdbarch *
-target_gdbarch (void)
-{
-  return current_inferior ()->gdbarch;
+  return arch->initialized_p;
 }
 
 void _initialize_gdbarch_utils ();

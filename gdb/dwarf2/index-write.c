@@ -30,6 +30,7 @@
 #include "gdbsupport/scoped_fd.h"
 #include "complaints.h"
 #include "dwarf2/index-common.h"
+#include "dwarf2/cooked-index.h"
 #include "dwarf2.h"
 #include "dwarf2/read.h"
 #include "dwarf2/dwz.h"
@@ -1079,14 +1080,15 @@ write_gdbindex_1 (FILE *out_file,
 		  const data_buf &types_cu_list,
 		  const data_buf &addr_vec,
 		  const data_buf &symtab_vec,
-		  const data_buf &constant_pool)
+		  const data_buf &constant_pool,
+		  const data_buf &shortcuts)
 {
   data_buf contents;
-  const offset_type size_of_header = 6 * sizeof (offset_type);
+  const offset_type size_of_header = 7 * sizeof (offset_type);
   uint64_t total_len = size_of_header;
 
   /* The version number.  */
-  contents.append_offset (8);
+  contents.append_offset (9);
 
   /* The offset of the CU list from the start of the file.  */
   contents.append_offset (total_len);
@@ -1103,6 +1105,10 @@ write_gdbindex_1 (FILE *out_file,
   /* The offset of the symbol table from the start of the file.  */
   contents.append_offset (total_len);
   total_len += symtab_vec.size ();
+
+  /* The offset of the shortcut table from the start of the file.  */
+  contents.append_offset (total_len);
+  total_len += shortcuts.size ();
 
   /* The offset of the constant pool from the start of the file.  */
   contents.append_offset (total_len);
@@ -1125,6 +1131,7 @@ write_gdbindex_1 (FILE *out_file,
   types_cu_list.file_write (out_file);
   addr_vec.file_write (out_file);
   symtab_vec.file_write (out_file);
+  shortcuts.file_write (out_file);
   constant_pool.file_write (out_file);
 
   assert_file_size (out_file, total_len);
@@ -1187,6 +1194,34 @@ write_cooked_index (cooked_index *table,
     }
 }
 
+/* Write shortcut information.  */
+
+static void
+write_shortcuts_table (cooked_index *table, data_buf &shortcuts,
+		       data_buf &cpool)
+{
+  const auto main_info = table->get_main ();
+  size_t main_name_offset = 0;
+  dwarf_source_language dw_lang = (dwarf_source_language) 0;
+
+  if (main_info != nullptr)
+    {
+      dw_lang = main_info->per_cu->dw_lang ();
+
+      if (dw_lang != 0)
+	{
+	  auto_obstack obstack;
+	  const auto main_name = main_info->full_name (&obstack, true);
+
+	  main_name_offset = cpool.size ();
+	  cpool.append_cstr0 (main_name);
+	}
+    }
+
+  shortcuts.append_offset (dw_lang);
+  shortcuts.append_offset (main_name_offset);
+}
+
 /* Write contents of a .gdb_index section for OBJFILE into OUT_FILE.
    If OBJFILE has an associated dwz file, write contents of a .gdb_index
    section for that dwz file into DWZ_OUT_FILE.  If OBJFILE does not have an
@@ -1220,6 +1255,9 @@ write_gdbindex (dwarf2_per_bfd *per_bfd, cooked_index *table,
 
       const auto insertpair = cu_index_htab.emplace (per_cu, counter);
       gdb_assert (insertpair.second);
+
+      /* See enhancement PR symtab/30838.  */
+      gdb_assert (!(per_cu->is_dwz && per_cu->is_debug_types));
 
       /* The all_units list contains CUs read from the objfile as well as
 	 from the eventual dwz file.  We need to place the entry in the
@@ -1260,11 +1298,14 @@ write_gdbindex (dwarf2_per_bfd *per_bfd, cooked_index *table,
 
   write_hash_table (&symtab, symtab_vec, constant_pool);
 
-  write_gdbindex_1(out_file, objfile_cu_list, types_cu_list, addr_vec,
-		   symtab_vec, constant_pool);
+  data_buf shortcuts;
+  write_shortcuts_table (table, shortcuts, constant_pool);
+
+  write_gdbindex_1 (out_file, objfile_cu_list, types_cu_list, addr_vec,
+		    symtab_vec, constant_pool, shortcuts);
 
   if (dwz_out_file != NULL)
-    write_gdbindex_1 (dwz_out_file, dwz_cu_list, {}, {}, {}, {});
+    write_gdbindex_1 (dwz_out_file, dwz_cu_list, {}, {}, {}, {}, {});
   else
     gdb_assert (dwz_cu_list.empty ());
 }
@@ -1535,7 +1576,7 @@ save_gdb_index_command (const char *arg, int from_tty)
 				 _("Error while writing index for `%s': "),
 				 objfile_name (objfile));
 	    }
-	    }
+	}
 
     }
 }
@@ -1570,8 +1611,9 @@ gdb_index ()
   pretend_data_buf addr_vec;
   pretend_data_buf symtab_vec;
   pretend_data_buf constant_pool;
+  pretend_data_buf short_cuts;
 
-  const size_t size_of_header = 6 * sizeof (offset_type);
+  const size_t size_of_header = 7 * sizeof (offset_type);
 
   /* Test that an overly large index will throw an error.  */
   symtab_vec.set_pretend_size (~(offset_type)0 - size_of_header);
@@ -1581,7 +1623,7 @@ gdb_index ()
   try
     {
       write_gdbindex_1 (nullptr, cu_list, types_cu_list, addr_vec,
-			symtab_vec, constant_pool);
+			symtab_vec, constant_pool, short_cuts);
     }
   catch (const gdb_exception_error &e)
     {
@@ -1601,7 +1643,7 @@ gdb_index ()
   try
     {
       write_gdbindex_1 (nullptr, cu_list, types_cu_list, addr_vec,
-			symtab_vec, constant_pool);
+			symtab_vec, constant_pool, short_cuts);
     }
   catch (const gdb_exception_error &e)
     {

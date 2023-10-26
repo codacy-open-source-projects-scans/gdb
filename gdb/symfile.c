@@ -38,7 +38,7 @@
 #include "demangle.h"
 #include "inferior.h"
 #include "regcache.h"
-#include "filenames.h"		/* for DOSish file names */
+#include "filenames.h"
 #include "gdbsupport/gdb_obstack.h"
 #include "completer.h"
 #include "bcache.h"
@@ -216,7 +216,7 @@ find_lowest_section (asection *sect, asection **lowest)
    an existing section table.  */
 
 section_addr_info
-build_section_addr_info_from_section_table (const target_section_table &table)
+build_section_addr_info_from_section_table (const std::vector<target_section> &table)
 {
   section_addr_info sap;
 
@@ -1959,7 +1959,8 @@ load_progress (ULONGEST bytes, void *untyped_arg)
       current_uiout->message ("Loading section %s, size %s lma %s\n",
 			      args->section_name,
 			      hex_string (args->section_size),
-			      paddress (target_gdbarch (), args->lma));
+			      paddress (current_inferior ()->arch (),
+					args->lma));
       return;
     }
 
@@ -1976,10 +1977,10 @@ load_progress (ULONGEST bytes, void *untyped_arg)
 
       if (target_read_memory (args->lma, check.data (), bytes) != 0)
 	error (_("Download verify read failed at %s"),
-	       paddress (target_gdbarch (), args->lma));
+	       paddress (current_inferior ()->arch (), args->lma));
       if (memcmp (args->buffer, check.data (), bytes) != 0)
 	error (_("Download verify compare failed at %s"),
-	       paddress (target_gdbarch (), args->lma));
+	       paddress (current_inferior ()->arch (), args->lma));
     }
   totals->data_count += bytes;
   args->lma += bytes;
@@ -2091,9 +2092,9 @@ generic_load (const char *args, int from_tty)
   steady_clock::time_point end_time = steady_clock::now ();
 
   CORE_ADDR entry = bfd_get_start_address (loadfile_bfd.get ());
-  entry = gdbarch_addr_bits_remove (target_gdbarch (), entry);
+  entry = gdbarch_addr_bits_remove (current_inferior ()->arch (), entry);
   uiout->text ("Start address ");
-  uiout->field_core_addr ("address", target_gdbarch (), entry);
+  uiout->field_core_addr ("address", current_inferior ()->arch (), entry);
   uiout->text (", load size ");
   uiout->field_unsigned ("load-size", total_progress.data_count);
   uiout->text ("\n");
@@ -2457,10 +2458,14 @@ remove_symbol_file_command (const char *args, int from_tty)
 void
 reread_symbols (int from_tty)
 {
-  long new_modtime;
-  struct stat new_statbuf;
-  int res;
   std::vector<struct objfile *> new_objfiles;
+
+  /* Check to see if the executable has changed, and if so reopen it.  The
+     executable might not be in the list of objfiles (if the user set
+     different values for 'exec-file' and 'symbol-file'), and even if it
+     is, then we use a separate timestamp (within the program_space) to
+     indicate when the executable was last reloaded.  */
+  reopen_exec_file ();
 
   for (objfile *objfile : current_program_space->objfiles ())
     {
@@ -2471,22 +2476,37 @@ reread_symbols (int from_tty)
       if (objfile->separate_debug_objfile_backlink)
 	continue;
 
-      /* If this object is from an archive (what you usually create with
-	 `ar', often called a `static library' on most systems, though
-	 a `shared library' on AIX is also an archive), then you should
-	 stat on the archive name, not member name.  */
-      if (objfile->obfd->my_archive)
-	res = stat (bfd_get_filename (objfile->obfd->my_archive), &new_statbuf);
-      else
-	res = stat (objfile_name (objfile), &new_statbuf);
+      /* When a in-memory BFD is initially created, it's mtime (as
+	 returned by bfd_get_mtime) is the creation time of the BFD.
+	 However, we call bfd_stat here as we want to see if the
+	 underlying file has changed, and in this case an in-memory BFD
+	 will return an st_mtime of zero, so it appears that the in-memory
+	 file has changed, which isn't what we want here -- this code is
+	 about reloading BFDs that changed on disk.
+
+	 Just skip any in-memory BFD.  */
+      if (objfile->obfd.get ()->flags & BFD_IN_MEMORY)
+	continue;
+
+      struct stat new_statbuf;
+      int res = bfd_stat (objfile->obfd.get (), &new_statbuf);
       if (res != 0)
 	{
-	  /* FIXME, should use print_sys_errmsg but it's not filtered.  */
-	  gdb_printf (_("`%s' has disappeared; keeping its symbols.\n"),
-		      objfile_name (objfile));
+	  /* If this object is from an archive (what you usually create
+	     with `ar', often called a `static library' on most systems,
+	     though a `shared library' on AIX is also an archive), then you
+	     should stat on the archive name, not member name.  */
+	  const char *filename;
+	  if (objfile->obfd->my_archive)
+	    filename = bfd_get_filename (objfile->obfd->my_archive);
+	  else
+	    filename = objfile_name (objfile);
+
+	  warning (_("`%ps' has disappeared; keeping its symbols."),
+		   styled_string (file_name_style.style (), filename));
 	  continue;
 	}
-      new_modtime = new_statbuf.st_mtime;
+      time_t new_modtime = new_statbuf.st_mtime;
       if (new_modtime != objfile->mtime)
 	{
 	  gdb_printf (_("`%ps' has changed; re-reading symbols.\n"),
@@ -2507,15 +2527,6 @@ reread_symbols (int from_tty)
 
 	  /* We need to do this whenever any symbols go away.  */
 	  clear_symtab_users_cleanup defer_clear_users (0);
-
-	  if (current_program_space->exec_bfd () != NULL
-	      && filename_cmp (bfd_get_filename (objfile->obfd.get ()),
-			       bfd_get_filename (current_program_space->exec_bfd ())) == 0)
-	    {
-	      /* Reload EXEC_BFD without asking anything.  */
-
-	      exec_file_attach (bfd_get_filename (objfile->obfd.get ()), 0);
-	    }
 
 	  /* Keep the calls order approx. the same as in free_objfile.  */
 
@@ -2684,10 +2695,6 @@ reread_symbols (int from_tty)
 	 clear_symtab_users above.  Notify the new files now.  */
       for (auto iter : new_objfiles)
 	gdb::observers::new_objfile.notify (iter);
-
-      /* At least one objfile has changed, so we can consider that
-	 the executable we're debugging has changed too.  */
-      gdb::observers::executable_changed.notify ();
     }
 }
 
@@ -2909,7 +2916,7 @@ clear_symtab_users (symfile_add_flags add_flags)
   clear_displays ();
   clear_last_displayed_sal ();
   clear_pc_function_cache ();
-  gdb::observers::new_objfile.notify (NULL);
+  gdb::observers::all_objfiles_removed.notify (current_program_space);
 
   /* Now that the various caches have been cleared, we can re_set
      our breakpoints without risking it using stale data.  */
@@ -3743,8 +3750,7 @@ static void
 symfile_free_objfile (struct objfile *objfile)
 {
   /* Remove the target sections owned by this objfile.  */
-  if (objfile != NULL)
-    current_program_space->remove_target_sections ((void *) objfile);
+  objfile->pspace->remove_target_sections (objfile);
 }
 
 /* Wrapper around the quick_symbol_functions expand_symtabs_matching "method".

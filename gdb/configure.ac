@@ -119,6 +119,14 @@ GDB_AC_WITH_DIR(DEBUGDIR, separate-debug-dir,
     [look for global separate debug info in this path @<:@LIBDIR/debug@:>@],
     [${libdir}/debug])
 
+AC_ARG_WITH(additional-debug-dirs,
+	    AS_HELP_STRING([--with-additional-debug-dirs=PATHs],
+			   [colon-separated list of additional directories to
+			    search for separate debug info]),
+	    [AC_DEFINE_UNQUOTED(ADDITIONAL_DEBUG_DIRS, "${withval}",
+				Additional directories to look for separate
+				debug info.)])
+
 # We can't pass paths as command line arguments.
 # Mingw32 tries to be clever and will convert the paths for us.
 # For example -DBINDIR="/usr/local/bin" passed on the command line may get
@@ -502,9 +510,6 @@ AC_CHECK_LIB(m, main)
 
 # Some systems (e.g. Solaris) have `gethostbyname' in libnsl.
 AC_SEARCH_LIBS(gethostbyname, nsl)
-
-# Some systems (e.g. Solaris) have `socketpair' in libsocket.
-AC_SEARCH_LIBS(socketpair, socket)
 
 # Link in zlib/zstd if we can.  This allows us to read compressed debug
 # sections.
@@ -1341,9 +1346,9 @@ AC_C_BIGENDIAN
 # ------------------------------ #
 
 AC_CHECK_FUNCS([getuid getgid \
-		pipe pread pread64 pwrite resize_term \
+		pread pread64 pwrite resize_term \
 		getpgid setsid \
-		sigaction sigsetmask socketpair \
+		sigsetmask \
 		ttrace wresize setlocale iconvlist libiconvlist btowc \
 		setrlimit getrlimit posix_madvise waitpid \
 		use_default_colors])

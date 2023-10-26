@@ -35,8 +35,11 @@
 #include <ctype.h>
 #include "location.h"
 #include "run-on-main-thread.h"
-#include "gdbsupport/selftest.h"
 #include "observable.h"
+
+#if GDB_SELF_TEST
+#include "gdbsupport/selftest.h"
+#endif
 
 /* Declared constants and enum for python stack printing.  */
 static const char python_excp_none[] = "none";
@@ -254,7 +257,7 @@ gdbpy_enter::get_gdbarch ()
 void
 gdbpy_enter::finalize ()
 {
-  python_gdbarch = target_gdbarch ();
+  python_gdbarch = current_inferior ()->arch ();
 }
 
 /* A helper class to save and restore the GIL, but without touching
@@ -1375,7 +1378,7 @@ gdbpy_format_address (PyObject *self, PyObject *args, PyObject *kw)
       /* Grab both of these from the current inferior, and its associated
 	 default architecture.  */
       pspace = current_inferior ()->pspace;
-      gdbarch = current_inferior ()->gdbarch;
+      gdbarch = current_inferior ()->arch ();
     }
   else if (arch_obj == nullptr || pspace_obj == nullptr)
     {
@@ -2669,6 +2672,10 @@ Return the name of the currently selected language." },
     "print_options () -> dict\n\
 Return the current print options." },
 
+  { "notify_mi", (PyCFunction) gdbpy_notify_mi,
+    METH_VARARGS | METH_KEYWORDS,
+    "notify_mi (name, data) -> None\n\
+Output async record to MI channels if any." },
   {NULL, NULL, 0, NULL}
 };
 

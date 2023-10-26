@@ -2523,6 +2523,22 @@ get_riscv_dynamic_type (unsigned long type)
 }
 
 static const char *
+get_x86_64_dynamic_type (unsigned long type)
+{
+  switch (type)
+    {
+    case DT_X86_64_PLT:
+      return "DT_X86_64_PLT";
+    case DT_X86_64_PLTSZ:
+      return "DT_X86_64_PLTSZ";
+    case DT_X86_64_PLTENT:
+      return "DT_X86_64_PLTENT";
+    default:
+      return NULL;
+    }
+}
+
+static const char *
 get_dynamic_type (Filedata * filedata, unsigned long type)
 {
   static char buff[64];
@@ -2649,6 +2665,9 @@ get_dynamic_type (Filedata * filedata, unsigned long type)
 	      break;
 	    case EM_RISCV:
 	      result = get_riscv_dynamic_type (type);
+	      break;
+	    case EM_X86_64:
+	      result = get_x86_64_dynamic_type (type);
 	      break;
 	    default:
 	      if (filedata->file_header.e_ident[EI_OSABI] == ELFOSABI_SOLARIS)
@@ -5082,6 +5101,7 @@ get_segment_type (Filedata * filedata, unsigned long p_type)
     case PT_OPENBSD_MUTABLE: return "OPENBSD_MUTABLE";
     case PT_OPENBSD_RANDOMIZE: return "OPENBSD_RANDOMIZE";
     case PT_OPENBSD_WXNEEDED: return "OPENBSD_WXNEEDED";
+    case PT_OPENBSD_NOBTCFI: return "OPENBSD_NOBTCFI";
     case PT_OPENBSD_BOOTDATA: return "OPENBSD_BOOTDATA";
 
     default:
@@ -13853,7 +13873,7 @@ display_lto_symtab (Filedata *           filedata,
     return false;
 
   /* Look for extended data for the symbol table.  */
-  Elf_Internal_Shdr * ext;
+  Elf_Internal_Shdr * ext = NULL;
   void * ext_data_orig = NULL;
   char * ext_data = NULL;
   char * ext_data_end = NULL;
@@ -15259,6 +15279,10 @@ is_8bit_abs_reloc (Filedata * filedata, unsigned int reloc_type)
       return reloc_type == 54; /* R_RISCV_SET8.  */
     case EM_Z80:
       return reloc_type == 1;  /* R_Z80_8.  */
+    case EM_MICROBLAZE:
+      return (reloc_type == 33 /* R_MICROBLAZE_32_NONE.  */
+	      || reloc_type == 0 /* R_MICROBLAZE_NONE.  */
+	      || reloc_type == 9 /* R_MICROBLAZE_64_NONE.  */);
     default:
       return false;
     }

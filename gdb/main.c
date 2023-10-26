@@ -115,12 +115,7 @@ set_gdb_data_directory (const char *new_datadir)
   struct stat st;
 
   if (stat (new_datadir, &st) < 0)
-    {
-      int save_errno = errno;
-
-      gdb_printf (gdb_stderr, "Warning: ");
-      print_sys_errmsg (new_datadir, save_errno);
-    }
+    warning_filename_and_errno (new_datadir, errno);
   else if (!S_ISDIR (st.st_mode))
     warning (_("%ps is not a directory."),
 	     styled_string (file_name_style.style (), new_datadir));
@@ -654,6 +649,10 @@ captured_main_1 (struct captured_main_args *context)
   int save_auto_load;
   int ret = 1;
 
+  const char *no_color = getenv ("NO_COLOR");
+  if (no_color != nullptr && *no_color != '\0')
+    cli_styling = false;
+
 #ifdef HAVE_USEFUL_SBRK
   /* Set this before constructing scoped_command_stats.  */
   lim_at_start = (char *) sbrk (0);
@@ -718,6 +717,11 @@ captured_main_1 (struct captured_main_args *context)
 
   debug_file_directory
     = relocate_gdb_directory (DEBUGDIR, DEBUGDIR_RELOCATABLE);
+
+#ifdef ADDITIONAL_DEBUG_DIRS
+  debug_file_directory = (debug_file_directory + DIRNAME_SEPARATOR
+			  + ADDITIONAL_DEBUG_DIRS);
+#endif
 
   gdb_datadir = relocate_gdb_directory (GDB_DATADIR,
 					GDB_DATADIR_RELOCATABLE);

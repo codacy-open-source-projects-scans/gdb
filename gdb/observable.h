@@ -24,13 +24,14 @@
 #include "target/waitstatus.h"
 
 struct bpstat;
-struct so_list;
+struct shobj;
 struct objfile;
 struct thread_info;
 struct inferior;
 struct process_stratum_target;
 struct target_ops;
 struct trace_state_variable;
+struct program_space;
 
 namespace gdb
 {
@@ -60,11 +61,18 @@ extern observable<enum gdb_signal /* siggnal */> signal_received;
 /* The target's register contents have changed.  */
 extern observable<struct target_ops */* target */> target_changed;
 
-/* The executable being debugged by GDB has changed: The user
-   decided to debug a different program, or the program he was
-   debugging has been modified since being loaded by the debugger
-   (by being recompiled, for instance).  */
-extern observable<> executable_changed;
+/* The executable being debugged by GDB in PSPACE has changed: The user
+   decided to debug a different program, or the program he was debugging
+   has been modified since being loaded by the debugger (by being
+   recompiled, for instance).  The path to the new executable can be found
+   by examining PSPACE->exec_filename.
+
+   When RELOAD is true the path to the executable hasn't changed, but the
+   file does appear to have changed, so GDB reloaded it, e.g. if the user
+   recompiled the executable.  when RELOAD is false then the path to the
+   executable has not changed.  */
+extern observable<struct program_space */* pspace */,
+		  bool /*reload */> executable_changed;
 
 /* gdb has just connected to an inferior.  For 'run', gdb calls this
    observer while the inferior is still stopped at the entry-point
@@ -91,17 +99,18 @@ extern observable<inferior */* parent_inf */, inferior */* child_inf */,
 /* The shared library specified by SOLIB has been loaded.  Note that
    when gdb calls this observer, the library's symbols probably
    haven't been loaded yet.  */
-extern observable<struct so_list */* solib */> solib_loaded;
+extern observable<shobj &/* solib */> solib_loaded;
 
-/* The shared library specified by SOLIB has been unloaded.  Note
-   that when gdb calls this observer, the library's symbols have not
+/* The shared library SOLIB has been unloaded from program space PSPACE.
+   Note  when gdb calls this observer, the library's symbols have not
    been unloaded yet, and thus are still available.  */
-extern observable<struct so_list */* solib */> solib_unloaded;
+extern observable<program_space *, const shobj &/* solib */> solib_unloaded;
 
-/* The symbol file specified by OBJFILE has been loaded.  Called
-   with OBJFILE equal to NULL to indicate previously loaded symbol
-   table data has now been invalidated.  */
+/* The symbol file specified by OBJFILE has been loaded.  */
 extern observable<struct objfile */* objfile */> new_objfile;
+
+/*  All objfiles from PSPACE were removed.  */
+extern observable<program_space */* pspace */> all_objfiles_removed;
 
 /* The object file specified by OBJFILE is about to be freed.  */
 extern observable<struct objfile */* objfile */> free_objfile;
@@ -143,9 +152,9 @@ extern observable<struct breakpoint */* b */> breakpoint_deleted;
    is the modified breakpoint.  */
 extern observable<struct breakpoint */* b */> breakpoint_modified;
 
-/* The current architecture has changed.  The argument NEWARCH is a
-   pointer to the new architecture.  */
-extern observable<struct gdbarch */* newarch */> architecture_changed;
+/* GDB has instantiated a new architecture, NEWARCH is a pointer to the new
+   architecture.  */
+extern observable<struct gdbarch */* newarch */> new_architecture;
 
 /* The thread's ptid has changed.  The OLD_PTID parameter specifies
    the old value, and NEW_PTID specifies the new value.  */
@@ -232,6 +241,12 @@ extern observable <ptid_t /* ptid */> target_pre_wait;
 
 /* About to leave target_wait (). */
 extern observable <ptid_t /* event_ptid */> target_post_wait;
+
+/* New program space PSPACE was created.  */
+extern observable <program_space */* pspace */> new_program_space;
+
+/* The program space PSPACE is about to be deleted.  */
+extern observable <program_space */* pspace */> free_program_space;
 
 } /* namespace observers */
 

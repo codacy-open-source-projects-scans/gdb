@@ -23,7 +23,6 @@
 #include <queue>
 #include <unordered_map>
 #include "dwarf2/comp-unit-head.h"
-#include "dwarf2/cooked-index.h"
 #include "dwarf2/file-and-dir.h"
 #include "dwarf2/index-cache.h"
 #include "dwarf2/mapped-index.h"
@@ -182,6 +181,15 @@ private:
 
   /* The language of this CU.  */
   std::atomic<packed<language, LANGUAGE_BYTES>> m_lang {language_unknown};
+
+  /* The original DW_LANG_* value of the CU, as provided to us by
+     DW_AT_language.  It is interesting to keep this value around in cases where
+     we can't use the values from the language enum, as the mapping to them is
+     lossy, and, while that is usually fine, things like the index have an
+     understandable bias towards not exposing internal GDB structures to the
+     outside world, and so prefer to use DWARF constants in their stead. */
+  std::atomic<packed<dwarf_source_language, 2>> m_dw_lang
+       { (dwarf_source_language) 0 };
 
 public:
   /* True if this CU has been scanned by the indexer; false if
@@ -357,20 +365,16 @@ public:
     return l;
   }
 
-  void set_lang (enum language lang)
-  {
-    if (unit_type () == DW_UT_partial)
-      return;
-    /* Set if not set already.  */
-    packed<language, LANGUAGE_BYTES> nope = language_unknown;
-    if (m_lang.compare_exchange_strong (nope, lang))
-      return;
-    /* If already set, verify that it's the same value.  */
-    nope = lang;
-    if (m_lang.compare_exchange_strong (nope, lang))
-      return;
-    gdb_assert_not_reached ();
-  }
+  /* Return the language of this CU, as a DWARF DW_LANG_* value.  This
+     may be 0 in some situations.  */
+  dwarf_source_language dw_lang () const
+  { return m_dw_lang.load (); }
+
+  /* Set the language of this CU.  LANG is the language in gdb terms,
+     and DW_LANG is the language as a DW_LANG_* value.  These may
+     differ, as DW_LANG can be 0 for included units, whereas in this
+     situation LANG would be set by the importing CU.  */
+  void set_lang (enum language lang, dwarf_source_language dw_lang);
 
   /* Free any cached file names.  */
   void free_cached_file_names ();
@@ -763,6 +767,10 @@ private:
   std::unordered_map<dwarf2_per_cu_data *,
 		     std::unique_ptr<dwarf2_cu>> m_dwarf2_cus;
 };
+
+/* Converts DWARF language names to GDB language names.  */
+
+enum language dwarf_lang_to_enum_language (unsigned int lang);
 
 /* Get the dwarf2_per_objfile associated to OBJFILE.  */
 

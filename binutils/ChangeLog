@@ -1,3 +1,51 @@
+2023-10-24  Tom de Vries  <tdevries@suse.de>
+
+	* dwarf.c (display_gdb_index): Handle unknown name of main.
+
+2023-10-10  Tom de Vries  <tdevries@suse.de>
+
+	* dwarf.c (display_lang): New function, factored out of ...
+	(read_and_display_attr_value): ... here.
+	(display_gdb_index): Handle v9 .gdb_index.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>w
+
+	PR 30916
+	* testsuite/binutils-all/addr2line.exp: Do not use PowerPC
+	specific options when working with a MUSL target.
+
+2023-10-02  Vsevolod Alekseyev  <sevaa@sprynet.com>
+
+	PR 29267
+	* dwarf.c (fetch_indexed_value): Delete.
+	(fetch_indexed_offset): Correct base address calculation.
+	(read_and_display_attr_value): Replace uses of fetch_indexed_value
+	with fetch_indexed_offset.
+
+2023-09-28  Frederic Cambus  <fred@statdns.com>
+
+	* readelf.c (get_segment_type): Handle PT_OPENBSD_NOBTCFI segment
+	type.
+
+2023-09-26  Nick Clifton  <nickc@redhat.com>
+
+	* testsuite/binutils-all/ar.exp: Remove assumption of the setting
+	of umask when creating test archive files.
+
+2023-09-25  Vsevolod Alekseyev  <sevaa@sprynet.com>
+
+	PR 30792
+	* dwarf.h (struct debug_info): Remove range_versions field.
+	* dwarf.c (fetch_indexed_offset): New function.
+	(read_and_display_attr_value): Use it for DW_FORM_rnglistx.
+	Remove code to initialise range_versions.
+	(skip_attribute): New function.
+	(read_bases): Read and reccord all range and address bases in a CU.
+	(process_debug_info): Call read_bases.
+	(display_debug_rnglists): Rename to display_debug_rnglists_unit_header
+	and only display the range list header information.
+	(display_debug_ranges): Adjust.
+
 2023-09-05  Nick Clifton  <nickc@redhat.com>
 
 	PR 30684

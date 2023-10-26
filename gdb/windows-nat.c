@@ -22,7 +22,7 @@
 /* Originally by Steve Chamberlain, sac@cygnus.com */
 
 #include "defs.h"
-#include "frame.h"		/* required by inferior.h */
+#include "frame.h"
 #include "inferior.h"
 #include "infrun.h"
 #include "target.h"
@@ -2625,7 +2625,7 @@ windows_nat_target::create_inferior (const char *exec_file,
       tty = open (inferior_tty.c_str (), O_RDWR | O_NOCTTY);
       if (tty < 0)
 	{
-	  print_sys_errmsg (inferior_tty.c_str (), errno);
+	  warning_filename_and_errno (inferior_tty.c_str (), errno);
 	  ostdin = ostdout = ostderr = -1;
 	}
       else
@@ -2920,7 +2920,7 @@ windows_xfer_shared_libraries (struct target_ops *ops,
     windows_xfer_shared_library (so.name.c_str (),
 				 (CORE_ADDR) (uintptr_t) so.load_addr,
 				 &so.text_offset,
-				 target_gdbarch (), &obstack);
+				 current_inferior ()->arch (), &obstack);
   obstack_grow_str0 (&obstack, "</library-list>\n");
 
   buf = (const char *) obstack_finish (&obstack);

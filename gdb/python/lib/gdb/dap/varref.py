@@ -151,9 +151,9 @@ class VariableReference(BaseReference):
             # This discards all laziness.  This could be improved
             # slightly by lazily evaluating children, but because this
             # code also generally needs to know the number of
-            # children, it probably wouldn't help much.  A real fix
-            # would require an update to gdb's pretty-printer protocol
-            # (though of course that is probably also inadvisable).
+            # children, it probably wouldn't help much.  Note that
+            # this is only needed with legacy (non-ValuePrinter)
+            # printers.
             self.child_cache = list(self.printer.children())
         return self.child_cache
 
@@ -161,16 +161,19 @@ class VariableReference(BaseReference):
         if self.count is None:
             return None
         if self.count == -1:
-            if hasattr(self.printer, "num_children"):
-                num_children = self.printer.num_children
-            else:
+            num_children = None
+            if isinstance(self.printer, gdb.ValuePrinter) and hasattr(
+                self.printer, "num_children"
+            ):
+                num_children = self.printer.num_children()
+            if num_children is None:
                 num_children = len(self.cache_children())
             self.count = num_children
         return self.count
 
     def to_object(self):
         result = super().to_object()
-        result[self.result_name] = self.printer.to_string()
+        result[self.result_name] = str(self.printer.to_string())
         num_children = self.child_count()
         if num_children is not None:
             if (
@@ -193,7 +196,17 @@ class VariableReference(BaseReference):
 
     @in_gdb_thread
     def fetch_one_child(self, idx):
-        return self.cache_children()[idx]
+        if isinstance(self.printer, gdb.ValuePrinter) and hasattr(
+            self.printer, "child"
+        ):
+            (name, val) = self.printer.child(idx)
+        else:
+            (name, val) = self.cache_children()[idx]
+        # A pretty-printer can return something other than a
+        # gdb.Value, but it must be convertible.
+        if not isinstance(val, gdb.Value):
+            val = gdb.Value(val)
+        return (name, val)
 
 
 @in_gdb_thread

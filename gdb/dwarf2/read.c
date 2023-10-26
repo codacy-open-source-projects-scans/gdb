@@ -54,7 +54,7 @@
 #include "dwarf2.h"
 #include "demangle.h"
 #include "gdb-demangle.h"
-#include "filenames.h"	/* for DOSish file names */
+#include "filenames.h"
 #include "language.h"
 #include "complaints.h"
 #include "dwarf2/expr.h"
@@ -69,7 +69,7 @@
 #include "c-lang.h"
 #include "go-lang.h"
 #include "valprint.h"
-#include "gdbcore.h" /* for gnutarget */
+#include "gdbcore.h"
 #include "gdb/gdb-index.h"
 #include "gdb_bfd.h"
 #include "f-lang.h"
@@ -5314,6 +5314,12 @@ create_all_units (dwarf2_per_objfile *per_objfile)
       dwz->line.read (objfile);
       read_comp_units_from_section (per_objfile, &dwz->info, &dwz->abbrev, 1,
 				    types_htab, rcuh_kind::COMPILE);
+
+      if (!dwz->types.empty ())
+	{
+	  /* See enhancement PR symtab/30838.  */
+	  error (_("Dwarf Error: .debug_types section not supported in dwz file"));
+	}
     }
 
   per_objfile->per_bfd->signatured_types = std::move (types_htab);
@@ -11420,6 +11426,8 @@ check_producer (struct dwarf2_cu *cu)
     cu->producer_is_codewarrior = true;
   else if (producer_is_clang (cu->producer, &major, &minor))
     cu->producer_is_clang = true;
+  else if (startswith (cu->producer, "GNU AS 2.39.0"))
+    cu->producer_is_gas_2_39 = true;
   else
     {
       /* For other non-GCC compilers, expect their behavior is DWARF version
@@ -11453,6 +11461,15 @@ producer_is_codewarrior (struct dwarf2_cu *cu)
     check_producer (cu);
 
   return cu->producer_is_codewarrior;
+}
+
+static bool
+producer_is_gas_2_39 (struct dwarf2_cu *cu)
+{
+  if (!cu->checked_producer)
+    check_producer (cu);
+
+  return cu->producer_is_gas_2_39;
 }
 
 /* Return the accessibility of DIE, as given by DW_AT_accessibility.
@@ -14629,6 +14646,18 @@ read_subroutine_type (struct die_info *die, struct dwarf2_cu *cu)
 
   type = die_type (die, cu);
 
+  if (type->code () == TYPE_CODE_VOID
+      && !type->is_stub ()
+      && die->child == nullptr
+      && producer_is_gas_2_39 (cu))
+    {
+      /* Work around PR gas/29517, pretend we have an DW_TAG_unspecified_type
+	 return type.  */
+      type = (type_allocator (cu->per_objfile->objfile, cu->lang ())
+	      .new_type (TYPE_CODE_VOID, 0, nullptr));
+      type->set_is_stub (true);
+    }
+
   /* The die_type call above may have already set the type for this DIE.  */
   ftype = get_die_type (die, cu);
   if (ftype)
@@ -17790,7 +17819,9 @@ leb128_size (const gdb_byte *buf)
     }
 }
 
-static enum language
+/* Converts DWARF language names to GDB language names.  */
+
+enum language
 dwarf_lang_to_enum_language (unsigned int lang)
 {
   enum language language;
@@ -21584,6 +21615,26 @@ dwarf2_per_cu_data::ref_addr_size () const
     return header->offset_size;
 }
 
+/* See read.h.  */
+
+void
+dwarf2_per_cu_data::set_lang (enum language lang,
+			      dwarf_source_language dw_lang)
+{
+  if (unit_type () == DW_UT_partial)
+    return;
+
+  /* Set if not set already.  */
+  packed<language, LANGUAGE_BYTES> new_value = lang;
+  packed<language, LANGUAGE_BYTES> old_value = m_lang.exchange (new_value);
+  /* If already set, verify that it's the same value.  */
+  gdb_assert (old_value == language_unknown || old_value == lang);
+
+  packed<dwarf_source_language, 2> new_dw = dw_lang;
+  packed<dwarf_source_language, 2> old_dw = m_dw_lang.exchange (new_dw);
+  gdb_assert (old_dw == 0 || old_dw == dw_lang);
+}
+
 /* A helper function for dwarf2_find_containing_comp_unit that returns
    the index of the result, and that searches a vector.  It will
    return a result even if the offset in question does not actually
@@ -21719,6 +21770,7 @@ prepare_one_comp_unit (struct dwarf2_cu *cu, struct die_info *comp_unit_die,
   /* Set the language we're debugging.  */
   attr = dwarf2_attr (comp_unit_die, DW_AT_language, cu);
   enum language lang;
+  dwarf_source_language dw_lang = (dwarf_source_language) 0;
   if (cu->producer != nullptr
       && strstr (cu->producer, "IBM XL C for OpenCL") != NULL)
     {
@@ -21727,15 +21779,20 @@ prepare_one_comp_unit (struct dwarf2_cu *cu, struct die_info *comp_unit_die,
 	 language detection we fall back to the DW_AT_producer
 	 string.  */
       lang = language_opencl;
+      dw_lang = DW_LANG_OpenCL;
     }
   else if (cu->producer != nullptr
 	   && strstr (cu->producer, "GNU Go ") != NULL)
     {
       /* Similar hack for Go.  */
       lang = language_go;
+      dw_lang = DW_LANG_Go;
     }
   else if (attr != nullptr)
-    lang = dwarf_lang_to_enum_language (attr->constant_value (0));
+    {
+      lang = dwarf_lang_to_enum_language (attr->constant_value (0));
+      dw_lang = (dwarf_source_language) attr->constant_value (0);
+    }
   else
     lang = pretend_language;
 
@@ -21758,7 +21815,7 @@ prepare_one_comp_unit (struct dwarf2_cu *cu, struct die_info *comp_unit_die,
 	     sect_offset_str (cu->per_cu->sect_off));
     }
 
-  cu->per_cu->set_lang (lang);
+  cu->per_cu->set_lang (lang, dw_lang);
 }
 
 /* See read.h.  */

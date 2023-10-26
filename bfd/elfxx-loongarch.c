@@ -1415,7 +1415,7 @@ static loongarch_reloc_howto_type loongarch_howto_table[] =
 	 NULL,					/* adjust_reloc_bits.  */
 	 NULL),					/* larch_reloc_type_name.  */
 
-  /* pcala_hi20 + pcala_lo12 relaxed to pcrel20_s2.  */
+  /* For pcaddi and pcala_hi20 + pcala_lo12 can relax to pcrel_20.  */
   LOONGARCH_HOWTO (R_LARCH_PCREL20_S2,		/* type (103).  */
 	 2,					/* rightshift.  */
 	 4,					/* size.  */
@@ -1431,7 +1431,7 @@ static loongarch_reloc_howto_type loongarch_howto_table[] =
 	 false,					/* pcrel_offset.  */
 	 BFD_RELOC_LARCH_PCREL20_S2,		/* bfd_reloc_code_real_type.  */
 	 reloc_sign_bits,			/* adjust_reloc_bits.  */
-	 NULL),					/* larch_reloc_type_name.  */
+	 "pcrel_20"),				/* larch_reloc_type_name.  */
 
   /* Canonical Frame Address.  */
   LOONGARCH_HOWTO (R_LARCH_CFA,			/* type (104).  */
@@ -1682,9 +1682,14 @@ reloc_sign_bits (bfd *abfd, reloc_howto_type *howto, bfd_vma *fix_val)
   if (howto->rightshift
       && (val & ((((bfd_signed_vma) 1) << howto->rightshift) - 1)))
     {
-      (*_bfd_error_handler) (_("%pB: relocation %s right shift %d error 0x%lx"),
-			     abfd, howto->name, howto->rightshift, (long) val);
-      bfd_set_error (bfd_error_bad_value);
+      /* The as passes NULL casued internal error, so it can not use _bfd_error_handler
+	 output details, ld is not affected.  */
+      if (abfd != NULL)
+	{
+	  (*_bfd_error_handler) (_("%pB: relocation %s right shift %d error 0x%lx"),
+				 abfd, howto->name, howto->rightshift, (long) val);
+	  bfd_set_error (bfd_error_bad_value);
+	}
       return false;
     }
 
@@ -1696,9 +1701,14 @@ reloc_sign_bits (bfd *abfd, reloc_howto_type *howto, bfd_vma *fix_val)
      high part: from sign bit to highest bit.  */
   if ((val & ~mask) && ((val & ~mask) != ~mask))
     {
-      (*_bfd_error_handler) (_("%pB: relocation %s overflow 0x%lx"),
-			     abfd, howto->name, (long) val);
-      bfd_set_error (bfd_error_bad_value);
+      /* The as passes NULL casued internal error, so it can not use _bfd_error_handler
+	 output details, ld is not affected.  */
+      if (abfd != NULL)
+	{
+	  (*_bfd_error_handler) (_("%pB: relocation %s overflow 0x%lx"),
+				 abfd, howto->name, (long) val);
+	  bfd_set_error (bfd_error_bad_value);
+	}
       return false;
     }
 

@@ -1,3 +1,71 @@
+2023-10-19  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* ld.texi (Options): Fix typo metdata->metadata.
+
+2023-10-16  Nick Clifton  <nickc@redhat.com>
+
+	PR 28910
+	* lexsup.c (ld_options): Require that the --architecture option is
+	given exactly two dashes, so that it does not become confused with
+	the -a option.
+
+2023-10-09  Nick Clifton  <nickc@redhat.com>
+
+	PR 30951
+	* ldlex.l (yy_input): Check for YY_CURRENT_BUFFER being NULL.
+
+	PR 30954
+	* ldlang.c (map_input_to_output_sections): Check that os is non
+	NULL before using it.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30905
+	* testsuite/ld-elf/pr28158.rd: Adjust regexp to allow for section
+	indicies larger than 9.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30917
+	* testsuite/ld-elf/dt-relr.exp: Skip for MUSL targets.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30918
+	* testsuite/ld-shared/shared.exp: Add XFAILs for tests that fail
+	with the MUSL library.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30923
+	* testsuite/ld-arm/thumb-plt-got.d: Skip test for configurations
+	using the MUSL library.
+	* testsuite/ld-arm/thumb-plt.d: Likewise.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30925
+	PR 22001
+	* testsuite/ld-i386/i386.exp: Skip the pr22001 test with TEXTREL
+	relocations enabled on configurations using the MUSL library.
+
+2023-10-05  A. Wilcox  <awilfox@adelielinux.org>
+
+	PR 30924
+	* testsuite/ld-elfvers/vers.exp (objdump_emptyverstuff): Handle
+	EABI version information in objdump's output.
+
+2023-10-02  Nick Clifton  <nickc@redhat.com>
+
+	* pe-dll.c (fill_edata): Use bfd_get_current_time when filling in
+	the timestamp.
+
+2023-09-27  Hsinyuan Xavier  <TheLastLin@hotmail.com>
+
+	PR 30875
+	* ldlang.c (get_os_init_flag): New function.
+	(exp_init_os, map_input_to_output_sections): Use it.
+
 2023-07-24  Johannes Schauer Marin Rodrigues  <josch@debian.org>
 
 	* pe-dll.c (fill_edata): If inserting a timestamp, use the value

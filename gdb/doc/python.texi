@@ -211,6 +211,7 @@ optional arguments while skipping others.  Example:
 * Recordings In Python::        Accessing recordings from Python.
 * CLI Commands In Python::      Implementing new CLI commands in Python.
 * GDB/MI Commands In Python::   Implementing new @sc{gdb/mi} commands in Python.
+* GDB/MI Notifications In Python:: Implementing new @sc{gdb/mi} notifications in Python.
 * Parameters In Python::        Adding new @value{GDBN} parameters.
 * Functions In Python::         Writing new convenience functions.
 * Progspaces In Python::        Program spaces.
@@ -1722,6 +1723,22 @@ A pretty-printer is just an object that holds a value and implements a
 specific interface, defined here.  An example output is provided
 (@pxref{Pretty Printing}).
 
+Because @value{GDBN} did not document extensibility for
+pretty-printers, by default @value{GDBN} will assume that only the
+basic pretty-printer methods may be available.  The basic methods are
+marked as such, below.
+
+To allow extensibility, @value{GDBN} provides the
+@code{gdb.ValuePrinter} base class.  This class does not provide any
+attributes or behavior, but instead serves as a tag that can be
+recognized by @value{GDBN}.  For such printers, @value{GDBN} reserves
+all attributes starting with a lower-case letter.  That is, in the
+future, @value{GDBN} may add a new method or attribute to the
+pretty-printer protocol, and @code{gdb.ValuePrinter}-based printers
+are expected to handle this gracefully.  A simple way to do this would
+be to use a leading underscore (or two, following the Python
+name-mangling scheme) to any attributes local to the implementation.
+
 @defun pretty_printer.children (self)
 @value{GDBN} will call this method on a pretty-printer to compute the
 children of the pretty-printer's value.
@@ -1732,8 +1749,8 @@ two elements.  The first element is the ``name'' of the child; the
 second element is the child's value.  The value can be any Python
 object which is convertible to a @value{GDBN} value.
 
-This method is optional.  If it does not exist, @value{GDBN} will act
-as though the value has no children.
+This is a basic method, and is optional.  If it does not exist,
+@value{GDBN} will act as though the value has no children.
 
 For efficiency, the @code{children} method should lazily compute its
 results.  This will let @value{GDBN} read as few elements as
@@ -1751,8 +1768,8 @@ formatting of a value.  The result will also be supplied to an MI
 consumer as a @samp{displayhint} attribute of the variable being
 printed.
 
-This method is optional.  If it does exist, this method must return a
-string or the special value @code{None}.
+This is a basic method, and is optional.  If it does exist, this
+method must return a string or the special value @code{None}.
 
 Some display hints are predefined by @value{GDBN}:
 
@@ -1784,6 +1801,8 @@ display rules.
 @value{GDBN} will call this method to display the string
 representation of the value passed to the object's constructor.
 
+This is a basic method, and is optional.
+
 When printing from the CLI, if the @code{to_string} method exists,
 then @value{GDBN} will prepend its result to the values returned by
 @code{children}.  Exactly how this formatting is done is dependent on
@@ -1808,6 +1827,22 @@ Finally, if this method returns @code{None} then no further operations
 are peformed in this method and nothing is printed.
 
 If the result is not one of these types, an exception is raised.
+@end defun
+
+@defun pretty_printer.num_children ()
+This is not a basic method, so @value{GDBN} will only ever call it for
+objects derived from @code{gdb.ValuePrinter}.
+
+If available, this method should return the number of children.
+@code{None} may be returned if the number can't readily be computed.
+@end defun
+
+@defun pretty_printer.child (n)
+This is not a basic method, so @value{GDBN} will only ever call it for
+objects derived from @code{gdb.ValuePrinter}.
+
+If available, this method should return the child value indicated by
+@var{n}.  Indices start at zero.
 @end defun
 
 @value{GDBN} provides a function which can be used to look up the
@@ -1904,17 +1939,19 @@ if the type is supported, and the printer itself.
 
 Here is an example showing how a @code{std::string} printer might be
 written.  @xref{Pretty Printing API}, for details on the API this class
-must provide.
+must provide.  Note that this example uses the @code{gdb.ValuePrinter}
+base class, and is careful to use a leading underscore for its local
+state.
 
 @smallexample
-class StdStringPrinter(object):
+class StdStringPrinter(gdb.ValuePrinter):
     "Print a std::string"
 
     def __init__(self, val):
-        self.val = val
+        self.__val = val
 
     def to_string(self):
-        return self.val['_M_dataplus']['_M_p']
+        return self.__val['_M_dataplus']['_M_p']
 
     def display_hint(self):
         return 'string'
@@ -2005,25 +2042,25 @@ struct bar @{ struct foo x, y; @};
 Here are the printers:
 
 @smallexample
-class fooPrinter:
+class fooPrinter(gdb.ValuePrinter):
     """Print a foo object."""
 
     def __init__(self, val):
-        self.val = val
+        self.__val = val
 
     def to_string(self):
-        return ("a=<" + str(self.val["a"]) +
-                "> b=<" + str(self.val["b"]) + ">")
+        return ("a=<" + str(self.__val["a"]) +
+                "> b=<" + str(self.__val["b"]) + ">")
 
-class barPrinter:
+class barPrinter(gdb.ValuePrinter):
     """Print a bar object."""
 
     def __init__(self, val):
-        self.val = val
+        self.__val = val
 
     def to_string(self):
-        return ("x=<" + str(self.val["x"]) +
-                "> y=<" + str(self.val["y"]) + ">")
+        return ("x=<" + str(self.__val["x"]) +
+                "> y=<" + str(self.__val["y"]) + ">")
 @end smallexample
 
 This example doesn't need a lookup function, that is handled by the
@@ -3893,6 +3930,68 @@ This is emitted when @value{GDBN} removes a connection
 The @code{gdb.TargetConnection} that is being removed.
 @end defvar
 
+@item events.executable_changed
+Emits @code{gdb.ExecutableChangedEvent} which indicates that the
+@code{gdb.Progspace.executable_filename} has changed.
+
+This event is emitted when either the value of
+@code{gdb.Progspace.executable_filename } has changed to name a
+different file, or the executable file named by
+@code{gdb.Progspace.executable_filename} has changed on disk, and
+@value{GDBN} has therefore reloaded it.
+
+@defvar ExecutableChangedEvent.progspace
+The @code{gdb.Progspace} in which the current executable has changed.
+The file name of the updated executable will be visible in
+@code{gdb.Progspace.executable_filename} (@pxref{Progspaces In Python}).
+@end defvar
+@defvar ExecutableChangedEvent.reload
+This attribute will be @code{True} if the value of
+@code{gdb.Progspace.executable_filename} didn't change, but the file
+it names changed on disk instead, and @value{GDBN} reloaded it.
+
+When this attribute is @code{False}, the value in
+@code{gdb.Progspace.executable_filename} was changed to name a
+different file.
+@end defvar
+
+Remember that @value{GDBN} tracks the executable file and the symbol
+file separately, these are visible as
+@code{gdb.Progspace.executable_filename} and
+@code{gdb.Progspace.filename} respectively.  When using the @kbd{file}
+command, @value{GDBN} updates both of these fields, but the executable
+file is updated first, so when this event is emitted, the executable
+filename will have changed, but the symbol filename might still hold
+its previous value.
+
+@item events.new_progspace
+This is emitted when @value{GDBN} adds a new program space
+(@pxref{Progspaces In Python,,Program Spaces In Python}).  The event
+is of type @code{gdb.NewProgspaceEvent}, and has a single read-only
+attribute:
+
+@defvar NewProgspaceEvent.progspace
+The @code{gdb.Progspace} that was added to @value{GDBN}.
+@end defvar
+
+No @code{NewProgspaceEvent} is emitted for the very first program
+space, which is assigned to the first inferior.  This first program
+space is created within @value{GDBN} before any Python scripts are
+sourced.
+
+@item events.free_progspace
+This is emitted when @value{GDBN} removes a program space
+(@pxref{Progspaces In Python,,Program Spaces In Python}), for example
+as a result of the @kbd{remove-inferiors} command
+(@pxref{remove_inferiors_cli,,@kbd{remove-inferiors}}).  The event is
+of type @code{gdb.FreeProgspaceEvent}, and has a single read-only
+attribute:
+
+@defvar FreeProgspaceEvent.progspace
+The @code{gdb.Progspace} that is about to be removed from
+@value{GDBN}.
+@end defvar
+
 @end table
 
 @node Threads In Python
@@ -4706,6 +4805,50 @@ Here is how this works using the commands from the example above:
 @{'string': 'abc, def, ghi'@}
 @end smallexample
 
+@node GDB/MI Notifications In Python
+@subsubsection @sc{gdb/mi} Notifications In Python
+
+@cindex MI notifications in python
+@cindex notifications in python, GDB/MI
+@cindex python notifications, GDB/MI
+
+It is possible to emit @sc{gdb/mi} notifications from
+Python.  Use the @code{gdb.notify_mi} function to do that.
+
+@defun gdb.notify_mi (name @r{[}, data@r{]})
+Emit a @sc{gdb/mi} asynchronous notification.  @var{name} is the name of the
+notification, consisting of alphanumeric characters and a hyphen (@code{-}).
+@var{data} is any additional data to be emitted with the notification, passed
+as a Python dictionary. This argument is optional. The dictionary is converted
+to a @sc{gdb/mi} @var{result} records (@pxref{GDB/MI Output Syntax}) the same way
+as result of Python MI command (@pxref{GDB/MI Commands In Python}).
+
+If @var{data} is @code{None} then no additional values are emitted.
+@end defun
+
+While using existing notification names (@pxref{GDB/MI Async Records}) with
+@code{gdb.notify_mi} is allowed, users are encouraged to prefix user-defined
+notification with a hyphen (@code{-}) to avoid possible conflict.
+@value{GDBN} will never introduce notification starting with hyphen.
+
+Here is how to emit @code{=-connection-removed} whenever a connection to remote
+GDB server is closed (@pxref{Connections In Python}):
+
+@smallexample
+def notify_connection_removed(event):
+    data = @{"id": event.connection.num, "type": event.connection.type@}
+    gdb.notify_mi("-connection-removed", data)
+
+
+gdb.events.connection_removed.connect(notify_connection_removed)
+@end smallexample
+
+Then, each time a connection is closed, there will be a notification on MI channel:
+
+@smallexample
+=-connection-removed,id="1",type="remote"
+@end smallexample
+
 @node Parameters In Python
 @subsubsection Parameters In Python
 
@@ -5034,7 +5177,44 @@ Each progspace is represented by an instance of the @code{gdb.Progspace}
 class.
 
 @defvar Progspace.filename
-The file name of the progspace as a string.
+The file name, as a string, of the main symbol file (from which debug
+symbols have been loaded) for the progspace, e.g.@: the argument to
+the @kbd{symbol-file} or @kbd{file} commands.
+
+If there is no main symbol table currently loaded, then this attribute
+will be @code{None}.
+@end defvar
+
+@defvar Progspace.symbol_file
+The @code{gdb.Objfile} representing the main symbol file (from which
+debug symbols have been loaded) for the @code{gdb.Progspace}.  This is
+the symbol file set by the @kbd{symbol-file} or @kbd{file} commands.
+
+This will be the @code{gdb.Objfile} representing
+@code{Progspace.filename} when @code{Progspace.filename} is not
+@code{None}.
+
+If there is no main symbol table currently loaded, then this attribute
+will be @code{None}.
+
+If the @code{Progspace} is invalid, i.e.@:, when
+@code{Progspace.is_valid()} returns @code{False}, then attempting to
+access this attribute will raise a @code{RuntimeError} exception.
+@end defvar
+
+@defvar Progspace.executable_filename
+The file name, as a string, of the executable file in use by this
+program space.  The executable file is the file that @value{GDBN} will
+invoke in order to start an inferior when using a native target.  The
+file name within this attribute is updated by the @kbd{exec-file} and
+@kbd{file} commands.
+
+If no executable is currently set within this @code{Progspace} then
+this attribute contains @code{None}.
+
+If the @code{Progspace} is invalid, i.e.@:, when
+@code{Progspace.is_valid()} returns @code{False}, then attempting to
+access this attribute will raise a @code{RuntimeError} exception.
 @end defvar
 
 @defvar Progspace.pretty_printers
@@ -6974,11 +7154,16 @@ contents.  A positive argument should cause the viewport to move down,
 and so the content should appear to move up.
 @end defun
 
+@anchor{python-window-click}
 @defun Window.click (x, y, button)
 This is called on a mouse click in this window.  @var{x} and @var{y} are
 the mouse coordinates inside the window (0-based, from the top left
 corner), and @var{button} specifies which mouse button was used, whose
 values can be 1 (left), 2 (middle), or 3 (right).
+
+When TUI mouse events are disabled by turning off the @code{tui mouse-events}
+setting (@pxref{tui-mouse-events,,set tui mouse-events}), then @code{click} will
+not be called.
 @end defun
 
 @node Disassembly In Python

@@ -28,6 +28,7 @@
 #include "inferior.h"
 #include <algorithm>
 #include "cli/cli-style.h"
+#include "observable.h"
 
 /* The last program space number assigned.  */
 static int last_program_space_num = 0;
@@ -57,7 +58,8 @@ address_space::address_space ()
 struct address_space *
 maybe_new_address_space (void)
 {
-  int shared_aspace = gdbarch_has_shared_address_space (target_gdbarch ());
+  int shared_aspace
+    = gdbarch_has_shared_address_space (current_inferior ()->arch ());
 
   if (shared_aspace)
     {
@@ -98,6 +100,7 @@ program_space::program_space (address_space *aspace_)
     aspace (aspace_)
 {
   program_spaces.push_back (this);
+  gdb::observers::new_program_space.notify (this);
 }
 
 /* See progspace.h.  */
@@ -106,6 +109,7 @@ program_space::~program_space ()
 {
   gdb_assert (this != current_program_space);
 
+  gdb::observers::free_program_space.notify (this);
   remove_program_space (this);
 
   scoped_restore_current_program_space restore_pspace;
@@ -118,7 +122,7 @@ program_space::~program_space ()
   /* Defer breakpoint re-set because we don't want to create new
      locations for this pspace which we're tearing down.  */
   clear_symtab_users (SYMFILE_DEFER_BP_RESET);
-  if (!gdbarch_has_shared_address_space (target_gdbarch ()))
+  if (!gdbarch_has_shared_address_space (current_inferior ()->arch ()))
     delete this->aspace;
 }
 
@@ -128,8 +132,8 @@ void
 program_space::free_all_objfiles ()
 {
   /* Any objfile reference would become stale.  */
-  for (struct so_list *so : current_program_space->solibs ())
-    gdb_assert (so->objfile == NULL);
+  for (const shobj &so : current_program_space->solibs ())
+    gdb_assert (so.objfile == NULL);
 
   while (!objfiles_list.empty ())
     objfiles_list.front ()->unlink ();
@@ -203,10 +207,11 @@ program_space::exec_close ()
     {
       /* Removing target sections may close the exec_ops target.
 	 Clear ebfd before doing so to prevent recursion.  */
+      bfd *saved_ebfd = ebfd.get ();
       ebfd.reset (nullptr);
       ebfd_mtime = 0;
 
-      remove_target_sections (&ebfd);
+      remove_target_sections (saved_ebfd);
 
       exec_filename.reset (nullptr);
     }
@@ -399,7 +404,8 @@ maintenance_info_program_spaces_command (const char *args, int from_tty)
 void
 update_address_spaces (void)
 {
-  int shared_aspace = gdbarch_has_shared_address_space (target_gdbarch ());
+  int shared_aspace
+    = gdbarch_has_shared_address_space (current_inferior ()->arch ());
 
   init_address_spaces ();
 
@@ -419,7 +425,7 @@ update_address_spaces (void)
       }
 
   for (inferior *inf : all_inferiors ())
-    if (gdbarch_has_global_solist (target_gdbarch ()))
+    if (gdbarch_has_global_solist (current_inferior ()->arch ()))
       inf->aspace = maybe_new_address_space ();
     else
       inf->aspace = inf->pspace->aspace;

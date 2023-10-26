@@ -1,7 +1,35 @@
 		What has changed in GDB?
 	     (Organized release by release)
 
-*** Changes since GDB 13
+*** Changes since GDB 14
+
+* GDB index now contains information about the main function.  This speeds up
+  startup when it is being used for some large binaries.
+
+* Python API
+
+  ** New function gdb.notify_mi(NAME, DATA), that emits custom
+     GDB/MI async notification.
+
+*** Changes in GDB 14
+
+* GDB now supports the AArch64 Scalable Matrix Extension 2 (SME2), which
+  includes a new 512 bit lookup table register named ZT0.
+
+* GDB now supports the AArch64 Scalable Matrix Extension (SME), which includes
+  a new matrix register named ZA, a new thread register TPIDR2 and a new vector
+  length register SVG (streaming vector granule).  GDB also supports tracking
+  ZA state across signal frames.
+
+  Some features are still under development or are dependent on ABI specs that
+  are still in alpha stage.  For example, manual function calls with ZA state
+  don't have any special handling, and tracking of SVG changes based on
+  DWARF information is still not implemented, but there are plans to do so in
+  the future.
+
+* GDB now recognizes the NO_COLOR environment variable and disables
+  styling according to the spec.  See https://no-color.org/.
+  Styling can be re-enabled with "set style enabled on".
 
 * The AArch64 'org.gnu.gdb.aarch64.pauth' Pointer Authentication feature string
   has been deprecated in favor of the 'org.gnu.gdb.aarch64.pauth_v2' feature
@@ -34,8 +62,6 @@
   connections.  Similarly, the show commands print the configuration of the
   currently selected target.  If no remote target is selected, the default
   configuration for future connections is shown.
-
-* MI version 1 has been removed.
 
 * GDB has initial built-in support for the Debugger Adapter Protocol.
   This support requires that GDB be built with Python scripting
@@ -106,6 +132,24 @@
   'inferior' keyword with either the 'thread' or 'task' keywords when
   creating a breakpoint.
 
+* New convenience function "$_shell", to execute a shell command and
+  return the result.  This lets you run shell commands in expressions.
+  Some examples:
+
+   (gdb) p $_shell("true")
+   $1 = 0
+   (gdb) p $_shell("false")
+   $2 = 1
+   (gdb) break func if $_shell("some command") == 0
+
+* Configure changes
+
+--additional-debug-dirs=PATHs
+
+  Provide a colon-separated list of additional directories to search for
+  separate debug info.  These directories are added to the default value of
+  the 'debug-file-directory' GDB parameter.
+
 * New commands
 
 set debug breakpoint on|off
@@ -133,17 +177,15 @@ show always-read-ctf
 info main
   Get main symbol to identify entry point into program.
 
-* New convenience function "$_shell", to execute a shell command and
-  return the result.  This lets you run shell commands in expressions.
-  Some examples:
-
-   (gdb) p $_shell("true")
-   $1 = 0
-   (gdb) p $_shell("false")
-   $2 = 1
-   (gdb) break func if $_shell("some command") == 0
+set tui mouse-events [on|off]
+show tui mouse-events
+  When on (default), mouse clicks control the TUI and can be accessed by
+  Python extensions.  When off, mouse clicks are handled by the terminal,
+  enabling terminal-native text selection.
 
 * MI changes
+
+** MI version 1 has been removed.
 
 ** mi now reports 'no-history' as a stop reason when hitting the end of the
    reverse execution history.
@@ -286,6 +328,37 @@ info main
      methods.  These reflect GDB's internal idea of whether a type
      might be array- or string-like, even if they do not have the
      corresponding type code.
+
+  ** gdb.ValuePrinter is a new class that can be used as the base
+     class for the result of applying a pretty-printer.  As a base
+     class, it signals to gdb that the printer may implement new
+     pretty-printer methods.
+
+  ** New attribute Progspace.symbol_file.  This attribute holds the
+     gdb.Objfile that corresponds to Progspace.filename (when
+     Progspace.filename is not None), otherwise, this attribute is
+     itself None.
+
+  ** New attribute Progspace.executable_filename.  This attribute
+     holds a string containing a file name set by the "exec-file" or
+     "file" commands, or None if no executable file is set.  This
+     isn't the exact string passed by the user to these commands; the
+     file name will have been partially resolved to an absolute file
+     name.
+
+  ** A new executable_changed event registry is available.  This event
+     emits ExecutableChangedEvent objects, which have 'progspace' (a
+     gdb.Progspace) and 'reload' (a Boolean) attributes.  This event
+     is emitted when gdb.Progspace.executable_filename changes.
+
+  ** New event registries gdb.events.new_progspace and
+     gdb.events.free_progspace, these emit NewProgspaceEvent and
+     FreeProgspaceEvent event types respectively.  Both of these event
+     types have a single 'progspace' attribute, which is the
+     gdb.Progspace that is either being added to GDB, or removed from
+     GDB.
+
+  ** gdb.LazyString now implements the __str__ method.
 
 *** Changes in GDB 13
 

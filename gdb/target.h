@@ -43,8 +43,8 @@ struct inferior;
    make-target-delegates.py to parse.  */
 typedef const gdb_byte const_gdb_byte;
 
-#include "infrun.h" /* For enum exec_direction_kind.  */
-#include "breakpoint.h" /* For enum bptype.  */
+#include "infrun.h"
+#include "breakpoint.h"
 #include "gdbsupport/scoped_restore.h"
 #include "gdbsupport/refcounted-object.h"
 #include "target-section.h"
@@ -88,7 +88,7 @@ typedef const gdb_byte const_gdb_byte;
 #include "gdbsupport/fileio.h"
 #include "gdbsupport/x86-xstate.h"
 
-#include "gdbsupport/break-common.h" /* For enum target_hw_bp_type.  */
+#include "gdbsupport/break-common.h"
 
 enum strata
   {
@@ -698,7 +698,7 @@ struct target_ops
       TARGET_DEFAULT_RETURN (NULL);
     virtual void log_command (const char *)
       TARGET_DEFAULT_IGNORE ();
-    virtual const target_section_table *get_section_table ()
+    virtual const std::vector<target_section> *get_section_table ()
       TARGET_DEFAULT_RETURN (default_get_section_table ());
 
     /* Provide default values for all "must have" methods.  */
@@ -934,7 +934,7 @@ struct target_ops
        the target is currently stopped at.  The architecture information is
        used to perform decr_pc_after_break adjustment, and also to determine
        the frame architecture of the innermost frame.  ptrace operations need to
-       operate according to target_gdbarch ().  */
+       operate according to the current inferior's gdbarch.  */
     virtual struct gdbarch *thread_architecture (ptid_t)
       TARGET_DEFAULT_RETURN (NULL);
 
@@ -2401,12 +2401,12 @@ const struct target_section *target_section_by_addr (struct target_ops *target,
 /* Return the target section table this target (or the targets
    beneath) currently manipulate.  */
 
-extern const target_section_table *target_get_section_table
+extern const std::vector<target_section> *target_get_section_table
   (struct target_ops *target);
 
 /* Default implementation of get_section_table for dummy_target.  */
 
-extern const target_section_table *default_get_section_table ();
+extern const std::vector<target_section> *default_get_section_table ();
 
 /* From mem-break.c */
 

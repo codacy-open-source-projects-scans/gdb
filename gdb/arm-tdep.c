@@ -19,7 +19,7 @@
 
 #include "defs.h"
 
-#include <ctype.h>		/* XXX for isupper ().  */
+#include <ctype.h>
 
 #include "frame.h"
 #include "language.h"
@@ -27,7 +27,7 @@
 #include "infrun.h"
 #include "gdbcmd.h"
 #include "gdbcore.h"
-#include "dis-asm.h"		/* For register styles.  */
+#include "dis-asm.h"
 #include "disasm.h"
 #include "regcache.h"
 #include "reggroups.h"
@@ -2543,7 +2543,7 @@ arm_exidx_new_objfile (struct objfile *objfile)
   LONGEST i;
 
   /* If we've already touched this file, do nothing.  */
-  if (!objfile || arm_exidx_data_key.get (objfile->obfd.get ()) != NULL)
+  if (arm_exidx_data_key.get (objfile->obfd.get ()) != nullptr)
     return;
 
   /* Read contents of exception table and index.  */
@@ -9483,7 +9483,8 @@ static void
 arm_update_current_architecture (void)
 {
   /* If the current architecture is not ARM, we have nothing to do.  */
-  if (gdbarch_bfd_arch_info (target_gdbarch ())->arch != bfd_arch_arm)
+  gdbarch *arch = current_inferior ()->arch ();
+  if (gdbarch_bfd_arch_info (arch)->arch != bfd_arch_arm)
     return;
 
   /* Update the architecture.  */
@@ -9516,11 +9517,11 @@ static void
 show_fp_model (struct ui_file *file, int from_tty,
 	       struct cmd_list_element *c, const char *value)
 {
+  gdbarch *arch = current_inferior ()->arch ();
   if (arm_fp_model == ARM_FLOAT_AUTO
-      && gdbarch_bfd_arch_info (target_gdbarch ())->arch == bfd_arch_arm)
+      && gdbarch_bfd_arch_info (arch)->arch == bfd_arch_arm)
     {
-      arm_gdbarch_tdep *tdep
-	= gdbarch_tdep<arm_gdbarch_tdep> (target_gdbarch ());
+      arm_gdbarch_tdep *tdep = gdbarch_tdep<arm_gdbarch_tdep> (arch);
 
       gdb_printf (file, _("\
 The current ARM floating point model is \"auto\" (currently \"%s\").\n"),
@@ -9556,11 +9557,11 @@ static void
 arm_show_abi (struct ui_file *file, int from_tty,
 	     struct cmd_list_element *c, const char *value)
 {
+  gdbarch *arch = current_inferior ()->arch ();
   if (arm_abi_global == ARM_ABI_AUTO
-      && gdbarch_bfd_arch_info (target_gdbarch ())->arch == bfd_arch_arm)
+      && gdbarch_bfd_arch_info (arch)->arch == bfd_arch_arm)
     {
-      arm_gdbarch_tdep *tdep
-	= gdbarch_tdep<arm_gdbarch_tdep> (target_gdbarch ());
+      arm_gdbarch_tdep *tdep = gdbarch_tdep<arm_gdbarch_tdep> (arch);
 
       gdb_printf (file, _("\
 The current ARM ABI is \"auto\" (currently \"%s\").\n"),

@@ -42,6 +42,7 @@ DEFINE_OBSERVABLE (inferior_forked);
 DEFINE_OBSERVABLE (solib_loaded);
 DEFINE_OBSERVABLE (solib_unloaded);
 DEFINE_OBSERVABLE (new_objfile);
+DEFINE_OBSERVABLE (all_objfiles_removed);
 DEFINE_OBSERVABLE (free_objfile);
 DEFINE_OBSERVABLE (new_thread);
 DEFINE_OBSERVABLE (thread_exit);
@@ -51,7 +52,7 @@ DEFINE_OBSERVABLE (about_to_proceed);
 DEFINE_OBSERVABLE (breakpoint_created);
 DEFINE_OBSERVABLE (breakpoint_deleted);
 DEFINE_OBSERVABLE (breakpoint_modified);
-DEFINE_OBSERVABLE (architecture_changed);
+DEFINE_OBSERVABLE (new_architecture);
 DEFINE_OBSERVABLE (thread_ptid_changed);
 DEFINE_OBSERVABLE (inferior_added);
 DEFINE_OBSERVABLE (inferior_appeared);
@@ -72,6 +73,8 @@ DEFINE_OBSERVABLE (gdb_exiting);
 DEFINE_OBSERVABLE (connection_removed);
 DEFINE_OBSERVABLE (target_pre_wait);
 DEFINE_OBSERVABLE (target_post_wait);
+DEFINE_OBSERVABLE (new_program_space);
+DEFINE_OBSERVABLE (free_program_space);
 
 } /* namespace observers */
 } /* namespace gdb */

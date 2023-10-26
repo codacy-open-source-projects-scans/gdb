@@ -32,7 +32,7 @@
 #include "gdbtypes.h"
 #include "demangle.h"
 #include "gdbcore.h"
-#include "expression.h"		/* For language.h */
+#include "expression.h"
 #include "language.h"
 #include "symfile.h"
 #include "objfiles.h"
@@ -470,7 +470,7 @@ maintenance_info_target_sections (const char *arg, int from_tty)
 {
   bfd *abfd = nullptr;
   int digits = 0;
-  const target_section_table *table
+  const std::vector<target_section> *table
     = target_get_section_table (current_inferior ()->top_target ());
   if (table == nullptr)
     return;
@@ -509,7 +509,7 @@ maintenance_info_target_sections (const char *arg, int from_tty)
 		  (8 + digits), "",
 		  hex_string_custom (sec.addr, addr_size),
 		  hex_string_custom (sec.endaddr, addr_size),
-		  sec.owner);
+		  sec.owner.v ());
     }
 }
 

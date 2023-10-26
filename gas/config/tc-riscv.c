@@ -386,7 +386,7 @@ riscv_set_abi_by_arch (void)
 	as_bad ("%d-bit ABI not yet supported on %d-bit ISA", abi_xlen, xlen);
 
       if (riscv_subset_supports (&riscv_rps_as, "e") && !rve_abi)
-	as_bad ("only the ilp32e ABI is supported for e extension");
+	as_bad ("only ilp32e/lp64e ABI are supported for e extension");
 
       if (float_abi == FLOAT_ABI_SINGLE
 	  && !riscv_subset_supports (&riscv_rps_as, "f"))
@@ -3883,6 +3883,8 @@ md_parse_option (int c, const char *arg)
 	riscv_set_abi (32, FLOAT_ABI_QUAD, false);
       else if (strcmp (arg, "lp64") == 0)
 	riscv_set_abi (64, FLOAT_ABI_SOFT, false);
+      else if (strcmp (arg, "lp64e") == 0)
+	riscv_set_abi (64, FLOAT_ABI_SOFT, true);
       else if (strcmp (arg, "lp64f") == 0)
 	riscv_set_abi (64, FLOAT_ABI_SINGLE, false);
       else if (strcmp (arg, "lp64d") == 0)
@@ -4902,7 +4904,9 @@ riscv_write_out_attrs (void)
 
   /* Re-write architecture elf attribute.  */
   arch_str = riscv_rps_as.subset_list->arch_str;
-  bfd_elf_add_proc_attr_string (stdoutput, Tag_RISCV_arch, arch_str);
+  if (!bfd_elf_add_proc_attr_string (stdoutput, Tag_RISCV_arch, arch_str))
+    as_fatal (_("error adding attribute: %s"),
+	      bfd_errmsg (bfd_get_error ()));
 
   /* For the file without any instruction, we don't set the default_priv_spec
      according to the privileged elf attributes since the md_assemble isn't
@@ -4937,9 +4941,14 @@ riscv_write_out_attrs (void)
   versions[i] = number;
 
   /* Re-write privileged elf attributes.  */
-  bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec, versions[0]);
-  bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec_minor, versions[1]);
-  bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec_revision, versions[2]);
+  if (!bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec,
+				  versions[0])
+      || !bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec_minor,
+				     versions[1])
+      || !bfd_elf_add_proc_attr_int (stdoutput, Tag_RISCV_priv_spec_revision,
+				     versions[2]))
+    as_fatal (_("error adding attribute: %s"),
+	      bfd_errmsg (bfd_get_error ()));
 }
 
 /* Add the default contents for the .riscv.attributes section.  */
@@ -4992,6 +5001,7 @@ riscv_insert_uleb128_fixes (bfd *abfd ATTRIBUTE_UNUSED,
       exp_dup->X_add_symbol = exp->X_op_symbol;
       fix_new_exp (fragP, fragP->fr_fix, 0,
 		   exp_dup, 0, BFD_RELOC_RISCV_SUB_ULEB128);
+      free ((void *) exp_dup);
     }
 }
 

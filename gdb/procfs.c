@@ -25,7 +25,7 @@
 #include "infrun.h"
 #include "target.h"
 #include "gdbcore.h"
-#include "elf-bfd.h"		/* for elfcore_write_* */
+#include "elf-bfd.h"
 #include "gdbcmd.h"
 #include "gdbthread.h"
 #include "regcache.h"
@@ -46,6 +46,7 @@
 #include "gdbsupport/scoped_fd.h"
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/buildargv.h"
+#include "cli/cli-style.h"
 
 /* This module provides the interface between GDB and the
    /proc file system, which is used on many versions of Unix
@@ -66,11 +67,11 @@
    interface.  */
 
 #include <sys/types.h>
-#include <dirent.h>	/* opendir/readdir, for listing the LWP's */
+#include <dirent.h>
 
-#include <fcntl.h>	/* for O_RDONLY */
-#include <unistd.h>	/* for "X_OK" */
-#include <sys/stat.h>	/* for struct stat */
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 /* Note: procfs-utils.h must be included after the above system header
    files, because it redefines various system calls using macros.
@@ -173,7 +174,7 @@ procfs_target::auxv_parse (const gdb_byte **readptr,
 			   const gdb_byte *endptr, CORE_ADDR *typep,
 			   CORE_ADDR *valp)
 {
-  enum bfd_endian byte_order = gdbarch_byte_order (target_gdbarch ());
+  bfd_endian byte_order = gdbarch_byte_order (current_inferior ()->arch ());
   const gdb_byte *ptr = *readptr;
 
   if (endptr == ptr)
@@ -254,8 +255,6 @@ typedef struct procinfo {
   int fpregs_valid : 1;
   int threads_valid: 1;
 } procinfo;
-
-static char errmsg[128];	/* shared error msg buffer */
 
 /* Function prototypes for procinfo module: */
 
@@ -560,7 +559,7 @@ enum { NOKILL, KILL };
 static void
 dead_procinfo (procinfo *pi, const char *msg, int kill_p)
 {
-  print_sys_errmsg (pi->pathname, errno);
+  warning_filename_and_errno (pi->pathname, errno);
   if (kill_p == KILL)
     kill (pi->pid, SIGKILL);
 
@@ -595,17 +594,21 @@ static void proc_resume (procinfo *pi, ptid_t scope_ptid,
 static void
 proc_warn (procinfo *pi, const char *func, int line)
 {
-  xsnprintf (errmsg, sizeof (errmsg), "procfs: %s line %d, %s",
-	     func, line, pi->pathname);
-  print_sys_errmsg (errmsg, errno);
+  int saved_errno = errno;
+  warning ("procfs: %s line %d, %ps: %s",
+	   func, line, styled_string (file_name_style.style (),
+				      pi->pathname),
+	   safe_strerror (saved_errno));
 }
 
 static void
 proc_error (procinfo *pi, const char *func, int line)
 {
-  xsnprintf (errmsg, sizeof (errmsg), "procfs: %s line %d, %s",
-	     func, line, pi->pathname);
-  perror_with_name (errmsg);
+  int saved_errno = errno;
+  error ("procfs: %s line %d, %ps: %s",
+	 func, line, styled_string (file_name_style.style (),
+				    pi->pathname),
+	 safe_strerror (saved_errno));
 }
 
 /* Updates the status struct in the procinfo.  There is a 'valid'
@@ -708,9 +711,10 @@ proc_watchpoint_address (procinfo *pi, CORE_ADDR *addr)
     if (!proc_get_status (pi))
       return 0;
 
-  *addr = (CORE_ADDR) gdbarch_pointer_to_address (target_gdbarch (),
-	    builtin_type (target_gdbarch ())->builtin_data_ptr,
-	    (gdb_byte *) &pi->prstatus.pr_lwp.pr_info.si_addr);
+  gdbarch *arch = current_inferior ()->arch ();
+  *addr = gdbarch_pointer_to_address
+	    (arch, builtin_type (arch)->builtin_data_ptr,
+	     (gdb_byte *) &pi->prstatus.pr_lwp.pr_info.si_addr);
   return 1;
 }
 
@@ -1514,12 +1518,12 @@ proc_parent_pid (procinfo *pi)
 static void *
 procfs_address_to_host_pointer (CORE_ADDR addr)
 {
-  struct type *ptr_type = builtin_type (target_gdbarch ())->builtin_data_ptr;
+  gdbarch *arch = current_inferior ()->arch ();
+  type *ptr_type = builtin_type (arch)->builtin_data_ptr;
   void *ptr;
 
   gdb_assert (sizeof (ptr) == ptr_type->length ());
-  gdbarch_address_to_pointer (target_gdbarch (), ptr_type,
-			      (gdb_byte *) &ptr, addr);
+  gdbarch_address_to_pointer (arch, ptr_type, (gdb_byte *) &ptr, addr);
   return ptr;
 }
 
@@ -1805,11 +1809,12 @@ do_attach (ptid_t ptid)
 
   if (!open_procinfo_files (pi, FD_CTL))
     {
-      gdb_printf (gdb_stderr, "procfs:%d -- ", __LINE__);
-      xsnprintf (errmsg, sizeof (errmsg),
-		 "do_attach: couldn't open /proc file for process %d",
-		 ptid.pid ());
-      dead_procinfo (pi, errmsg, NOKILL);
+      int saved_errno = errno;
+      std::string errmsg
+	= string_printf ("procfs:%d -- do_attach: couldn't open /proc "
+			 "file for process %d", __LINE__, ptid.pid ());
+      errno = saved_errno;
+      dead_procinfo (pi, errmsg.c_str (), NOKILL);
     }
 
   /* Stop the process (if it isn't already stopped).  */
@@ -3009,7 +3014,8 @@ procfs_target::can_use_hw_breakpoint (enum bptype type, int cnt, int othertype)
      procfs_address_to_host_pointer will reveal that an internal error
      will be generated when the host and target pointer sizes are
      different.  */
-  struct type *ptr_type = builtin_type (target_gdbarch ())->builtin_data_ptr;
+  type *ptr_type
+    = builtin_type (current_inferior ()->arch ())->builtin_data_ptr;
 
   if (sizeof (void *) != ptr_type->length ())
     return 0;
@@ -3057,7 +3063,7 @@ procfs_target::insert_watchpoint (CORE_ADDR addr, int len,
 				  struct expression *cond)
 {
   if (!target_have_steppable_watchpoint ()
-      && !gdbarch_have_nonsteppable_watchpoint (target_gdbarch ()))
+      && !gdbarch_have_nonsteppable_watchpoint (current_inferior ()->arch ()))
     /* When a hardware watchpoint fires off the PC will be left at
        the instruction following the one which caused the
        watchpoint.  It will *NOT* be necessary for GDB to step over
@@ -3220,7 +3226,7 @@ info_mappings_callback (struct prmap *map, find_memory_region_ftype ignore,
 
   pr_off = (unsigned int) map->pr_offset;
 
-  if (gdbarch_addr_bit (target_gdbarch ()) == 32)
+  if (gdbarch_addr_bit (current_inferior ()->arch ()) == 32)
     gdb_printf ("\t%#10lx %#10lx %#10lx %#10x %7s\n",
 		(unsigned long) map->pr_vaddr,
 		(unsigned long) map->pr_vaddr + map->pr_size - 1,
@@ -3247,7 +3253,7 @@ info_proc_mappings (procinfo *pi, int summary)
     return;	/* No output for summary mode.  */
 
   gdb_printf (_("Mapped address spaces:\n\n"));
-  if (gdbarch_ptr_bit (target_gdbarch ()) == 32)
+  if (gdbarch_ptr_bit (current_inferior ()->arch ()) == 32)
     gdb_printf ("\t%10s %10s %10s %10s %7s\n",
 		"Start Addr",
 		"  End Addr",

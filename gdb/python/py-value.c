@@ -18,7 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "defs.h"
-#include "top.h"		/* For quit_force ().  */
+#include "top.h"
 #include "charset.h"
 #include "value.h"
 #include "language.h"
@@ -905,7 +905,13 @@ valpy_assign (PyObject *self_obj, PyObject *args)
   try
     {
       value_object *self = (value_object *) self_obj;
-      value_assign (self->value, val);
+      value *new_value = value_assign (self->value, val);
+      /* value_as_address returns a new value with the same location
+	 as the old one.  Ensure that this gdb.Value is updated to
+	 reflect the new value.  */
+      new_value->incref ();
+      self->value->decref ();
+      self->value = new_value;
     }
   catch (const gdb_exception &except)
     {

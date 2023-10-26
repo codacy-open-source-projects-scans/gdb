@@ -27,7 +27,7 @@
 #include "regcache.h"
 #include "regset.h"
 #include "elf/common.h"
-#include "elf-bfd.h"            /* for elfcore_write_* */
+#include "elf-bfd.h"
 #include "inferior.h"
 #include "cli/cli-utils.h"
 #include "arch-utils.h"
@@ -1820,47 +1820,29 @@ linux_get_siginfo_data (thread_info *thread, struct gdbarch *gdbarch)
   return buf;
 }
 
-struct linux_corefile_thread_data
-{
-  linux_corefile_thread_data (struct gdbarch *gdbarch, bfd *obfd,
-			      gdb::unique_xmalloc_ptr<char> &note_data,
-			      int *note_size, gdb_signal stop_signal)
-    : gdbarch (gdbarch), obfd (obfd), note_data (note_data),
-      note_size (note_size), stop_signal (stop_signal)
-  {}
-
-  struct gdbarch *gdbarch;
-  bfd *obfd;
-  gdb::unique_xmalloc_ptr<char> &note_data;
-  int *note_size;
-  enum gdb_signal stop_signal;
-};
-
 /* Records the thread's register state for the corefile note
    section.  */
 
 static void
 linux_corefile_thread (struct thread_info *info,
-		       struct linux_corefile_thread_data *args)
+		       struct gdbarch *gdbarch, bfd *obfd,
+		       gdb::unique_xmalloc_ptr<char> &note_data,
+		       int *note_size, gdb_signal stop_signal)
 {
-  gcore_elf_build_thread_register_notes (args->gdbarch, info,
-					 args->stop_signal,
-					 args->obfd, &args->note_data,
-					 args->note_size);
+  gcore_elf_build_thread_register_notes (gdbarch, info, stop_signal, obfd,
+					 &note_data, note_size);
 
   /* Don't return anything if we got no register information above,
      such a core file is useless.  */
-  if (args->note_data != NULL)
+  if (note_data != nullptr)
     {
       gdb::byte_vector siginfo_data
-	= linux_get_siginfo_data (info, args->gdbarch);
+	= linux_get_siginfo_data (info, gdbarch);
       if (!siginfo_data.empty ())
-	args->note_data.reset (elfcore_write_note (args->obfd,
-						   args->note_data.release (),
-						   args->note_size,
-						   "CORE", NT_SIGINFO,
-						   siginfo_data.data (),
-						   siginfo_data.size ()));
+	note_data.reset (elfcore_write_note (obfd, note_data.release (),
+					     note_size, "CORE", NT_SIGINFO,
+					     siginfo_data.data (),
+					     siginfo_data.size ()));
     }
 }
 
@@ -2095,17 +2077,31 @@ linux_make_corefile_notes (struct gdbarch *gdbarch, bfd *obfd, int *note_size)
   else
     stop_signal = GDB_SIGNAL_0;
 
-  linux_corefile_thread_data thread_args (gdbarch, obfd, note_data, note_size,
-					  stop_signal);
-
   if (signalled_thr != nullptr)
-    linux_corefile_thread (signalled_thr, &thread_args);
+    {
+      /* On some architectures, like AArch64, each thread can have a distinct
+	 gdbarch (due to scalable extensions), and using the inferior gdbarch
+	 is incorrect.
+
+	 Fetch each thread's gdbarch and pass it down to the lower layers so
+	 we can dump the right set of registers.  */
+      linux_corefile_thread (signalled_thr,
+			     target_thread_architecture (signalled_thr->ptid),
+			     obfd, note_data, note_size, stop_signal);
+    }
   for (thread_info *thr : current_inferior ()->non_exited_threads ())
     {
       if (thr == signalled_thr)
 	continue;
 
-      linux_corefile_thread (thr, &thread_args);
+      /* On some architectures, like AArch64, each thread can have a distinct
+	 gdbarch (due to scalable extensions), and using the inferior gdbarch
+	 is incorrect.
+
+	 Fetch each thread's gdbarch and pass it down to the lower layers so
+	 we can dump the right set of registers.  */
+      linux_corefile_thread (thr, target_thread_architecture (thr->ptid),
+			     obfd, note_data, note_size, stop_signal);
     }
 
   if (!note_data)
@@ -2128,8 +2124,12 @@ linux_make_corefile_notes (struct gdbarch *gdbarch, bfd *obfd, int *note_size)
   /* File mappings.  */
   linux_make_mappings_corefile_notes (gdbarch, obfd, note_data, note_size);
 
-  /* Target description.  */
-  gcore_elf_make_tdesc_note (obfd, &note_data, note_size);
+  /* Include the target description when possible.  Some architectures
+     allow for per-thread gdbarch so we should really be emitting a tdesc
+     per-thread, however, we don't currently support reading in a
+     per-thread tdesc, so just emit the tdesc for the signalled thread.  */
+  gdbarch = target_thread_architecture (signalled_thr->ptid);
+  gcore_elf_make_tdesc_note (gdbarch, obfd, &note_data, note_size);
 
   return note_data;
 }
@@ -2615,7 +2615,7 @@ linux_displaced_step_prepare (gdbarch *arch, thread_info *thread,
       /* Figure out the location of the buffers.  They are contiguous, starting
 	 at DISP_STEP_BUF_ADDR.  They are all of size BUF_LEN.  */
       CORE_ADDR disp_step_buf_addr
-	= linux_displaced_step_location (thread->inf->gdbarch);
+	= linux_displaced_step_location (thread->inf->arch ());
       int buf_len = gdbarch_displaced_step_buffer_length (arch);
 
       linux_gdbarch_data *gdbarch_data = get_linux_gdbarch_data (arch);
@@ -2701,7 +2701,7 @@ linux_get_hwcap ()
 {
   return linux_get_hwcap (target_read_auxv (),
 			  current_inferior ()->top_target (),
-			  current_inferior ()->gdbarch);
+			  current_inferior ()->arch ());
 }
 
 /* See linux-tdep.h.  */
@@ -2720,7 +2720,7 @@ linux_get_hwcap2 ()
 {
   return linux_get_hwcap2 (target_read_auxv (),
 			   current_inferior ()->top_target (),
-			   current_inferior ()->gdbarch);
+			   current_inferior ()->arch ());
 }
 
 /* Display whether the gcore command is using the

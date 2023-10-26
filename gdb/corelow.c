@@ -21,7 +21,7 @@
 #include "arch-utils.h"
 #include <signal.h>
 #include <fcntl.h>
-#include "frame.h"		/* required by inferior.h */
+#include "frame.h"
 #include "inferior.h"
 #include "infrun.h"
 #include "symtab.h"
@@ -142,11 +142,11 @@ private: /* per-core data */
      shared library bfds.  The core bfd sections are an implementation
      detail of the core target, just like ptrace is for unix child
      targets.  */
-  target_section_table m_core_section_table;
+  std::vector<target_section> m_core_section_table;
 
   /* File-backed address space mappings: some core files include
      information about memory mapped files.  */
-  target_section_table m_core_file_mappings;
+  std::vector<target_section> m_core_file_mappings;
 
   /* Unavailable mappings.  These correspond to pathnames which either
      weren't found or could not be opened.  Knowing these addresses can
@@ -197,8 +197,7 @@ core_target::core_target ()
   build_file_mappings ();
 }
 
-/* Construct the target_section_table for file-backed mappings if
-   they exist.
+/* Construct the table for file-backed mappings if they exist.
 
    For each unique path in the note, we'll open a BFD with a bfd
    target of "binary".  This is an unstructured bfd target upon which
@@ -1229,35 +1228,47 @@ core_target::thread_alive (ptid_t ptid)
 const struct target_desc *
 core_target::read_description ()
 {
-  /* If the core file contains a target description note then we will use
-     that in preference to anything else.  */
-  bfd_size_type tdesc_note_size = 0;
-  struct bfd_section *tdesc_note_section
-    = bfd_get_section_by_name (core_bfd, ".gdb-tdesc");
-  if (tdesc_note_section != nullptr)
-    tdesc_note_size = bfd_section_size (tdesc_note_section);
-  if (tdesc_note_size > 0)
+  /* First check whether the target wants us to use the corefile target
+     description notes.  */
+  if (gdbarch_use_target_description_from_corefile_notes (m_core_gdbarch,
+							  core_bfd))
     {
-      gdb::char_vector contents (tdesc_note_size + 1);
-      if (bfd_get_section_contents (core_bfd, tdesc_note_section,
-				    contents.data (), (file_ptr) 0,
-				    tdesc_note_size))
+      /* If the core file contains a target description note then go ahead and
+	 use that.  */
+      bfd_size_type tdesc_note_size = 0;
+      struct bfd_section *tdesc_note_section
+	= bfd_get_section_by_name (core_bfd, ".gdb-tdesc");
+      if (tdesc_note_section != nullptr)
+	tdesc_note_size = bfd_section_size (tdesc_note_section);
+      if (tdesc_note_size > 0)
 	{
-	  /* Ensure we have a null terminator.  */
-	  contents[tdesc_note_size] = '\0';
-	  const struct target_desc *result
-	    = string_read_description_xml (contents.data ());
-	  if (result != nullptr)
-	    return result;
+	  gdb::char_vector contents (tdesc_note_size + 1);
+	  if (bfd_get_section_contents (core_bfd, tdesc_note_section,
+					contents.data (), (file_ptr) 0,
+					tdesc_note_size))
+	    {
+	      /* Ensure we have a null terminator.  */
+	      contents[tdesc_note_size] = '\0';
+	      const struct target_desc *result
+		= string_read_description_xml (contents.data ());
+	      if (result != nullptr)
+		return result;
+	    }
 	}
     }
 
+  /* If the architecture provides a corefile target description hook, use
+     it now.  Even if the core file contains a target description in a note
+     section, it is not useful for targets that can potentially have distinct
+     descriptions for each thread.  One example is AArch64's SVE/SME
+     extensions that allow per-thread vector length changes, resulting in
+     registers with different sizes.  */
   if (m_core_gdbarch && gdbarch_core_read_description_p (m_core_gdbarch))
     {
       const struct target_desc *result;
 
       result = gdbarch_core_read_description (m_core_gdbarch, this, core_bfd);
-      if (result != NULL)
+      if (result != nullptr)
 	return result;
     }
 
@@ -1353,7 +1364,7 @@ bool
 core_target::fetch_memtags (CORE_ADDR address, size_t len,
 			    gdb::byte_vector &tags, int type)
 {
-  struct gdbarch *gdbarch = target_gdbarch ();
+  gdbarch *gdbarch = current_inferior ()->arch ();
 
   /* Make sure we have a way to decode the memory tag notes.  */
   if (!gdbarch_decode_memtag_section_p (gdbarch))

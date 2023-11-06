@@ -20,6 +20,10 @@
 
 /* Array of system registers and their associated arch features.
 
+   This file is also used by GCC.  Where necessary, any updates should
+   be made in Binutils and the updated file copied across to GCC, such
+   that the two projects are kept in sync at all times.
+
    Before using #include to read this file, define a macro:
 
      SYSREG (name, encoding, flags, features)
@@ -415,6 +419,16 @@
   SYSREG ("fpcr",		CPENC (3,3,4,4,0),	0,			AARCH64_NO_FEATURES)
   SYSREG ("fpexc32_el2",	CPENC (3,4,5,3,0),	0,			AARCH64_NO_FEATURES)
   SYSREG ("fpsr",		CPENC (3,3,4,4,1),	0,			AARCH64_NO_FEATURES)
+  SYSREG ("gcspr_el0",		CPENC (3,3,2,5,1),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcspr_el1",		CPENC (3,0,2,5,1),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcspr_el2",		CPENC (3,4,2,5,1),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcspr_el12",		CPENC (3,5,2,5,1),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcspr_el3",		CPENC (3,6,2,5,1),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcscre0_el1",	CPENC (3,0,2,5,2),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcscr_el1",		CPENC (3,0,2,5,0),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcscr_el2",		CPENC (3,4,2,5,0),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcscr_el12",		CPENC (3,5,2,5,0),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
+  SYSREG ("gcscr_el3",		CPENC (3,6,2,5,0),    	F_ARCHEXT,		AARCH64_FEATURE (GCS))
   SYSREG ("gcr_el1",		CPENC (3,0,1,0,6),	F_ARCHEXT,		AARCH64_FEATURE (MEMTAG))
   SYSREG ("gmid_el1",		CPENC (3,1,0,0,4),	F_REG_READ|F_ARCHEXT,	AARCH64_FEATURE (MEMTAG))
   SYSREG ("gpccr_el3",		CPENC (3,6,2,1,6),	0,			AARCH64_NO_FEATURES)

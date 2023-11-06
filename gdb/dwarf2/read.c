@@ -31,6 +31,7 @@
 #include "defs.h"
 #include "dwarf2/read.h"
 #include "dwarf2/abbrev.h"
+#include "dwarf2/aranges.h"
 #include "dwarf2/attribute.h"
 #include "dwarf2/comp-unit-head.h"
 #include "dwarf2/cu.h"
@@ -146,6 +147,8 @@ static int ada_imported_index;
 static int dwarf2_locexpr_block_index;
 static int dwarf2_loclist_block_index;
 static int ada_block_index;
+
+static bool producer_is_gas_lt_2_38 (struct dwarf2_cu *cu);
 
 /* Size of .debug_loclists section header for 32-bit DWARF format.  */
 #define LOCLIST_HEADER_SIZE32 12
@@ -1586,6 +1589,7 @@ dwarf2_per_bfd::map_info_sections (struct objfile *objfile)
   ranges.read (objfile);
   rnglists.read (objfile);
   addr.read (objfile);
+  debug_aranges.read (objfile);
 
   for (auto &section : types)
     section.read (objfile);
@@ -1834,184 +1838,6 @@ create_cu_from_index_list (dwarf2_per_bfd *per_bfd,
   the_cu->section = section;
   the_cu->is_dwz = is_dwz;
   return the_cu;
-}
-
-/* See read.h.  */
-
-bool
-read_addrmap_from_aranges (dwarf2_per_objfile *per_objfile,
-			   dwarf2_section_info *section,
-			   addrmap *mutable_map)
-{
-  struct objfile *objfile = per_objfile->objfile;
-  bfd *abfd = objfile->obfd.get ();
-  struct gdbarch *gdbarch = objfile->arch ();
-  dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
-
-  std::unordered_map<sect_offset,
-		     dwarf2_per_cu_data *,
-		     gdb::hash_enum<sect_offset>>
-    debug_info_offset_to_per_cu;
-  for (const auto &per_cu : per_bfd->all_units)
-    {
-      /* A TU will not need aranges, and skipping them here is an easy
-	 way of ignoring .debug_types -- and possibly seeing a
-	 duplicate section offset -- entirely.  The same applies to
-	 units coming from a dwz file.  */
-      if (per_cu->is_debug_types || per_cu->is_dwz)
-	continue;
-
-      const auto insertpair
-	= debug_info_offset_to_per_cu.emplace (per_cu->sect_off,
-					       per_cu.get ());
-
-      /* Assume no duplicate offsets in all_units.  */
-      gdb_assert (insertpair.second);
-    }
-
-  std::set<sect_offset> debug_info_offset_seen;
-
-  section->read (objfile);
-
-  const bfd_endian dwarf5_byte_order = gdbarch_byte_order (gdbarch);
-
-  const gdb_byte *addr = section->buffer;
-
-  while (addr < section->buffer + section->size)
-    {
-      const gdb_byte *const entry_addr = addr;
-      unsigned int bytes_read;
-
-      const LONGEST entry_length = read_initial_length (abfd, addr,
-							&bytes_read);
-      addr += bytes_read;
-
-      const gdb_byte *const entry_end = addr + entry_length;
-      const bool dwarf5_is_dwarf64 = bytes_read != 4;
-      const uint8_t offset_size = dwarf5_is_dwarf64 ? 8 : 4;
-      if (addr + entry_length > section->buffer + section->size)
-	{
-	  warning (_("Section .debug_aranges in %s entry at offset %s "
-		     "length %s exceeds section length %s, "
-		     "ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   plongest (entry_addr - section->buffer),
-		   plongest (bytes_read + entry_length),
-		   pulongest (section->size));
-	  return false;
-	}
-
-      /* The version number.  */
-      const uint16_t version = read_2_bytes (abfd, addr);
-      addr += 2;
-      if (version != 2)
-	{
-	  warning (_("Section .debug_aranges in %s entry at offset %s "
-		     "has unsupported version %d, ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   plongest (entry_addr - section->buffer), version);
-	  return false;
-	}
-
-      const uint64_t debug_info_offset
-	= extract_unsigned_integer (addr, offset_size, dwarf5_byte_order);
-      addr += offset_size;
-      const auto per_cu_it
-	= debug_info_offset_to_per_cu.find (sect_offset (debug_info_offset));
-      if (per_cu_it == debug_info_offset_to_per_cu.cend ())
-	{
-	  warning (_("Section .debug_aranges in %s entry at offset %s "
-		     "debug_info_offset %s does not exists, "
-		     "ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   plongest (entry_addr - section->buffer),
-		   pulongest (debug_info_offset));
-	  return false;
-	}
-      const auto insertpair
-	= debug_info_offset_seen.insert (sect_offset (debug_info_offset));
-      if (!insertpair.second)
-	{
-	  warning (_("Section .debug_aranges in %s has duplicate "
-		     "debug_info_offset %s, ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   sect_offset_str (sect_offset (debug_info_offset)));
-	  return false;
-	}
-      dwarf2_per_cu_data *const per_cu = per_cu_it->second;
-
-      const uint8_t address_size = *addr++;
-      if (address_size < 1 || address_size > 8)
-	{
-	  warning (_("Section .debug_aranges in %s entry at offset %s "
-		     "address_size %u is invalid, ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   plongest (entry_addr - section->buffer), address_size);
-	  return false;
-	}
-
-      const uint8_t segment_selector_size = *addr++;
-      if (segment_selector_size != 0)
-	{
-	  warning (_("Section .debug_aranges in %s entry at offset %s "
-		     "segment_selector_size %u is not supported, "
-		     "ignoring .debug_aranges."),
-		   objfile_name (objfile),
-		   plongest (entry_addr - section->buffer),
-		   segment_selector_size);
-	  return false;
-	}
-
-      /* Must pad to an alignment boundary that is twice the address
-	 size.  It is undocumented by the DWARF standard but GCC does
-	 use it.  However, not every compiler does this.  We can see
-	 whether it has happened by looking at the total length of the
-	 contents of the aranges for this CU -- it if isn't a multiple
-	 of twice the address size, then we skip any leftover
-	 bytes.  */
-      addr += (entry_end - addr) % (2 * address_size);
-
-      while (addr < entry_end)
-	{
-	  if (addr + 2 * address_size > entry_end)
-	    {
-	      warning (_("Section .debug_aranges in %s entry at offset %s "
-			 "address list is not properly terminated, "
-			 "ignoring .debug_aranges."),
-		       objfile_name (objfile),
-		       plongest (entry_addr - section->buffer));
-	      return false;
-	    }
-	  ULONGEST start = extract_unsigned_integer (addr, address_size,
-						     dwarf5_byte_order);
-	  addr += address_size;
-	  ULONGEST length = extract_unsigned_integer (addr, address_size,
-						      dwarf5_byte_order);
-	  addr += address_size;
-	  if (start == 0 && length == 0)
-	    {
-	      /* This can happen on some targets with --gc-sections.
-		 This pair of values is also used to mark the end of
-		 the entries for a given CU, but we ignore it and
-		 instead handle termination using the check at the top
-		 of the loop.  */
-	      continue;
-	    }
-	  if (start == 0 && !per_bfd->has_section_at_zero)
-	    {
-	      /* Symbol was eliminated due to a COMDAT group.  */
-	      continue;
-	    }
-	  ULONGEST end = start + length;
-	  start = (ULONGEST) per_objfile->adjust ((unrelocated_addr) start);
-	  end = (ULONGEST) per_objfile->adjust ((unrelocated_addr) end);
-	  mutable_map->set_empty (start, end - 1, per_cu);
-	}
-
-      per_cu->addresses_seen = true;
-    }
-
-  return true;
 }
 
 /* die_reader_func for dw2_get_file_names.  */
@@ -3386,6 +3212,17 @@ dwarf2_initialize_objfile (struct objfile *objfile)
   dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
 
   dwarf_read_debug_printf ("called");
+
+  /* Try to fetch any potential dwz file early, while still on the
+     main thread.  */
+  try
+    {
+      dwarf2_get_dwz_file (per_bfd);
+    }
+  catch (const gdb_exception_error &err)
+    {
+      warning (_("%s"), err.what ());
+    }
 
   /* If we're about to read full symbols, don't bother with the
      indices.  In this case we also don't care if some other debug
@@ -5294,16 +5131,7 @@ create_all_units (dwarf2_per_objfile *per_objfile)
 				  &per_objfile->per_bfd->abbrev, 0,
 				  types_htab, rcuh_kind::TYPE);
 
-  dwz_file *dwz;
-  try
-    {
-      dwz = dwarf2_get_dwz_file (per_objfile->per_bfd);
-    }
-  catch (const gdb_exception_error &)
-    {
-      per_objfile->per_bfd->all_units.clear ();
-      throw;
-    }
+  dwz_file *dwz = dwarf2_get_dwz_file (per_objfile->per_bfd);
   if (dwz != NULL)
     {
       /* Pre-read the sections we'll need to construct an index.  */
@@ -7664,6 +7492,27 @@ read_file_scope (struct die_info *die, struct dwarf2_cu *cu)
   lowpc = per_objfile->relocate (unrel_low);
 
   file_and_directory &fnd = find_file_and_directory (die, cu);
+
+  /* GAS supports generating dwarf-5 info starting version 2.35.  Versions
+     2.35-2.37 generate an incorrect CU name attribute: it's relative,
+     implicitly prefixing it with the compilation dir.  Work around this by
+     prefixing it with the source dir instead.  */
+  if (cu->header.version == 5 && !IS_ABSOLUTE_PATH (fnd.get_name ())
+      && producer_is_gas_lt_2_38 (cu))
+    {
+      attr = dwarf2_attr (die, DW_AT_stmt_list, cu);
+      if (attr != nullptr && attr->form_is_unsigned ())
+	{
+	  sect_offset line_offset = (sect_offset) attr->as_unsigned ();
+	  line_header_up lh = dwarf_decode_line_header (line_offset, cu,
+							fnd.get_comp_dir ());
+	  if (lh->version == 5 && lh->is_valid_file_index (1))
+	    {
+	      std::string dir = lh->include_dir_at (1);
+	      fnd.set_comp_dir (std::move (dir));
+	    }
+	}
+    }
 
   cu->start_compunit_symtab (fnd.get_name (), fnd.intern_comp_dir (objfile),
 			     lowpc);
@@ -11426,8 +11275,11 @@ check_producer (struct dwarf2_cu *cu)
     cu->producer_is_codewarrior = true;
   else if (producer_is_clang (cu->producer, &major, &minor))
     cu->producer_is_clang = true;
-  else if (startswith (cu->producer, "GNU AS 2.39.0"))
-    cu->producer_is_gas_2_39 = true;
+  else if (producer_is_gas (cu->producer, &major, &minor))
+    {
+      cu->producer_is_gas_lt_2_38 = major < 2 || (major == 2 && minor < 38);
+      cu->producer_is_gas_2_39 = major == 2 && minor == 39;
+    }
   else
     {
       /* For other non-GCC compilers, expect their behavior is DWARF version
@@ -11461,6 +11313,15 @@ producer_is_codewarrior (struct dwarf2_cu *cu)
     check_producer (cu);
 
   return cu->producer_is_codewarrior;
+}
+
+static bool
+producer_is_gas_lt_2_38 (struct dwarf2_cu *cu)
+{
+  if (!cu->checked_producer)
+    check_producer (cu);
+
+  return cu->producer_is_gas_lt_2_38;
 }
 
 static bool

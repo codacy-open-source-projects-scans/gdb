@@ -431,6 +431,24 @@ thread_info::clear_pending_waitstatus ()
 
 /* See gdbthread.h.  */
 
+void
+thread_info::set_thread_options (gdb_thread_options thread_options)
+{
+  gdb_assert (this->state != THREAD_EXITED);
+  gdb_assert (!this->executing ());
+
+  if (m_thread_options == thread_options)
+    return;
+
+  m_thread_options = thread_options;
+
+  infrun_debug_printf ("[options for %s are now %s]",
+		       this->ptid.to_string ().c_str (),
+		       to_string (thread_options).c_str ());
+}
+
+/* See gdbthread.h.  */
+
 int
 thread_is_in_step_over_chain (struct thread_info *tp)
 {
@@ -2182,6 +2200,8 @@ inferior_thread_count_make_value (struct gdbarch *gdbarch,
 				  struct internalvar *var, void *ignore)
 {
   int int_val = 0;
+
+  update_thread_list ();
 
   if (inferior_ptid != null_ptid)
     int_val = current_inferior ()->non_exited_threads ().size ();

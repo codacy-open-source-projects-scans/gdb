@@ -847,7 +847,9 @@ enable_relro
 enable_textrel_check
 enable_separate_code
 enable_warn_execstack
+enable_error_execstack
 enable_warn_rwx_segments
+enable_error_rwx_segments
 enable_default_execstack
 enable_error_handling_script
 enable_default_hash_style
@@ -1534,9 +1536,13 @@ Optional Features:
                           enable DT_TEXTREL check in ELF linker
   --enable-separate-code  enable -z separate-code in ELF linker by default
   --enable-warn-execstack enable warnings when creating an executable stack
+  --enable-error-execstack
+                          turn executable stack warnings into errors
   --enable-warn-rwx-segments
                           enable warnings when creating segments with RWX
                           permissions
+  --enable-error-rwx-segments
+                          turn executable segment warnings into errors
   --enable-default-execstack
                           create an executable stack if an input file is
                           missing a .note.GNU-stack section
@@ -11655,7 +11661,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11658 "configure"
+#line 11664 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -11761,7 +11767,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11764 "configure"
+#line 11770 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -15669,12 +15675,32 @@ esac
 fi
 
 
+ac_default_ld_error_execstack=0
+# Check whether --enable-error-execstack was given.
+if test "${enable_error_execstack+set}" = set; then :
+  enableval=$enable_error_execstack; case "${enableval}" in
+  yes) ac_default_ld_error_execstack=1 ;;
+  no)  ac_default_ld_error_execstack=0 ;;
+esac
+fi
+
+
 ac_default_ld_warn_rwx_segments=unset
 # Check whether --enable-warn-rwx-segments was given.
 if test "${enable_warn_rwx_segments+set}" = set; then :
   enableval=$enable_warn_rwx_segments; case "${enableval}" in
   yes) ac_default_ld_warn_rwx_segments=1 ;;
   no)  ac_default_ld_warn_rwx_segments=0 ;;
+esac
+fi
+
+
+ac_default_ld_error_rwx_segments=0
+# Check whether --enable-error-rwx-segments was given.
+if test "${enable_error_rwx_segments+set}" = set; then :
+  enableval=$enable_error_rwx_segments; case "${enableval}" in
+  yes) ac_default_ld_error_rwx_segments=1 ;;
+  no)  ac_default_ld_error_rwx_segments=0 ;;
 esac
 fi
 
@@ -17444,12 +17470,24 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+
+cat >>confdefs.h <<_ACEOF
+#define DEFAULT_LD_ERROR_EXECSTACK $ac_default_ld_error_execstack
+_ACEOF
+
+
 if test "${ac_default_ld_warn_rwx_segments}" = unset; then
   ac_default_ld_warn_rwx_segments=1
 fi
 
 cat >>confdefs.h <<_ACEOF
 #define DEFAULT_LD_WARN_RWX_SEGMENTS $ac_default_ld_warn_rwx_segments
+_ACEOF
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define DEFAULT_LD_ERROR_RWX_SEGMENTS $ac_default_ld_error_rwx_segments
 _ACEOF
 
 

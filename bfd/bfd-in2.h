@@ -1831,6 +1831,9 @@ enum bfd_architecture
 #define bfd_mach_amdgcn_gfx1030 0x036
 #define bfd_mach_amdgcn_gfx1031 0x037
 #define bfd_mach_amdgcn_gfx1032 0x038
+#define bfd_mach_amdgcn_gfx1100 0x041
+#define bfd_mach_amdgcn_gfx1101 0x046
+#define bfd_mach_amdgcn_gfx1102 0x047
   bfd_arch_last
   };
 
@@ -2571,6 +2574,14 @@ unsigned int bfd_init (void);
 
 /* Value returned by bfd_init.  */
 #define BFD_INIT_MAGIC (sizeof (struct bfd_section))
+
+typedef bool (*bfd_lock_unlock_fn_type) (void *);
+bool bfd_thread_init
+   (bfd_lock_unlock_fn_type lock,
+    bfd_lock_unlock_fn_type unlock,
+    void *data);
+
+void bfd_thread_cleanup (void);
 
 long bfd_get_reloc_upper_bound (bfd *abfd, asection *sect);
 
@@ -5399,11 +5410,6 @@ enum bfd_reloc_code_real
   BFD_RELOC_RISCV_ALIGN,
   BFD_RELOC_RISCV_RVC_BRANCH,
   BFD_RELOC_RISCV_RVC_JUMP,
-  BFD_RELOC_RISCV_RVC_LUI,
-  BFD_RELOC_RISCV_GPREL_I,
-  BFD_RELOC_RISCV_GPREL_S,
-  BFD_RELOC_RISCV_TPREL_I,
-  BFD_RELOC_RISCV_TPREL_S,
   BFD_RELOC_RISCV_RELAX,
   BFD_RELOC_RISCV_CFA,
   BFD_RELOC_RISCV_SUB6,

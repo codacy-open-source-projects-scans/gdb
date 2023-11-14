@@ -9,6 +9,13 @@
 * GDB index now contains information about the main function.  This speeds up
   startup when it is being used for some large binaries.
 
+* Changed commands
+
+disassemble
+  Attempting to use both the 'r' and 'b' flags with the disassemble
+  command will now give an error.  Previously the 'b' flag would
+  always override the 'r' flag.
+
 * Python API
 
   ** New function gdb.notify_mi(NAME, DATA), that emits custom
@@ -16,6 +23,31 @@
 
   ** New read/write attribute gdb.Value.bytes that contains a bytes
      object holding the contents of this value.
+
+* New commands
+
+maintenance info linux-lwps
+  List all LWPs under control of the linux-nat target.
+
+set remote thread-options-packet
+show remote thread-options-packet
+  Set/show the use of the thread options packet.
+
+* New remote packets
+
+New stop reason: clone
+  Indicates that a clone system call was executed.
+
+QThreadOptions
+  Enable/disable optional event reporting, on a per-thread basis.
+  Currently supported options are GDB_THREAD_OPTION_CLONE, to enable
+  clone event reporting, and GDB_THREAD_OPTION_EXIT to enable thread
+  exit event reporting.
+
+QThreadOptions in qSupported
+  The qSupported packet allows GDB to inform the stub it supports the
+  QThreadOptions packet, and the qSupported response can contain the
+  set of thread options the remote stub supports.
 
 *** Changes in GDB 14
 
@@ -379,6 +411,13 @@ show tui mouse-events
   the core file in the event of a crash or if GDB generates a core file
   from the current process state.  GDB will show this additional information
   automatically, or through one of the memory-tag subcommands.
+
+* Scheduler-locking and new threads
+
+  When scheduler-locking is in effect, only the current thread may run
+  when the inferior is resumed.  However, previously, new threads
+  created by the resumed thread would still be able to run free.  Now,
+  they are held stopped.
 
 * "info breakpoints" now displays enabled breakpoint locations of
   disabled breakpoints as in the "y-" state.  For example:

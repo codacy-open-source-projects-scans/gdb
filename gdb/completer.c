@@ -2812,7 +2812,7 @@ gdb_complete_get_screenwidth (const struct match_list_displayer *displayer)
 extern int _rl_completion_prefix_display_length;
 extern int _rl_print_completions_horizontally;
 
-EXTERN_C int _rl_qsort_string_compare (const void *, const void *);
+extern "C" int _rl_qsort_string_compare (const void *, const void *);
 typedef int QSFUNC (const void *, const void *);
 
 /* GDB version of readline/complete.c:rl_display_match_list.
@@ -2989,6 +2989,59 @@ gdb_display_match_list (char **matches, int len, int max,
 	  displayer->crlf (displayer);
 	}
     }
+}
+
+/* See completer.h.  */
+
+bool
+skip_over_slash_fmt (completion_tracker &tracker, const char **args)
+{
+  const char *text = *args;
+
+  if (text[0] == '/')
+    {
+      bool in_fmt;
+      tracker.set_use_custom_word_point (true);
+
+      if (text[1] == '\0')
+	{
+	  /* The user tried to complete after typing just the '/' character
+	     of the /FMT string.  Step the completer past the '/', but we
+	     don't offer any completions.  */
+	  in_fmt = true;
+	  ++text;
+	}
+      else
+	{
+	  /* The user has typed some characters after the '/', we assume
+	     this is a complete /FMT string, first skip over it.  */
+	  text = skip_to_space (text);
+
+	  if (*text == '\0')
+	    {
+	      /* We're at the end of the input string.  The user has typed
+		 '/FMT' and asked for a completion.  Push an empty
+		 completion string, this will cause readline to insert a
+		 space so the user now has '/FMT '.  */
+	      in_fmt = true;
+	      tracker.add_completion (make_unique_xstrdup (text));
+	    }
+	  else
+	    {
+	      /* The user has already typed things after the /FMT, skip the
+		 whitespace and return false.  Whoever called this function
+		 should then try to complete what comes next.  */
+	      in_fmt = false;
+	      text = skip_spaces (text);
+	    }
+	}
+
+      tracker.advance_custom_word_point_by (text - *args);
+      *args = text;
+      return in_fmt;
+    }
+
+  return false;
 }
 
 void _initialize_completer ();

@@ -62,7 +62,7 @@
 #include "thread-fsm.h"
 #include "gdbsupport/enum-flags.h"
 #include "progspace-and-thread.h"
-#include "gdbsupport/gdb_optional.h"
+#include <optional>
 #include "arch-utils.h"
 #include "gdbsupport/scope-exit.h"
 #include "gdbsupport/forward-scope-exit.h"
@@ -713,7 +713,7 @@ holding the child stopped.  Try \"set detach-on-fork\" or \
     {
       /* If FOLLOW_CHILD, we leave CHILD_INF as the current inferior
 	 (do not restore the parent as the current inferior).  */
-      gdb::optional<scoped_restore_current_thread> maybe_restore;
+      std::optional<scoped_restore_current_thread> maybe_restore;
 
       if (!follow_child && !sched_multi)
 	maybe_restore.emplace ();
@@ -2079,10 +2079,8 @@ displaced_step_finish (thread_info *event_thread,
 	 point.  */
 
       struct regcache *child_regcache
-	= get_thread_arch_aspace_regcache (parent_inf,
-					   event_status.child_ptid (),
-					   gdbarch,
-					   parent_inf->aspace);
+	= get_thread_arch_regcache (parent_inf, event_status.child_ptid (),
+				    gdbarch);
       /* Read PC value of parent.  */
       CORE_ADDR parent_pc = regcache_read_pc (regcache);
 
@@ -2623,10 +2621,9 @@ do_target_resume (ptid_t resume_ptid, bool step, enum gdb_signal sig)
 static void
 resume_1 (enum gdb_signal sig)
 {
-  struct regcache *regcache = get_current_regcache ();
-  struct gdbarch *gdbarch = regcache->arch ();
   struct thread_info *tp = inferior_thread ();
-  const address_space *aspace = regcache->aspace ();
+  regcache *regcache = get_thread_regcache (tp);
+  struct gdbarch *gdbarch = regcache->arch ();
   ptid_t resume_ptid;
   /* This represents the user's step vs continue request.  When
      deciding whether "set scheduler-locking step" applies, it's the
@@ -2704,6 +2701,8 @@ resume_1 (enum gdb_signal sig)
 		       tp->control.trap_expected,
 		       inferior_ptid.to_string ().c_str (),
 		       paddress (gdbarch, pc));
+
+  const address_space *aspace = tp->inf->aspace;
 
   /* Normally, by the time we reach `resume', the breakpoints are either
      removed or inserted, as appropriate.  The exception is if we're sitting
@@ -2819,8 +2818,8 @@ resume_1 (enum gdb_signal sig)
 	  if (target_is_non_stop_p ())
 	    stop_all_threads ("displaced stepping falling back on inline stepping");
 
-	  set_step_over_info (regcache->aspace (),
-			      regcache_read_pc (regcache), 0, tp->global_num);
+	  set_step_over_info (aspace, regcache_read_pc (regcache), 0,
+			      tp->global_num);
 
 	  step = maybe_software_singlestep (gdbarch);
 
@@ -3147,7 +3146,7 @@ thread_still_needs_step_over_bp (struct thread_info *tp)
     {
       struct regcache *regcache = get_thread_regcache (tp);
 
-      if (breakpoint_here_p (regcache->aspace (),
+      if (breakpoint_here_p (tp->inf->aspace,
 			     regcache_read_pc (regcache))
 	  == ordinary_breakpoint_here)
 	return true;
@@ -3567,7 +3566,6 @@ proceed (CORE_ADDR addr, enum gdb_signal siggnal)
 {
   INFRUN_SCOPED_DEBUG_ENTER_EXIT;
 
-  struct regcache *regcache;
   struct gdbarch *gdbarch;
   CORE_ADDR pc;
 
@@ -3588,15 +3586,12 @@ proceed (CORE_ADDR addr, enum gdb_signal siggnal)
   /* We'll update this if & when we switch to a new thread.  */
   update_previous_thread ();
 
-  regcache = get_current_regcache ();
-  gdbarch = regcache->arch ();
-  const address_space *aspace = regcache->aspace ();
-
-  pc = regcache_read_pc_protected (regcache);
-
   thread_info *cur_thr = inferior_thread ();
-
   infrun_debug_printf ("cur_thr = %s", cur_thr->ptid.to_string ().c_str ());
+
+  regcache *regcache = get_thread_regcache (cur_thr);
+  gdbarch = regcache->arch ();
+  pc = regcache_read_pc_protected (regcache);
 
   /* Fill in with reasonable starting values.  */
   init_thread_stepping_state (cur_thr);
@@ -3612,6 +3607,8 @@ proceed (CORE_ADDR addr, enum gdb_signal siggnal)
 
   if (addr == (CORE_ADDR) -1)
     {
+      const address_space *aspace = cur_thr->inf->aspace;
+
       if (cur_thr->stop_pc_p ()
 	  && pc == cur_thr->stop_pc ()
 	  && breakpoint_here_p (aspace, pc) == ordinary_breakpoint_here
@@ -4040,7 +4037,7 @@ do_target_wait_1 (inferior *inf, ptid_t ptid,
 			       paddress (gdbarch, pc));
 	  discard = 1;
 	}
-      else if (!breakpoint_inserted_here_p (regcache->aspace (), pc))
+      else if (!breakpoint_inserted_here_p (tp->inf->aspace, pc))
 	{
 	  infrun_debug_printf ("previous breakpoint of %s, at %s gone",
 			       tp->ptid.to_string ().c_str (),
@@ -4359,7 +4356,7 @@ wait_for_inferior (inferior *inf)
 	 Target was running and cache could be stale.  This is just a
 	 heuristic.  Running threads may modify target memory, but we
 	 don't get any event.  */
-      target_dcache_invalidate ();
+      target_dcache_invalidate (current_program_space->aspace);
 
       ecs.ptid = do_target_wait_1 (inf, minus_one_ptid, &ecs.ws, 0);
       ecs.target = inf->process_target ();
@@ -4590,7 +4587,7 @@ fetch_inferior_event ()
        debugging.  If we're looking at traceframes while the target is
        running, we're going to need to get back to that mode after
        handling the event.  */
-    gdb::optional<scoped_restore_current_traceframe> maybe_restore_traceframe;
+    std::optional<scoped_restore_current_traceframe> maybe_restore_traceframe;
     if (non_stop)
       {
 	maybe_restore_traceframe.emplace ();
@@ -4608,7 +4605,7 @@ fetch_inferior_event ()
        was running and cache could be stale.  This is just a heuristic.
        Running threads may modify target memory, but we don't get any
        event.  */
-    target_dcache_invalidate ();
+    target_dcache_invalidate (current_program_space->aspace);
 
     scoped_restore save_exec_dir
       = make_scoped_restore (&execution_direction,
@@ -4937,7 +4934,7 @@ adjust_pc_after_break (struct thread_info *thread,
   if (decr_pc == 0)
     return;
 
-  const address_space *aspace = regcache->aspace ();
+  const address_space *aspace = thread->inf->aspace;
 
   /* Find the location where (if we've hit a breakpoint) the
      breakpoint would be.  */
@@ -4963,7 +4960,7 @@ adjust_pc_after_break (struct thread_info *thread,
       || (target_is_non_stop_p ()
 	  && moribund_breakpoint_here_p (aspace, breakpoint_pc)))
     {
-      gdb::optional<scoped_restore_tmpl<int>> restore_operation_disable;
+      std::optional<scoped_restore_tmpl<int>> restore_operation_disable;
 
       if (record_full_is_used ())
 	restore_operation_disable.emplace
@@ -5089,7 +5086,7 @@ handle_syscall_event (struct execution_control_state *ecs)
       infrun_debug_printf ("syscall number=%d", syscall_number);
 
       ecs->event_thread->control.stop_bpstat
-	= bpstat_stop_status_nowatch (regcache->aspace (),
+	= bpstat_stop_status_nowatch (ecs->event_thread->inf->aspace,
 				      ecs->event_thread->stop_pc (),
 				      ecs->event_thread, ecs->ws);
 
@@ -5187,7 +5184,7 @@ poll_one_curr_target (struct target_waitstatus *ws)
      Target was running and cache could be stale.  This is just a
      heuristic.  Running threads may modify target memory, but we
      don't get any event.  */
-  target_dcache_invalidate ();
+  target_dcache_invalidate (current_program_space->aspace);
 
   event_ptid = target_wait (minus_one_ptid, ws, TARGET_WNOHANG);
 
@@ -5288,7 +5285,7 @@ save_waitstatus (struct thread_info *tp, const target_waitstatus &ws)
       && ws.sig () == GDB_SIGNAL_TRAP)
     {
       struct regcache *regcache = get_thread_regcache (tp);
-      const address_space *aspace = regcache->aspace ();
+      const address_space *aspace = tp->inf->aspace;
       CORE_ADDR pc = regcache_read_pc (regcache);
 
       adjust_pc_after_break (tp, tp->pending_waitstatus ());
@@ -6085,7 +6082,7 @@ handle_inferior_event (struct execution_control_state *ecs)
     {
       struct regcache *regcache = get_thread_regcache (ecs->event_thread);
 
-      if (breakpoint_inserted_here_p (regcache->aspace (),
+      if (breakpoint_inserted_here_p (ecs->event_thread->inf->aspace,
 				      regcache_read_pc (regcache)))
 	{
 	  infrun_debug_printf ("Treating signal as SIGTRAP");
@@ -6118,7 +6115,7 @@ handle_inferior_event (struct execution_control_state *ecs)
 
 	    ecs->event_thread->set_stop_pc (regcache_read_pc (regcache));
 	    ecs->event_thread->control.stop_bpstat
-	      = bpstat_stop_status_nowatch (regcache->aspace (),
+	      = bpstat_stop_status_nowatch (ecs->event_thread->inf->aspace,
 					    ecs->event_thread->stop_pc (),
 					    ecs->event_thread, ecs->ws);
 
@@ -6312,7 +6309,7 @@ handle_inferior_event (struct execution_control_state *ecs)
 	(regcache_read_pc (get_thread_regcache (ecs->event_thread)));
 
       ecs->event_thread->control.stop_bpstat
-	= bpstat_stop_status_nowatch (get_current_regcache ()->aspace (),
+	= bpstat_stop_status_nowatch (ecs->event_thread->inf->aspace,
 				      ecs->event_thread->stop_pc (),
 				      ecs->event_thread, ecs->ws);
 
@@ -6458,7 +6455,7 @@ handle_inferior_event (struct execution_control_state *ecs)
 	(regcache_read_pc (get_thread_regcache (ecs->event_thread)));
 
       ecs->event_thread->control.stop_bpstat
-	= bpstat_stop_status_nowatch (get_current_regcache ()->aspace (),
+	= bpstat_stop_status_nowatch (ecs->event_thread->inf->aspace,
 				      ecs->event_thread->stop_pc (),
 				      ecs->event_thread, ecs->ws);
 
@@ -6884,7 +6881,7 @@ handle_signal_stop (struct execution_control_state *ecs)
       CORE_ADDR pc;
 
       regcache = get_thread_regcache (ecs->event_thread);
-      const address_space *aspace = regcache->aspace ();
+      const address_space *aspace = ecs->event_thread->inf->aspace;
 
       pc = regcache_read_pc (regcache);
 
@@ -6968,8 +6965,7 @@ handle_signal_stop (struct execution_control_state *ecs)
      inline function call sites).  */
   if (ecs->event_thread->control.step_range_end != 1)
     {
-      const address_space *aspace
-	= get_thread_regcache (ecs->event_thread)->aspace ();
+      const address_space *aspace = ecs->event_thread->inf->aspace;
 
       /* skip_inline_frames is expensive, so we avoid it if we can
 	 determine that the address is one where functions cannot have
@@ -7047,7 +7043,7 @@ handle_signal_stop (struct execution_control_state *ecs)
   /* See if there is a breakpoint/watchpoint/catchpoint/etc. that
      handles this event.  */
   ecs->event_thread->control.stop_bpstat
-    = bpstat_stop_status (get_current_regcache ()->aspace (),
+    = bpstat_stop_status (ecs->event_thread->inf->aspace,
 			  ecs->event_thread->stop_pc (),
 			  ecs->event_thread, ecs->ws, stop_chain);
 
@@ -7113,7 +7109,7 @@ handle_signal_stop (struct execution_control_state *ecs)
 	  decr_pc = gdbarch_decr_pc_after_break (gdbarch);
 	  if (decr_pc != 0)
 	    {
-	      gdb::optional<scoped_restore_tmpl<int>>
+	      std::optional<scoped_restore_tmpl<int>>
 		restore_operation_disable;
 
 	      if (record_full_is_used ())
@@ -7316,6 +7312,11 @@ process_event_stop_test (struct execution_control_state *ecs)
   frame = get_current_frame ();
   gdbarch = get_frame_arch (frame);
 
+  /* Shorthand to make if statements smaller.  */
+  struct frame_id original_frame_id
+    = ecs->event_thread->control.step_frame_id;
+  struct frame_id curr_frame_id = get_frame_id (get_current_frame ());
+
   switch (what.main_action)
     {
     case BPSTAT_WHAT_SET_LONGJMP_RESUME:
@@ -7402,9 +7403,7 @@ process_event_stop_test (struct execution_control_state *ecs)
 
 	if (init_frame)
 	  {
-	    struct frame_id current_id
-	      = get_frame_id (get_current_frame ());
-	    if (current_id == ecs->event_thread->initiating_frame)
+	    if (curr_frame_id == ecs->event_thread->initiating_frame)
 	      {
 		/* Case 2.  Fall through.  */
 	      }
@@ -7577,7 +7576,7 @@ process_event_stop_test (struct execution_control_state *ecs)
   if (pc_in_thread_step_range (ecs->event_thread->stop_pc (),
 			       ecs->event_thread)
       && (execution_direction != EXEC_REVERSE
-	  || get_frame_id (frame) == ecs->event_thread->control.step_frame_id))
+	  || curr_frame_id == original_frame_id))
     {
       infrun_debug_printf
 	("stepping inside range [%s-%s]",
@@ -8020,8 +8019,7 @@ process_event_stop_test (struct execution_control_state *ecs)
      frame machinery detected some skipped call sites, we have entered
      a new inline function.  */
 
-  if ((get_frame_id (get_current_frame ())
-       == ecs->event_thread->control.step_frame_id)
+  if ((curr_frame_id == original_frame_id)
       && inline_skipped_frames (ecs->event_thread))
     {
       infrun_debug_printf ("stepped into inlined function");
@@ -8069,10 +8067,8 @@ process_event_stop_test (struct execution_control_state *ecs)
      through a more inlined call beyond its call site.  */
 
   if (get_frame_type (get_current_frame ()) == INLINE_FRAME
-      && (get_frame_id (get_current_frame ())
-	  != ecs->event_thread->control.step_frame_id)
-      && stepped_in_from (get_current_frame (),
-			  ecs->event_thread->control.step_frame_id))
+      && (curr_frame_id != original_frame_id)
+      && stepped_in_from (get_current_frame (), original_frame_id))
     {
       infrun_debug_printf ("stepping through inlined function");
 
@@ -8102,8 +8098,7 @@ process_event_stop_test (struct execution_control_state *ecs)
 	  end_stepping_range (ecs);
 	  return;
 	}
-      else if (get_frame_id (get_current_frame ())
-	       == ecs->event_thread->control.step_frame_id)
+      else if (curr_frame_id == original_frame_id)
 	{
 	  /* We are not at the start of a statement, and we have not changed
 	     frame.
@@ -8127,6 +8122,19 @@ process_event_stop_test (struct execution_control_state *ecs)
 	  infrun_debug_printf ("stepped to a different frame, but "
 			       "it's not the start of a statement");
 	}
+    }
+  else if (execution_direction == EXEC_REVERSE
+	  && curr_frame_id != original_frame_id
+	  && original_frame_id.code_addr_p && curr_frame_id.code_addr_p
+	  && original_frame_id.code_addr == curr_frame_id.code_addr)
+    {
+      /* If we enter here, we're leaving a recursive function call.  In this
+	 situation, we shouldn't refresh the step information, because if we
+	 do, we'll lose the frame_id of when we started stepping, and this
+	 will make GDB not know we need to print frame information.  */
+      refresh_step_info = false;
+      infrun_debug_printf ("reverse stepping, left a recursive call, don't "
+			   "update step info so we remember we left a frame");
     }
 
   /* We aren't done stepping.
@@ -8895,7 +8903,7 @@ keep_going_pass_signal (struct execution_control_state *ecs)
     }
   else
     {
-      struct regcache *regcache = get_current_regcache ();
+      regcache *regcache = get_thread_regcache (ecs->event_thread);
       int remove_bp;
       int remove_wps;
       step_over_what step_what;
@@ -8931,7 +8939,7 @@ keep_going_pass_signal (struct execution_control_state *ecs)
       if (remove_bp
 	  && (remove_wps || !use_displaced_stepping (ecs->event_thread)))
 	{
-	  set_step_over_info (regcache->aspace (),
+	  set_step_over_info (ecs->event_thread->inf->aspace,
 			      regcache_read_pc (regcache), remove_wps,
 			      ecs->event_thread->global_num);
 	}
@@ -9113,7 +9121,7 @@ print_signal_received_reason (struct ui_out *uiout, enum gdb_signal siggnal)
       annotate_signal_string ();
       uiout->field_string ("signal-meaning", gdb_signal_to_string (siggnal));
 
-      struct regcache *regcache = get_current_regcache ();
+      regcache *regcache = get_thread_regcache (thr);
       struct gdbarch *gdbarch = regcache->arch ();
       if (gdbarch_report_signal_info_p (gdbarch))
 	gdbarch_report_signal_info (gdbarch, uiout, siggnal);
@@ -9335,7 +9343,7 @@ normal_stop ()
 	   && last.kind () != TARGET_WAITKIND_THREAD_EXITED)
     finish_ptid = inferior_ptid;
 
-  gdb::optional<scoped_finish_thread_state> maybe_finish_thread_state;
+  std::optional<scoped_finish_thread_state> maybe_finish_thread_state;
   if (finish_ptid != null_ptid)
     {
       maybe_finish_thread_state.emplace
@@ -10027,7 +10035,7 @@ infcall_suspend_state_up
 save_infcall_suspend_state ()
 {
   struct thread_info *tp = inferior_thread ();
-  struct regcache *regcache = get_current_regcache ();
+  regcache *regcache = get_thread_regcache (tp);
   struct gdbarch *gdbarch = regcache->arch ();
 
   infcall_suspend_state_up inf_state
@@ -10048,7 +10056,7 @@ void
 restore_infcall_suspend_state (struct infcall_suspend_state *inf_state)
 {
   struct thread_info *tp = inferior_thread ();
-  struct regcache *regcache = get_current_regcache ();
+  regcache *regcache = get_thread_regcache (inferior_thread ());
   struct gdbarch *gdbarch = regcache->arch ();
 
   inf_state->restore (gdbarch, tp, regcache);

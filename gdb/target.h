@@ -345,7 +345,7 @@ LONGEST target_write_with_progress (struct target_ops *ops,
    size is known in advance.  Don't try to read TARGET_OBJECT_MEMORY
    through this function.  */
 
-extern gdb::optional<gdb::byte_vector> target_read_alloc
+extern std::optional<gdb::byte_vector> target_read_alloc
     (struct target_ops *ops, enum target_object object, const char *annex);
 
 /* Read OBJECT/ANNEX using OPS.  The result is a NUL-terminated character vector
@@ -355,7 +355,7 @@ extern gdb::optional<gdb::byte_vector> target_read_alloc
    the returned vector is guaranteed to have at least one element.  A warning is
    issued if the result contains any embedded NUL bytes.  */
 
-extern gdb::optional<gdb::char_vector> target_read_stralloc
+extern std::optional<gdb::char_vector> target_read_stralloc
     (struct target_ops *ops, enum target_object object, const char *annex);
 
 /* See target_ops->to_xfer_partial.  */
@@ -949,10 +949,6 @@ struct target_ops
     virtual struct gdbarch *thread_architecture (ptid_t)
       TARGET_DEFAULT_RETURN (NULL);
 
-    /* Determine current address space of thread PTID.  */
-    virtual struct address_space *thread_address_space (ptid_t)
-      TARGET_DEFAULT_RETURN (NULL);
-
     /* Target file operations.  */
 
     /* Return true if the filesystem seen by the current inferior
@@ -1005,7 +1001,7 @@ struct target_ops
        seen by the debugger (GDB or, for remote targets, the remote
        stub).  Return a string, or an empty optional if an error
        occurs (and set *TARGET_ERRNO).  */
-    virtual gdb::optional<std::string> fileio_readlink (struct inferior *inf,
+    virtual std::optional<std::string> fileio_readlink (struct inferior *inf,
 							const char *filename,
 							fileio_error *target_errno);
 
@@ -1543,10 +1539,6 @@ extern void target_store_registers (struct regcache *regcache, int regs);
    debugged.  */
 
 extern void target_prepare_to_store (regcache *regcache);
-
-/* Determine current address space of thread PTID.  */
-
-struct address_space *target_thread_address_space (ptid_t);
 
 /* Implement the "info proc" command.  This returns one if the request
    was handled, and zero otherwise.  It can also throw an exception if
@@ -2214,7 +2206,7 @@ extern int target_fileio_unlink (struct inferior *inf,
    by the debugger (GDB or, for remote targets, the remote stub).
    Return a null-terminated string allocated via xmalloc, or NULL if
    an error occurs (and set *TARGET_ERRNO).  */
-extern gdb::optional<std::string> target_fileio_readlink
+extern std::optional<std::string> target_fileio_readlink
     (struct inferior *inf, const char *filename, fileio_error *target_errno);
 
 /* Read target file FILENAME, in the filesystem as seen by INF.  If
@@ -2477,7 +2469,7 @@ struct target_ops *find_target_at (enum strata stratum);
 /* Read OS data object of type TYPE from the target, and return it in XML
    format.  The return value follows the same rules as target_read_stralloc.  */
 
-extern gdb::optional<gdb::char_vector> target_get_osdata (const char *type);
+extern std::optional<gdb::char_vector> target_get_osdata (const char *type);
 
 /* Stuff that should be shared among the various remote targets.  */
 

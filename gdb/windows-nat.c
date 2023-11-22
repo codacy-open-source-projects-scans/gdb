@@ -1335,7 +1335,7 @@ windows_nat_target::windows_continue (DWORD continue_status, int id,
 	th->suspend ();
       }
 
-  gdb::optional<unsigned> err;
+  std::optional<unsigned> err;
   do_synchronously ([&] ()
     {
       if (!continue_last_debug_event (continue_status, debug_events))
@@ -1441,7 +1441,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  if (step)
 	    {
 	      /* Single step by setting t bit.  */
-	      struct regcache *regcache = get_current_regcache ();
+	      regcache *regcache = get_thread_regcache (inferior_thread ());
 	      struct gdbarch *gdbarch = regcache->arch ();
 	      fetch_registers (regcache, gdbarch_ps_regnum (gdbarch));
 	      th->wow64_context.EFlags |= FLAG_TRACE_BIT;
@@ -1469,7 +1469,7 @@ windows_nat_target::resume (ptid_t ptid, int step, enum gdb_signal sig)
 	  if (step)
 	    {
 	      /* Single step by setting t bit.  */
-	      struct regcache *regcache = get_current_regcache ();
+	      regcache *regcache = get_thread_regcache (inferior_thread ());
 	      struct gdbarch *gdbarch = regcache->arch ();
 	      fetch_registers (regcache, gdbarch_ps_regnum (gdbarch));
 	      th->context.EFlags |= FLAG_TRACE_BIT;
@@ -1561,7 +1561,7 @@ windows_nat_target::get_windows_debug_event
   /* If there is a relevant pending stop, report it now.  See the
      comment by the definition of "pending_stops" for details on why
      this is needed.  */
-  gdb::optional<pending_stop> stop
+  std::optional<pending_stop> stop
     = windows_process.fetch_pending_stop (debug_events);
   if (stop.has_value ())
     {
@@ -2024,7 +2024,7 @@ windows_nat_target::attach (const char *args, int from_tty)
   windows_init_thread_list ();
   windows_process.saw_create = 0;
 
-  gdb::optional<unsigned> err;
+  std::optional<unsigned> err;
   do_synchronously ([&] ()
     {
       BOOL ok = DebugActiveProcess (pid);
@@ -2074,7 +2074,7 @@ windows_nat_target::detach (inferior *inf, int from_tty)
 {
   windows_continue (DBG_CONTINUE, -1, 0, true);
 
-  gdb::optional<unsigned> err;
+  std::optional<unsigned> err;
   do_synchronously ([&] ()
     {
       if (!DebugActiveProcessStop (windows_process.current_event.dwProcessId))
@@ -2533,7 +2533,7 @@ windows_nat_target::create_inferior (const char *exec_file,
 #endif	/* !__CYGWIN__ */
   const char *allargs = origallargs.c_str ();
   PROCESS_INFORMATION pi;
-  gdb::optional<unsigned> ret;
+  std::optional<unsigned> ret;
   DWORD flags = 0;
   const std::string &inferior_tty = current_inferior ()->tty ();
 
@@ -2908,30 +2908,25 @@ windows_xfer_shared_libraries (struct target_ops *ops,
 			       ULONGEST offset, ULONGEST len,
 			       ULONGEST *xfered_len)
 {
-  auto_obstack obstack;
-  const char *buf;
-  LONGEST len_avail;
-
   if (writebuf)
     return TARGET_XFER_E_IO;
 
-  obstack_grow_str (&obstack, "<library-list>\n");
+  std::string xml = "<library-list>\n";
   for (windows_solib &so : windows_process.solibs)
     windows_xfer_shared_library (so.name.c_str (),
 				 (CORE_ADDR) (uintptr_t) so.load_addr,
 				 &so.text_offset,
-				 current_inferior ()->arch (), &obstack);
-  obstack_grow_str0 (&obstack, "</library-list>\n");
+				 current_inferior ()->arch (), xml);
+  xml += "</library-list>\n";
 
-  buf = (const char *) obstack_finish (&obstack);
-  len_avail = strlen (buf);
+  ULONGEST len_avail = xml.size ();
   if (offset >= len_avail)
-    len= 0;
+    len = 0;
   else
     {
       if (len > len_avail - offset)
 	len = len_avail - offset;
-      memcpy (readbuf, buf + offset, len);
+      memcpy (readbuf, xml.data () + offset, len);
     }
 
   *xfered_len = (ULONGEST) len;

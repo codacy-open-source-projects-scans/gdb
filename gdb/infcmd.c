@@ -52,7 +52,7 @@
 #include "ui.h"
 #include "interps.h"
 #include "skip.h"
-#include "gdbsupport/gdb_optional.h"
+#include <optional>
 #include "source.h"
 #include "cli/cli-style.h"
 #include "dwarf2/loc.h"
@@ -496,7 +496,8 @@ run_command_1 (const char *args, int from_tty, enum run_how run_how)
 
   /* Start the target running.  Do not use -1 continuation as it would skip
      breakpoint right at the entry point.  */
-  proceed (regcache_read_pc (get_current_regcache ()), GDB_SIGNAL_0);
+  proceed (regcache_read_pc (get_thread_regcache (inferior_thread ())),
+	   GDB_SIGNAL_0);
 
   /* Since there was no error, there's no need to finish the thread
      states here.  */
@@ -1466,7 +1467,7 @@ advance_command (const char *arg, int from_tty)
 struct value *
 get_return_value (struct symbol *func_symbol, struct value *function)
 {
-  regcache *stop_regs = get_current_regcache ();
+  regcache *stop_regs = get_thread_regcache (inferior_thread ());
   struct gdbarch *gdbarch = stop_regs->arch ();
   struct value *value;
 
@@ -2498,7 +2499,6 @@ kill_command (const char *arg, int from_tty)
   int infnum = current_inferior ()->num;
 
   target_kill ();
-  bfd_cache_close_all ();
 
   update_previous_thread ();
 
@@ -2790,7 +2790,7 @@ notice_new_inferior (thread_info *thr, bool leave_running, int from_tty)
   enum attach_post_wait_mode mode
     = leave_running ? ATTACH_POST_WAIT_RESUME : ATTACH_POST_WAIT_NOTHING;
 
-  gdb::optional<scoped_restore_current_thread> restore_thread;
+  std::optional<scoped_restore_current_thread> restore_thread;
 
   if (inferior_ptid != null_ptid)
     restore_thread.emplace ();

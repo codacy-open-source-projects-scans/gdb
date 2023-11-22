@@ -97,7 +97,7 @@ static const char *const print_frame_info_choices[] =
 
 /* print_frame_info_print_what[i] maps a choice to the corresponding
    print_what enum.  */
-static const gdb::optional<enum print_what> print_frame_info_print_what[] =
+static const std::optional<enum print_what> print_frame_info_print_what[] =
   {{}, /* Empty value for "auto".  */
    SRC_LINE, LOCATION, SRC_AND_LOC, LOC_AND_ADDRESS, SHORT_LOCATION};
 
@@ -973,7 +973,7 @@ do_gdb_disassembly (struct gdbarch *gdbarch,
    Value not present indicates to the caller to use default values
    specific to the command being executed.  */
 
-static gdb::optional<enum print_what>
+static std::optional<enum print_what>
 print_frame_info_to_print_what (const char *print_frame_info)
 {
   for (int i = 0; print_frame_info_choices[i] != NULL; i++)
@@ -1004,7 +1004,7 @@ print_pc (struct ui_out *uiout, struct gdbarch *gdbarch, frame_info_ptr frame,
 /* See stack.h.  */
 
 void
-get_user_print_what_frame_info (gdb::optional<enum print_what> *what)
+get_user_print_what_frame_info (std::optional<enum print_what> *what)
 {
   *what
     = print_frame_info_to_print_what
@@ -2261,8 +2261,8 @@ iterate_over_block_local_vars (const struct block *block,
 
 struct print_variable_and_value_data
 {
-  gdb::optional<compiled_regex> preg;
-  gdb::optional<compiled_regex> treg;
+  std::optional<compiled_regex> preg;
+  std::optional<compiled_regex> treg;
   struct frame_id frame_id;
   int num_tabs;
   struct ui_file *stream;
@@ -2307,7 +2307,7 @@ print_variable_and_value_data::operator() (const char *print_name,
    If REGEXP is NULL, it results in an empty regular expression.  */
 
 static void
-prepare_reg (const char *regexp, gdb::optional<compiled_regex> *reg)
+prepare_reg (const char *regexp, std::optional<compiled_regex> *reg)
 {
   if (regexp != NULL)
     {
@@ -2499,8 +2499,8 @@ print_frame_arg_vars (frame_info_ptr frame,
   struct print_variable_and_value_data cb_data;
   struct symbol *func;
   CORE_ADDR pc;
-  gdb::optional<compiled_regex> preg;
-  gdb::optional<compiled_regex> treg;
+  std::optional<compiled_regex> preg;
+  std::optional<compiled_regex> treg;
 
   if (!get_frame_pc_if_available (frame, &pc))
     {
@@ -2798,13 +2798,13 @@ return_command (const char *retval_exp, int from_tty)
   if (return_value != NULL)
     {
       struct type *return_type = return_value->type ();
-      struct gdbarch *cache_arch = get_current_regcache ()->arch ();
+      regcache *regcache = get_thread_regcache (inferior_thread ());
+      struct gdbarch *cache_arch = regcache->arch ();
 
       gdb_assert (rv_conv != RETURN_VALUE_STRUCT_CONVENTION
 		  && rv_conv != RETURN_VALUE_ABI_RETURNS_ADDRESS);
       gdbarch_return_value_as_value
-	(cache_arch, function, return_type,
-	 get_current_regcache (), NULL /*read*/,
+	(cache_arch, function, return_type, regcache, NULL /*read*/,
 	 return_value->contents ().data () /*write*/);
     }
 

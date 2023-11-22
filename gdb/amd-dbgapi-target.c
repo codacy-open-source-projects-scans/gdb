@@ -96,7 +96,7 @@ amd_dbgapi_lib_debug_module ()
 /* Print amd-dbgapi start/end debug statements.  */
 
 #define AMD_DBGAPI_SCOPED_DEBUG_START_END(fmt, ...) \
-    scoped_debug_start_end (debug_infrun, amd_dbgapi_debug_module (), \
+    scoped_debug_start_end (debug_amd_dbgapi, amd_dbgapi_debug_module (), \
 			    fmt, ##__VA_ARGS__)
 
 /* inferior_created observer token.  */
@@ -528,7 +528,7 @@ amd_dbgapi_target::xfer_partial (enum target_object object, const char *annex,
 			       ULONGEST offset, ULONGEST requested_len,
 			       ULONGEST *xfered_len)
 {
-  gdb::optional<scoped_restore_current_thread> maybe_restore_thread;
+  std::optional<scoped_restore_current_thread> maybe_restore_thread;
 
   if (!ptid_is_gpu (inferior_ptid))
     return beneath ()->xfer_partial (object, annex, readbuf, writebuf, offset,
@@ -1901,7 +1901,7 @@ static void
 amd_dbgapi_log_message_callback (amd_dbgapi_log_level_t level,
 				 const char *message)
 {
-  gdb::optional<target_terminal::scoped_restore_terminal_state> tstate;
+  std::optional<target_terminal::scoped_restore_terminal_state> tstate;
 
   if (target_supports_terminal_ours ())
     {

@@ -758,8 +758,8 @@ btrace_find_line_range (CORE_ADDR pc)
 
 static void
 btrace_print_lines (struct btrace_line_range lines, struct ui_out *uiout,
-		    gdb::optional<ui_out_emit_tuple> *src_and_asm_tuple,
-		    gdb::optional<ui_out_emit_list> *asm_list,
+		    std::optional<ui_out_emit_tuple> *src_and_asm_tuple,
+		    std::optional<ui_out_emit_list> *asm_list,
 		    gdb_disassembly_flags flags)
 {
   print_source_lines_flags psl_flags;
@@ -798,8 +798,8 @@ btrace_insn_history (struct ui_out *uiout,
 
   ui_out_emit_list list_emitter (uiout, "asm_insns");
 
-  gdb::optional<ui_out_emit_tuple> src_and_asm_tuple;
-  gdb::optional<ui_out_emit_list> asm_list;
+  std::optional<ui_out_emit_tuple> src_and_asm_tuple;
+  std::optional<ui_out_emit_list> asm_list;
 
   gdb_pretty_print_disassembler disasm (gdbarch, uiout);
 
@@ -2782,7 +2782,7 @@ record_btrace_set_replay (struct thread_info *tp,
   /* Start anew from the new replay position.  */
   record_btrace_clear_histories (btinfo);
 
-  inferior_thread ()->set_stop_pc (regcache_read_pc (get_current_regcache ()));
+  tp->set_stop_pc (regcache_read_pc (get_thread_regcache (tp)));
   print_stack_frame (get_selected_frame (NULL), 1, SRC_AND_LOC, 1);
 }
 

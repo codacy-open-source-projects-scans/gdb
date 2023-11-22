@@ -16,6 +16,28 @@ disassemble
   command will now give an error.  Previously the 'b' flag would
   always override the 'r' flag.
 
+* New commands
+
+info missing-debug-handler
+  List all the registered missing debug handlers.
+
+enable missing-debug-handler LOCUS HANDLER
+disable missing-debug-handler LOCUS HANDLER
+  Enable or disable a missing debug handler with a name matching the
+  regular expression HANDLER, in LOCUS.
+
+  LOCUS can be 'global' to operate on global missing debug handler,
+  'progspace' to operate on handlers within the current program space,
+  or can be a regular expression which is matched against the filename
+  of the primary executable in each program space.
+
+maintenance info linux-lwps
+  List all LWPs under control of the linux-nat target.
+
+set remote thread-options-packet
+show remote thread-options-packet
+  Set/show the use of the thread options packet.
+
 * Python API
 
   ** New function gdb.notify_mi(NAME, DATA), that emits custom
@@ -24,14 +46,16 @@ disassemble
   ** New read/write attribute gdb.Value.bytes that contains a bytes
      object holding the contents of this value.
 
-* New commands
+  ** New module gdb.missing_debug that facilitates dealing with
+     objfiles that are missing any debug information.
 
-maintenance info linux-lwps
-  List all LWPs under control of the linux-nat target.
+  ** New function gdb.missing_debug.register_handler that can register
+     an instance of a sub-class of gdb.missing_debug.MissingDebugInfo
+     as a handler for objfiles that are missing debug information.
 
-set remote thread-options-packet
-show remote thread-options-packet
-  Set/show the use of the thread options packet.
+  ** New class gdb.missing_debug.MissingDebugInfo which can be
+     sub-classed to create handlers for objfiles with missing debug
+     information.
 
 * New remote packets
 
@@ -397,6 +421,9 @@ show tui mouse-events
      GDB.
 
   ** gdb.LazyString now implements the __str__ method.
+
+  ** New method gdb.Frame.static_link that returns the outer frame
+     of a nested function frame.
 
 *** Changes in GDB 13
 

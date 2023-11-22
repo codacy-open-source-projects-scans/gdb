@@ -43,6 +43,7 @@
 #include "hashtab.h"
 #include "valprint.h"
 #include "cli/cli-option.h"
+#include "dwarf2/loc.h"
 
 /* The sentinel frame terminates the innermost end of the frame chain.
    If unwound, it returns the information needed to construct an
@@ -1163,7 +1164,7 @@ frame_pop (frame_info_ptr this_frame)
      definition can lead to targets writing back bogus values
      (arguably a bug in the target code mind).  */
   /* Now copy those saved registers into the current regcache.  */
-  get_current_regcache ()->restore (scratch.get ());
+  get_thread_regcache (inferior_thread ())->restore (scratch.get ());
 
   /* We've made right mess of GDB's local state, just discard
      everything.  */
@@ -1444,7 +1445,7 @@ put_frame_register (frame_info_ptr frame, int regnum,
 	break;
       }
     case lval_register:
-      get_current_regcache ()->cooked_write (realnum, buf);
+      get_thread_regcache (inferior_thread ())->cooked_write (realnum, buf);
       break;
     default:
       error (_("Attempt to assign to an unmodifiable value."));
@@ -1619,14 +1620,15 @@ put_frame_register_bytes (frame_info_ptr frame, int regnum,
    CODE_ADDR.  */
 
 static frame_info_ptr
-create_sentinel_frame (struct program_space *pspace, struct regcache *regcache,
-		       CORE_ADDR stack_addr, CORE_ADDR code_addr)
+create_sentinel_frame (program_space *pspace, address_space *aspace,
+		       regcache *regcache, CORE_ADDR stack_addr,
+		       CORE_ADDR code_addr)
 {
   frame_info *frame = FRAME_OBSTACK_ZALLOC (struct frame_info);
 
   frame->level = -1;
   frame->pspace = pspace;
-  frame->aspace = regcache->aspace ();
+  frame->aspace = aspace;
   /* Explicitly initialize the sentinel frame's cache.  Provide it
      with the underlying regcache.  In the future additional
      information, such as the frame's thread will be added.  */
@@ -1687,7 +1689,8 @@ get_current_frame (void)
 
   if (sentinel_frame == NULL)
     sentinel_frame =
-      create_sentinel_frame (current_program_space, get_current_regcache (),
+      create_sentinel_frame (current_program_space, current_inferior ()->aspace,
+			     get_thread_regcache (inferior_thread ()),
 			     0, 0).get ();
 
   /* Set the current frame before computing the frame id, to avoid
@@ -2021,7 +2024,8 @@ create_new_frame (frame_id id)
   frame_info *fi = FRAME_OBSTACK_ZALLOC (struct frame_info);
 
   fi->next = create_sentinel_frame (current_program_space,
-				    get_current_regcache (),
+				    current_inferior ()->aspace,
+				    get_thread_regcache (inferior_thread ()),
 				    id.stack_addr, id.code_addr).get ();
 
   /* Set/update this frame's cached PC value, found in the next frame.
@@ -3118,6 +3122,45 @@ get_frame_sp (frame_info_ptr this_frame)
   /* NOTE drow/2008-06-28: gdbarch_unwind_sp could be converted to
      operate on THIS_FRAME now.  */
   return gdbarch_unwind_sp (gdbarch, frame_info_ptr (this_frame->next));
+}
+
+/* See frame.h.  */
+
+frame_info_ptr
+frame_follow_static_link (frame_info_ptr frame)
+{
+  const block *frame_block = get_frame_block (frame, nullptr);
+  frame_block = frame_block->function_block ();
+
+  const struct dynamic_prop *static_link = frame_block->static_link ();
+  if (static_link == nullptr)
+    return {};
+
+  CORE_ADDR upper_frame_base;
+
+  if (!dwarf2_evaluate_property (static_link, frame, NULL, &upper_frame_base))
+    return {};
+
+  /* Now climb up the stack frame until we reach the frame we are interested
+     in.  */
+  for (; frame != nullptr; frame = get_prev_frame (frame))
+    {
+      struct symbol *framefunc = get_frame_function (frame);
+
+      /* Stacks can be quite deep: give the user a chance to stop this.  */
+      QUIT;
+
+      /* If we don't know how to compute FRAME's base address, don't give up:
+	 maybe the frame we are looking for is upper in the stack frame.  */
+      if (framefunc != NULL
+	  && SYMBOL_BLOCK_OPS (framefunc) != NULL
+	  && SYMBOL_BLOCK_OPS (framefunc)->get_frame_base != NULL
+	  && (SYMBOL_BLOCK_OPS (framefunc)->get_frame_base (framefunc, frame)
+	      == upper_frame_base))
+	break;
+    }
+
+  return frame;
 }
 
 /* Return the reason why we can't unwind past FRAME.  */

@@ -68,8 +68,6 @@ public:
 
   const char *thread_name (struct thread_info *) override;
 
-  struct address_space *thread_address_space (ptid_t) override;
-
   bool stopped_by_watchpoint () override;
 
   bool stopped_data_address (CORE_ADDR *) override;
@@ -105,7 +103,7 @@ public:
 		   int flags, int mode, int warn_if_slow,
 		   fileio_error *target_errno) override;
 
-  gdb::optional<std::string>
+  std::optional<std::string>
     fileio_readlink (struct inferior *inf,
 		     const char *filename,
 		     fileio_error *target_errno) override;

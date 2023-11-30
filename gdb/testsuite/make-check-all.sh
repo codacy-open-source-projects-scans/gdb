@@ -66,6 +66,7 @@ host_target_boards=(
 # Boards that run everything on local target and local host.
 target_boards=(
     cc-with-gdb-index
+    cc-with-index-cache
     cc-with-debug-names
     cc-with-dwz
     cc-with-dwz-m
@@ -186,6 +187,10 @@ do_tests ()
 
 	mkdir -p "$dir"
 	cp gdb.sum gdb.log "$dir"
+
+	# Record the 'make check' command to enable easy re-running.
+	echo "make check RUNTESTFLAGS=\"${rtf[*]} ${tests[*]}\"" \
+	     > "$dir/make-check.sh"
     fi
 }
 

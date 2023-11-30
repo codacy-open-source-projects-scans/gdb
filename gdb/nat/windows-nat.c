@@ -206,8 +206,7 @@ windows_process_info::get_exec_module_filename (char *exe_name_ret,
     if (len == 0)
       {
 	unsigned err = (unsigned) GetLastError ();
-	error (_("Error getting executable filename (error %u): %s"),
-	       err, strwinerror (err));
+	throw_winerror_with_name (_("Error getting executable filename"), err);
       }
     if (cygwin_conv_path (CCP_WIN_W_TO_POSIX, pathbuf, exe_name_ret,
 			  exe_name_max_len) < 0)
@@ -219,8 +218,7 @@ windows_process_info::get_exec_module_filename (char *exe_name_ret,
   if (len == 0)
     {
       unsigned err = (unsigned) GetLastError ();
-      error (_("Error getting executable filename (error %u): %s"),
-	     err, strwinerror (err));
+      throw_winerror_with_name (_("Error getting executable filename"), err);
     }
 #endif
 
@@ -456,7 +454,7 @@ windows_process_info::handle_exception (struct target_waitstatus *ourstatus,
 	  break;
 	}
 #endif
-      /* FALLTHROUGH */
+      [[fallthrough]];
     case STATUS_WX86_BREAKPOINT:
       DEBUG_EXCEPTION_SIMPLE ("EXCEPTION_BREAKPOINT");
       ourstatus->set_stopped (GDB_SIGNAL_TRAP);
@@ -495,7 +493,7 @@ windows_process_info::handle_exception (struct target_waitstatus *ourstatus,
 	  break;
 	}
 	/* treat improperly formed exception as unknown */
-	/* FALLTHROUGH */
+	[[fallthrough]];
     default:
       /* Treat unhandled first chance exceptions specially.  */
       if (current_event.u.Exception.dwFirstChance)

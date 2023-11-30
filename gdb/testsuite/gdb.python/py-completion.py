@@ -28,6 +28,17 @@ class CompleteFileInit(gdb.Command):
         raise gdb.GdbError("not implemented")
 
 
+class CompleteFileNone(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, "completefilenone", gdb.COMMAND_USER)
+
+    def invoke(self, argument, from_tty):
+        raise gdb.GdbError("not implemented")
+
+    def complete(self, text, word):
+        return None
+
+
 class CompleteFileMethod(gdb.Command):
     def __init__(self):
         gdb.Command.__init__(self, "completefilemethod", gdb.COMMAND_USER)
@@ -202,7 +213,36 @@ class CompleteLimit7(gdb.Command):
         ]
 
 
+class CompleteBrkCharException(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, "complete_brkchar_exception", gdb.COMMAND_USER)
+
+    def invoke(self, argument, from_tty):
+        raise gdb.GdbError("not implemented")
+
+    def complete(self, text, word):
+        if word is None:
+            raise gdb.GdbError("brkchars exception")
+        else:
+            raise gdb.GdbError("completion exception")
+
+
+class CompleteRaiseException(gdb.Command):
+    def __init__(self):
+        gdb.Command.__init__(self, "complete_raise_exception", gdb.COMMAND_USER)
+
+    def invoke(self, argument, from_tty):
+        raise gdb.GdbError("not implemented")
+
+    def complete(self, text, word):
+        if word is None:
+            return []
+        else:
+            raise gdb.GdbError("completion exception")
+
+
 CompleteFileInit()
+CompleteFileNone()
 CompleteFileMethod()
 CompleteFileCommandCond()
 CompleteLimit1()
@@ -212,3 +252,5 @@ CompleteLimit4()
 CompleteLimit5()
 CompleteLimit6()
 CompleteLimit7()
+CompleteBrkCharException()
+CompleteRaiseException()

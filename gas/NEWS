@@ -1,5 +1,8 @@
 -*- text -*-
 
+* On RISC-V macro instructions expanding to AUIPC and a load, store, or branch
+  no longer accept x0 as an intermediate and/or destination register.
+
 * Add support for Reliability, Availability and Serviceability extension v2
   (RASv2) for AArch64.
 
@@ -30,6 +33,13 @@
 * Add support for Cortex-A720 for AArch64.
 
 * Add support for Cortex-X4 for AArch64.
+
+* Add support for various T-Head extensions (XTheadVector, XTheadZvlsseg
+  and XTheadZvamo) from version 2.3.0 of the T-Head ISA manual.
+
+* The BPF assembler now uses semi-colon (;) to separate statements, and
+  therefore they cannot longer be used to begin line comments. This matches the
+  behavior of the clang/LLVM BPF assembler.
 
 Changes in 2.41:
 

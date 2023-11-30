@@ -1129,7 +1129,7 @@ linux_read_core_file_mappings
    read_core_file_mappings_loop_ftype  loop_cb)
 {
   /* Ensure that ULONGEST is big enough for reading 64-bit core files.  */
-  gdb_static_assert (sizeof (ULONGEST) >= 8);
+  static_assert (sizeof (ULONGEST) >= 8);
 
   /* It's not required that the NT_FILE note exists, so return silently
      if it's not found.  Beyond this point though, we'll complain
@@ -1884,13 +1884,21 @@ linux_fill_prpsinfo (struct elf_internal_linux_prpsinfo *p)
   pid = inferior_ptid.pid ();
   xsnprintf (filename, sizeof (filename), "/proc/%d/cmdline", (int) pid);
   /* The full name of the program which generated the corefile.  */
-  gdb::unique_xmalloc_ptr<char> fname
-    = target_fileio_read_stralloc (NULL, filename);
+  gdb_byte *buf = NULL;
+  size_t buf_len = target_fileio_read_alloc (NULL, filename, &buf);
+  gdb::unique_xmalloc_ptr<char> fname ((char *)buf);
 
-  if (fname == NULL || fname.get ()[0] == '\0')
+  if (buf_len < 1 || fname.get ()[0] == '\0')
     {
       /* No program name was read, so we won't be able to retrieve more
 	 information about the process.  */
+      return 0;
+    }
+  if (fname.get ()[buf_len - 1] != '\0')
+    {
+      warning (_("target file %s "
+		 "does not contain a trailing null character"),
+	       filename);
       return 0;
     }
 

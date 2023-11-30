@@ -231,7 +231,7 @@ record_btrace_get_cpu (void)
 
     case CS_NONE:
       record_btrace_cpu.vendor = CV_UNKNOWN;
-      /* Fall through.  */
+      [[fallthrough]];
     case CS_CPU:
       return &record_btrace_cpu;
     }
@@ -2321,7 +2321,7 @@ record_btrace_replay_at_breakpoint (struct thread_info *tp)
   if (insn == NULL)
     return 0;
 
-  return record_check_stopped_by_breakpoint (tp->inf->aspace, insn->pc,
+  return record_check_stopped_by_breakpoint (tp->inf->aspace.get (), insn->pc,
 					     &btinfo->stop_reason);
 }
 

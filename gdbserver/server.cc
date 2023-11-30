@@ -55,7 +55,7 @@
 /* PBUFSIZ must also be at least as big as IPA_CMD_BUF_SIZE, because
    the client state data is passed directly to some agent
    functions.  */
-gdb_static_assert (PBUFSIZ >= IPA_CMD_BUF_SIZE);
+static_assert (PBUFSIZ >= IPA_CMD_BUF_SIZE);
 
 #define require_running_or_return(BUF)		\
   if (!target_running ())			\
@@ -1153,9 +1153,7 @@ monitor_show_help (void)
   monitor_output ("    Enable event loop debugging messages\n");
   monitor_output ("  set debug-format option1[,option2,...]\n");
   monitor_output ("    Add additional information to debugging messages\n");
-  monitor_output ("    Options: all, none");
-  monitor_output (", timestamp");
-  monitor_output ("\n");
+  monitor_output ("    Options: all, none, timestamp\n");
   monitor_output ("  exit\n");
   monitor_output ("    Quit GDBserver\n");
 }

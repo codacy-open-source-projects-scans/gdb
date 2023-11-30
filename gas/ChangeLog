@@ -1,3 +1,38 @@
+2023-11-28  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* NEWS: Add entry about change of comment syntax in the BPF
+	assembler.
+
+2023-11-28  Jose E. Marchesi  <jose.marchesi@oracle.com>
+
+	* config/tc-bpf.c: Semicolon does not start a comment, but
+	separates multiple commands on a single line.
+	* testsuite/gas/bpf/alu-pseudoc.s: Adapt test accordingly.
+	* testsuite/gas/bpf/spacing-pseudoc.s: Likewise.
+	* testsuite/gas/bpf/offset16-overflow.s: Likewise.
+	* testsuite/gas/bpf/jump-relax-jump.s: Likewise.
+	* testsuite/gas/bpf/jump-relax-ja.s: Likewise.
+	* testsuite/gas/bpf/imm32-overflow.s: Likewise.
+	* testsuite/gas/bpf/disp32-overflow.s: Likewise.
+	* testsuite/gas/bpf/disp16-overflow-relax.s: Likewise.
+	* testsuite/gas/bpf/disp16-overflow.s: Likewise.
+	* doc/c-bpf.texi (BPF Special Characters): Update.
+
+2023-11-23  YunQiang Su  <yunqiang.su@cipunited.com>
+
+	* testsuite/gas/mips/elf-rel.s: Use addiu in place of addi.
+	* testsuite/gas/mips/elf-rel.d: Update expected output.
+	* testsuite/gas/mips/elfel-rel.d: Likewise.
+
+2023-11-23  YunQiang Su  <yunqiang.su@cipunited.com>
+
+	* testsuite/gas/mips/branch-section-1.d: Allow for r6 encoding of
+	JR instruction.
+	* testsuite/gas/mips/branch-weak-1.d: Likewise.
+	* testsuite/gas/mips/option-pic-1.d: Likewise.
+	* testsuite/gas/mips/option-pic-relax-0.d: Likewise.
+	* testsuite/gas/mips/option-pic-relax-1.d: Likewise.
+
 2023-11-18  Jose E. Marchesi  <jemarch@gnu.org>
 
 	* config/tc-bpf.c (parse_bpf_register): Move before

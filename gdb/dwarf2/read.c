@@ -1048,8 +1048,6 @@ static void prepare_one_comp_unit (struct dwarf2_cu *cu,
 static struct type *set_die_type (struct die_info *, struct type *,
 				  struct dwarf2_cu *, bool = false);
 
-static void create_all_units (dwarf2_per_objfile *per_objfile);
-
 static void load_full_comp_unit (dwarf2_per_cu_data *per_cu,
 				 dwarf2_per_objfile *per_objfile,
 				 dwarf2_cu *existing_cu,
@@ -1627,15 +1625,6 @@ struct quick_file_names
 struct readnow_functions : public dwarf2_base_index_functions
 {
   void dump (struct objfile *objfile) override
-  {
-  }
-
-  void expand_matching_symbols
-    (struct objfile *,
-     const lookup_name_info &lookup_name,
-     domain_enum domain,
-     int global,
-     symbol_compare_ftype *ordered_compare) override
   {
   }
 
@@ -5109,11 +5098,10 @@ finalize_all_units (dwarf2_per_bfd *per_bfd)
   per_bfd->all_type_units = tmp.slice (nr_cus, nr_tus);
 }
 
-/* Create a list of all compilation units in OBJFILE.
-   This is only done for -readnow and building partial symtabs.  */
+/* See read.h.  */
 
-static void
-create_all_units (dwarf2_per_objfile *per_objfile)
+void
+create_all_units (dwarf2_per_objfile *per_objfile, bool pre_read_p)
 {
   htab_up types_htab;
   gdb_assert (per_objfile->per_bfd->all_units.empty ());
@@ -5129,12 +5117,15 @@ create_all_units (dwarf2_per_objfile *per_objfile)
   dwz_file *dwz = dwarf2_get_dwz_file (per_objfile->per_bfd);
   if (dwz != NULL)
     {
-      /* Pre-read the sections we'll need to construct an index.  */
-      struct objfile *objfile = per_objfile->objfile;
-      dwz->abbrev.read (objfile);
-      dwz->info.read (objfile);
-      dwz->str.read (objfile);
-      dwz->line.read (objfile);
+      if (pre_read_p)
+	{
+	  /* Pre-read the sections we'll need to construct an index.  */
+	  struct objfile *objfile = per_objfile->objfile;
+	  dwz->abbrev.read (objfile);
+	  dwz->info.read (objfile);
+	  dwz->str.read (objfile);
+	  dwz->line.read (objfile);
+	}
       read_comp_units_from_section (per_objfile, &dwz->info, &dwz->abbrev, 1,
 				    types_htab, rcuh_kind::COMPILE);
 
@@ -5647,7 +5638,7 @@ compute_delayed_physnames (struct dwarf2_cu *cu)
 
 	  while (1)
 	    {
-	      if (physname[len] == ')') /* shortcut */
+	      if (physname[len - 1] == ')') /* shortcut */
 		break;
 	      else if (check_modifier (physname, len, " const"))
 		TYPE_FN_FIELD_CONST (fn_flp->fn_fields, mi.index) = 1;
@@ -16514,13 +16505,6 @@ struct cooked_index_functions : public dwarf2_base_index_functions
     index->dump (objfile->arch ());
   }
 
-  void expand_matching_symbols
-    (struct objfile *,
-     const lookup_name_info &lookup_name,
-     domain_enum domain,
-     int global,
-     symbol_compare_ftype *ordered_compare) override;
-
   bool expand_symtabs_matching
     (struct objfile *objfile,
      gdb::function_view<expand_symtabs_file_matcher_ftype> file_matcher,
@@ -16615,44 +16599,6 @@ cooked_index_functions::find_compunit_symtab_by_address
     return nullptr;
 
   return dw2_instantiate_symtab (per_cu, per_objfile, false);
-}
-
-void
-cooked_index_functions::expand_matching_symbols
-     (struct objfile *objfile,
-      const lookup_name_info &lookup_name,
-      domain_enum domain,
-      int global,
-      symbol_compare_ftype *ordered_compare)
-{
-  dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
-  cooked_index *table
-    = (gdb::checked_static_cast<cooked_index *>
-       (per_objfile->per_bfd->index_table.get ()));
-  if (table == nullptr)
-    return;
-
-  const block_search_flags search_flags = (global
-					   ? SEARCH_GLOBAL_BLOCK
-					   : SEARCH_STATIC_BLOCK);
-  const language_defn *lang = language_def (language_ada);
-  symbol_name_matcher_ftype *name_match
-    = lang->get_symbol_name_matcher (lookup_name);
-
-  for (const cooked_index_entry *entry : table->all_entries ())
-    {
-      QUIT;
-
-      if (entry->parent_entry != nullptr)
-	continue;
-
-      if (!entry->matches (search_flags)
-	  || !entry->matches (domain))
-	continue;
-
-      if (name_match (entry->canonical, lookup_name, nullptr))
-	dw2_instantiate_symtab (entry->per_cu, per_objfile, false);
-    }
 }
 
 bool

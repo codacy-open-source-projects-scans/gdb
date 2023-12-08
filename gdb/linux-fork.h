@@ -21,11 +21,12 @@
 #define LINUX_FORK_H
 
 struct fork_info;
+struct lwp_info;
 extern void add_fork (pid_t);
 extern struct fork_info *find_fork_pid (pid_t);
 extern void linux_fork_killall (void);
 extern void linux_fork_mourn_inferior (void);
-extern void linux_fork_detach (int);
+extern void linux_fork_detach (int, lwp_info *);
 extern int forks_exist_p (void);
 extern int linux_fork_checkpointing_p (int);
 

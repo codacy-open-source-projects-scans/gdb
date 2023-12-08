@@ -1037,8 +1037,8 @@ attach_proc_task_lwp_callback (ptid_t ptid)
 	      std::string reason
 		= linux_ptrace_attach_fail_reason_string (ptid, err);
 
-	      warning (_("Cannot attach to lwp %d: %s"),
-		       lwpid, reason.c_str ());
+	      error (_("Cannot attach to lwp %d: %s"),
+		     lwpid, reason.c_str ());
 	    }
 	}
       else
@@ -1058,13 +1058,6 @@ attach_proc_task_lwp_callback (ptid_t ptid)
 
 	  /* So that wait collects the SIGSTOP.  */
 	  lp->resumed = 1;
-
-	  /* Also add the LWP to gdb's thread list, in case a
-	     matching libthread_db is not found (or the process uses
-	     raw clone).  */
-	  add_thread (linux_target, lp->ptid);
-	  set_running (linux_target, lp->ptid, true);
-	  set_executing (linux_target, lp->ptid, true);
 	}
 
       return 1;
@@ -1159,8 +1152,42 @@ linux_nat_target::attach (const char *args, int from_tty)
      of threads/LWPs, and those structures may well be corrupted.
      Note that once thread_db is loaded, we'll still use it to list
      threads and associate pthread info with each LWP.  */
-  linux_proc_attach_tgid_threads (lp->ptid.pid (),
-				  attach_proc_task_lwp_callback);
+  try
+    {
+      linux_proc_attach_tgid_threads (lp->ptid.pid (),
+				      attach_proc_task_lwp_callback);
+    }
+  catch (const gdb_exception_error &)
+    {
+      /* Failed to attach to some LWP.  Detach any we've already
+	 attached to.  */
+      iterate_over_lwps (ptid_t (ptid.pid ()),
+			 [] (struct lwp_info *lwp) -> int
+			 {
+			   /* Ignore errors when detaching.  */
+			   ptrace (PTRACE_DETACH, lwp->ptid.lwp (), 0, 0);
+			   delete_lwp (lwp->ptid);
+			   return 0;
+			 });
+
+      target_terminal::ours ();
+      target_mourn_inferior (inferior_ptid);
+
+      throw;
+    }
+
+  /* Add all the LWPs to gdb's thread list.  */
+  iterate_over_lwps (ptid_t (ptid.pid ()),
+		     [] (struct lwp_info *lwp) -> int
+		     {
+		       if (lwp->ptid.pid () != lwp->ptid.lwp ())
+			 {
+			   add_thread (linux_target, lwp->ptid);
+			   set_running (linux_target, lwp->ptid, true);
+			   set_executing (linux_target, lwp->ptid, true);
+			 }
+		       return 0;
+		     });
 }
 
 /* Ptrace-detach the thread with pid PID.  */
@@ -1383,6 +1410,20 @@ detach_one_lwp (struct lwp_info *lp, int *signo_p)
       lp->signalled = 0;
     }
 
+  /* If the lwp has exited or was terminated due to a signal, there's
+     nothing left to do.  */
+  if (lp->waitstatus.kind () == TARGET_WAITKIND_EXITED
+      || lp->waitstatus.kind () == TARGET_WAITKIND_THREAD_EXITED
+      || lp->waitstatus.kind () == TARGET_WAITKIND_SIGNALLED)
+    {
+      linux_nat_debug_printf
+	("Can't detach %s - it has exited or was terminated: %s.",
+	 lp->ptid.to_string ().c_str (),
+	 lp->waitstatus.to_string ().c_str ());
+      delete_lwp (lp->ptid);
+      return;
+    }
+
   if (signo_p == NULL)
     {
       /* Pass on any pending signal for this LWP.  */
@@ -1456,13 +1497,13 @@ linux_nat_target::detach (inferior *inf, int from_tty)
   gdb_assert (num_lwps (pid) == 1
 	      || (target_is_non_stop_p () && num_lwps (pid) == 0));
 
-  if (forks_exist_p ())
+  if (pid == inferior_ptid.pid () && forks_exist_p ())
     {
       /* Multi-fork case.  The current inferior_ptid is being detached
 	 from, but there are other viable forks to debug.  Detach from
 	 the current fork, and context-switch to the first
 	 available.  */
-      linux_fork_detach (from_tty);
+      linux_fork_detach (from_tty, find_lwp_pid (ptid_t (pid)));
     }
   else
     {

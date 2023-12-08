@@ -332,8 +332,6 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 
   /* TODO: Unindent this block.  */
     {
-      int32_t oldpc;
-
       insts ++;
 
       if (pc & 02)
@@ -407,8 +405,6 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 
       if (tracing)
 	fprintf (stderr, "%.4x: inst = %.4x ", pc, inst);
-
-      oldpc = pc;
 
       pc += 2;
 
@@ -757,7 +753,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 	  break;
 	case 0x0B:					/* lsr */
 	  {
-	    unsigned long dst, src;
+	    uint32_t dst, src;
 	    dst = gr[RD];
 	    src = gr[RS];
 	    /* We must not rely solely upon the native shift operations, since they
@@ -1060,7 +1056,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 	case 0x3E: case 0x3F:				/* lsrc, lsri */
 	  {
 	    unsigned imm = IMM5;
-	    unsigned long tmp = gr[RD];
+	    uint32_t tmp = gr[RD];
 	    if (imm == 0)
 	      {
 		NEW_C (tmp);

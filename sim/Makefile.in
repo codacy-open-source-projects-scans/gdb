@@ -1798,6 +1798,7 @@ MOSTLYCLEANFILES = core $(SIM_ENABLED_ARCHES:%=%/*.o) \
 	$(am__append_57) $(am__append_61) $(am__append_75) \
 	$(am__append_80) $(am__append_88) $(am__append_103) \
 	$(am__append_107)
+CONFIG_STATUS_DEPENDENCIES = $(srcroot)/bfd/development.sh
 AM_CFLAGS = \
 	$(WERROR_CFLAGS) \
 	$(WARN_CFLAGS) \
@@ -2152,6 +2153,8 @@ testsuite_common_CPPFLAGS = \
 
 @SIM_ENABLE_ARCH_cr16_TRUE@cr16_gencode_SOURCES = cr16/gencode.c
 @SIM_ENABLE_ARCH_cr16_TRUE@cr16_gencode_LDADD = cr16/cr16-opc.o
+@SIM_ENABLE_ARCH_cris_TRUE@AM_CFLAGS_cris_mloopv10f.o = -Wno-unused-but-set-variable
+@SIM_ENABLE_ARCH_cris_TRUE@AM_CFLAGS_cris_mloopv32f.o = -Wno-unused-but-set-variable
 @SIM_ENABLE_ARCH_cris_TRUE@nodist_cris_libsim_a_SOURCES = \
 @SIM_ENABLE_ARCH_cris_TRUE@	cris/modules.c
 
@@ -2471,17 +2474,6 @@ testsuite_common_CPPFLAGS = \
 # opc2c leaks memory, and therefore makes AddressSanitizer unhappy.  Disable
 # leak detection while running it.
 @SIM_ENABLE_ARCH_m32c_TRUE@m32c_OPC2C_RUN = ASAN_OPTIONS=detect_leaks=0 m32c/opc2c$(EXEEXT)
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_cpu.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_cpu2.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_cpux.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_m32r.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_m32r2.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_m32rx.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_mloop.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_mloop2.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_mloopx.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_sem.o = -Wno-error
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_sim_if.o = -Wno-error
 @SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_traps.o = -Wno-error
 @SIM_ENABLE_ARCH_m32r_TRUE@nodist_m32r_libsim_a_SOURCES = \
 @SIM_ENABLE_ARCH_m32r_TRUE@	m32r/modules.c

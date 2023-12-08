@@ -6833,7 +6833,7 @@ display_loclists_list (struct dwarf_section *  section,
   unsigned int pointer_size;
   unsigned int offset_size;
   unsigned int dwarf_version;
-  uint64_t index;
+  uint64_t idx;
 
   /* Initialize it due to a false compiler warning.  */
   uint64_t begin = -1, vbegin = -1;
@@ -6892,28 +6892,28 @@ display_loclists_list (struct dwarf_section *  section,
 	  break;
 
 	case DW_LLE_base_addressx:
-	  READ_ULEB (index, start, section_end);
-	  print_hex (index, pointer_size);
+	  READ_ULEB (idx, start, section_end);
+	  print_hex (idx, pointer_size);
 	  printf (_("(index into .debug_addr) "));
 	  base_address = fetch_indexed_addr
-	    (debug_info_p->addr_base + index * pointer_size, pointer_size);
+	    (debug_info_p->addr_base + idx * pointer_size, pointer_size);
 	  print_hex (base_address, pointer_size);
 	  printf (_("(base address)\n"));
 	  break;
 
 	case DW_LLE_startx_endx:
-	  READ_ULEB (index, start, section_end);
+	  READ_ULEB (idx, start, section_end);
 	  begin = fetch_indexed_addr
-	    (debug_info_p->addr_base + index * pointer_size, pointer_size);
-	  READ_ULEB (index, start, section_end);
+	    (debug_info_p->addr_base + idx * pointer_size, pointer_size);
+	  READ_ULEB (idx, start, section_end);
 	  end = fetch_indexed_addr
-	    (debug_info_p->addr_base + index * pointer_size, pointer_size);
+	    (debug_info_p->addr_base + idx * pointer_size, pointer_size);
 	  break;
 
 	case DW_LLE_startx_length:
-	  READ_ULEB (index, start, section_end);
+	  READ_ULEB (idx, start, section_end);
 	  begin = fetch_indexed_addr
-	    (debug_info_p->addr_base + index * pointer_size, pointer_size);
+	    (debug_info_p->addr_base + idx * pointer_size, pointer_size);
 	  READ_ULEB (end, start, section_end);
 	  end += begin;
 	  break;
@@ -7864,9 +7864,9 @@ display_debug_addr (struct dwarf_section *section,
 
 	  if (header_size != 8 && header_size != 16)
 	    {
-	      warn (_("Corrupt %s section: expecting header size of 8 or 16, but found %zd instead\n"),
+	      warn (_("Corrupt %s section: expecting header size of 8 or 16, but found %zd instead"),
 		    section->name, header_size);
-	      return 0;
+	      break;
 	    }
 
 	  SAFE_BYTE_GET_AND_INC (length, curr_header, 4, entry);
@@ -7876,8 +7876,8 @@ display_debug_addr (struct dwarf_section *section,
 	      || length < (size_t) (entry - curr_header))
 	    {
 	      warn (_("Corrupt %s section: unit_length field of %#" PRIx64
-		      " is invalid\n"), section->name, length);
-	      return 0;
+		      " is invalid"), section->name, length);
+	      break;
 	    }
 	  end = curr_header + length;
 	  SAFE_BYTE_GET_AND_INC (version, curr_header, 2, entry);
@@ -7899,7 +7899,7 @@ display_debug_addr (struct dwarf_section *section,
 	{
 	  warn (_("Corrupt %s section: address size (%x) is wrong"),
 		section->name, address_size);
-	  return 0;
+	  break;
 	}
 
       while ((size_t) (end - entry) >= address_size)
@@ -7914,8 +7914,9 @@ display_debug_addr (struct dwarf_section *section,
     }
   printf ("\n");
 
+  free (debug_addr_info[count]);
   free (debug_addr_info);
-  return 1;
+  return i == count;
 }
 
 /* Display the .debug_str_offsets and .debug_str_offsets.dwo sections.  */
@@ -10353,7 +10354,8 @@ display_debug_names (struct dwarf_section *section, void *file)
       const uint32_t *const hash_table_buckets = (uint32_t *) hdrptr;
       hdrptr += bucket_count * sizeof (uint32_t);
       const uint32_t *const hash_table_hashes = (uint32_t *) hdrptr;
-      hdrptr += name_count * sizeof (uint32_t);
+      if (bucket_count != 0)
+	hdrptr += name_count * sizeof (uint32_t);
       unsigned char *const name_table_string_offsets = hdrptr;
       hdrptr += name_count * offset_size;
       unsigned char *const name_table_entry_offsets = hdrptr;
@@ -10478,8 +10480,12 @@ display_debug_names (struct dwarf_section *section, void *file)
 	  p = name_table_entry_offsets + namei * offset_size;
 	  SAFE_BYTE_GET (entry_offset, p, offset_size, unit_end);
 
-	  printf ("[%3u] #%08x %s:", namei, hash_table_hashes[namei],
-		  fetch_indirect_string (string_offset));
+	  /* The name table is indexed starting at 1 according to
+	     DWARF, so be sure to use the DWARF numbering here.  */
+	  printf ("[%3u] ", namei + 1);
+	  if (bucket_count != 0)
+	    printf ("#%08x ", hash_table_hashes[namei]);
+	  printf ("%s:", fetch_indirect_string (string_offset));
 
 	  unsigned char *entryptr = entry_pool + entry_offset;
 

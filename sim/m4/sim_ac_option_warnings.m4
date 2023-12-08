@@ -15,8 +15,7 @@ dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 dnl
 dnl --enable-build-warnings is for developers of the simulator.
 dnl it enables extra GCC specific warnings.
-AC_DEFUN([SIM_AC_OPTION_WARNINGS],
-[
+AC_DEFUN([SIM_AC_OPTION_WARNINGS], [dnl
 AC_ARG_ENABLE(werror,
   AS_HELP_STRING([--enable-werror], [treat compile warnings as errors]),
   [case "${enableval}" in
@@ -25,8 +24,8 @@ AC_ARG_ENABLE(werror,
      *) AC_MSG_ERROR(bad value ${enableval} for --enable-werror) ;;
    esac])
 
-dnl Enable -Werror by default when using gcc
-if test "${GCC}" = yes -a -z "${ERROR_ON_WARNING}" ; then
+dnl Enable -Werror by default when using gcc.  Turn it off for releases.
+if test "${GCC}" = yes -a -z "${ERROR_ON_WARNING}" && $development; then
   ERROR_ON_WARNING=yes
 fi
 
@@ -37,23 +36,54 @@ fi
 
 dnl The options we'll try to enable.
 dnl NB: Kept somewhat in sync with gdbsupport/warnings.m4.
-build_warnings="-Wall -Wdeclaration-after-statement -Wpointer-arith
+build_warnings="-Wall -Wpointer-arith
 -Wno-unused -Wunused-value -Wunused-function
 -Wno-switch -Wno-char-subscripts
 -Wempty-body -Wunused-but-set-parameter
--Wno-error=maybe-uninitialized
+-Wno-sign-compare -Wno-error=maybe-uninitialized
+dnl C++ -Wno-mismatched-tags
+-Wno-error=deprecated-register
+dnl C++ -Wsuggest-override
+dnl C++ -Wdeprecated-copy
+dnl C++ -Wdeprecated-copy-dtor
+dnl C++ -Wredundant-move
 -Wmissing-declarations
+dnl C++ -Wstrict-null-sentinel
+"
+dnl Some extra warnings we use in the sim.
+build_warnings="$build_warnings
+-Wdeclaration-after-statement
+-Wdeprecated-non-prototype
+-Wimplicit-function-declaration
+-Wimplicit-int
+-Wincompatible-function-pointer-types
+-Wincompatible-pointer-types
+-Wmisleading-indentation
+-Wmissing-parameter-type
 -Wmissing-prototypes
--Wdeclaration-after-statement -Wmissing-parameter-type
+-Wold-style-declaration
+-Wold-style-definition
 -Wpointer-sign
--Wold-style-declaration -Wold-style-definition
+dnl The cgen virtual insn logic involves enum conversions.
+dnl Disable until we can figure out how to make this work.
+-Wno-enum-conversion
 "
 
-# Enable -Wno-format by default when using gcc on mingw since many
-# GCC versions complain about %I64.
 case "${host}" in
-  *-*-mingw32*) build_warnings="$build_warnings -Wno-format" ;;
-  *) build_warnings="$build_warnings -Wformat-nonliteral" ;;
+  *-*-mingw32*)
+    # Enable -Wno-format by default when using gcc on mingw since many
+    # GCC versions complain about %I64.
+    build_warnings="$build_warnings -Wno-format" ;;
+  *-*-solaris*)
+    # Solaris 11.4 <python2.7/ceval.h> uses #pragma no_inline that GCC
+    # doesn't understand.
+    build_warnings="$build_warnings -Wno-unknown-pragmas"
+    # Solaris 11 <unistd.h> marks vfork deprecated.
+    build_warnings="$build_warnings -Wno-deprecated-declarations" ;;
+  *)
+    # Note that gcc requires -Wformat for -Wformat-nonliteral to work,
+    # but there's a special case for this below.
+    build_warnings="$build_warnings -Wformat-nonliteral" ;;
 esac
 
 AC_ARG_ENABLE(build-warnings,
@@ -91,11 +121,27 @@ then
     # Separate out the -Werror flag as some files just cannot be
     # compiled with it enabled.
     for w in ${build_warnings}; do
+	# GCC does not complain about -Wno-unknown-warning.  Invert
+	# and test -Wunknown-warning instead.
+	case $w in
+	-Wno-*)
+		wtest=`echo $w | sed 's/-Wno-/-W/g'` ;;
+        -Wformat-nonliteral)
+		# gcc requires -Wformat before -Wformat-nonliteral
+		# will work, so stick them together.
+		w="-Wformat $w"
+		wtest="$w"
+		;;
+	*)
+		wtest=$w ;;
+	esac
+
 	case $w in
 	-Werr*) WERROR_CFLAGS=-Werror ;;
-	*) # Check that GCC accepts it
+	*)
+	    # Check whether GCC accepts it.
 	    saved_CFLAGS="$CFLAGS"
-	    CFLAGS="$CFLAGS -Werror $w"
+	    CFLAGS="$CFLAGS -Werror $wtest"
 	    AC_TRY_COMPILE([],[],WARN_CFLAGS="${WARN_CFLAGS} $w",)
 	    CFLAGS="$saved_CFLAGS"
 	esac

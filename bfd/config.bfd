@@ -1229,22 +1229,22 @@ case "${targ}" in
 #ifdef BFD64
   riscvbe-*-* | riscv32be*-*-*)
     targ_defvec=riscv_elf32_be_vec
-    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec"
+    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec riscv64_pei_vec"
     want64=true
     ;;
   riscv-*-* | riscv32*-*-*)
     targ_defvec=riscv_elf32_vec
-    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec"
+    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec riscv64_pei_vec"
     want64=true
     ;;
   riscv64be*-*-*)
     targ_defvec=riscv_elf64_be_vec
-    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec"
+    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec riscv64_pei_vec"
     want64=true
     ;;
   riscv64*-*-*)
     targ_defvec=riscv_elf64_vec
-    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec"
+    targ_selvecs="riscv_elf32_vec riscv_elf64_vec riscv_elf32_be_vec riscv_elf64_be_vec riscv64_pei_vec"
     want64=true
     ;;
 #endif
@@ -1550,7 +1550,7 @@ case "${targ_defvec} ${targ_selvecs}" in
 esac
 
 case "${targ}" in
-  mipsisa32r6* | mipsisa64r6*)
+  mipsisa32r6* | mipsisa64r6* | mips*-img-*)
     targ_cflags="$targ_cflags -DMIPS_DEFAULT_R6=1"
     ;;
 esac

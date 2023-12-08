@@ -3009,6 +3009,8 @@ _ACEOF
 ac_config_headers="$ac_config_headers config.h"
 
 
+. $srcdir/../bfd/development.sh
+
 ac_aux_dir=
 for ac_dir in "$srcdir" "$srcdir/.." "$srcdir/../.."; do
   if test -f "$ac_dir/install-sh"; then
@@ -12288,7 +12290,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 12291 "configure"
+#line 12293 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -12394,7 +12396,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 12397 "configure"
+#line 12399 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -12913,7 +12915,7 @@ if test "$ac_res" != no; then :
 
 fi
 
-if test "${ac_cv_lib_dl_dlopen}" = "yes"; then
+if test "${ac_cv_search_dlopen}" = "none required" || test "${ac_cv_lib_dl_dlopen}" = "yes"; then
 
 pkg_failed=no
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for sdl2" >&5
@@ -15800,7 +15802,6 @@ _ACEOF
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $sim_trace" >&5
 $as_echo "$sim_trace" >&6; }
 
-
 # Check whether --enable-werror was given.
 if test "${enable_werror+set}" = set; then :
   enableval=$enable_werror; case "${enableval}" in
@@ -15811,7 +15812,7 @@ if test "${enable_werror+set}" = set; then :
 fi
 
 
-if test "${GCC}" = yes -a -z "${ERROR_ON_WARNING}" ; then
+if test "${GCC}" = yes -a -z "${ERROR_ON_WARNING}" && $development; then
   ERROR_ON_WARNING=yes
 fi
 
@@ -15820,23 +15821,45 @@ if test "${ERROR_ON_WARNING}" = yes ; then
   WERROR_CFLAGS="-Werror"
 fi
 
-build_warnings="-Wall -Wdeclaration-after-statement -Wpointer-arith
+build_warnings="-Wall -Wpointer-arith
 -Wno-unused -Wunused-value -Wunused-function
 -Wno-switch -Wno-char-subscripts
 -Wempty-body -Wunused-but-set-parameter
--Wno-error=maybe-uninitialized
+-Wno-sign-compare -Wno-error=maybe-uninitialized
+-Wno-error=deprecated-register
 -Wmissing-declarations
+"
+build_warnings="$build_warnings
+-Wdeclaration-after-statement
+-Wdeprecated-non-prototype
+-Wimplicit-function-declaration
+-Wimplicit-int
+-Wincompatible-function-pointer-types
+-Wincompatible-pointer-types
+-Wmisleading-indentation
+-Wmissing-parameter-type
 -Wmissing-prototypes
--Wdeclaration-after-statement -Wmissing-parameter-type
+-Wold-style-declaration
+-Wold-style-definition
 -Wpointer-sign
--Wold-style-declaration -Wold-style-definition
+-Wno-enum-conversion
 "
 
-# Enable -Wno-format by default when using gcc on mingw since many
-# GCC versions complain about %I64.
 case "${host}" in
-  *-*-mingw32*) build_warnings="$build_warnings -Wno-format" ;;
-  *) build_warnings="$build_warnings -Wformat-nonliteral" ;;
+  *-*-mingw32*)
+    # Enable -Wno-format by default when using gcc on mingw since many
+    # GCC versions complain about %I64.
+    build_warnings="$build_warnings -Wno-format" ;;
+  *-*-solaris*)
+    # Solaris 11.4 <python2.7/ceval.h> uses #pragma no_inline that GCC
+    # doesn't understand.
+    build_warnings="$build_warnings -Wno-unknown-pragmas"
+    # Solaris 11 <unistd.h> marks vfork deprecated.
+    build_warnings="$build_warnings -Wno-deprecated-declarations" ;;
+  *)
+    # Note that gcc requires -Wformat for -Wformat-nonliteral to work,
+    # but there's a special case for this below.
+    build_warnings="$build_warnings -Wformat-nonliteral" ;;
 esac
 
 # Check whether --enable-build-warnings was given.
@@ -15877,11 +15900,27 @@ $as_echo_n "checking compiler warning flags... " >&6; }
     # Separate out the -Werror flag as some files just cannot be
     # compiled with it enabled.
     for w in ${build_warnings}; do
+	# GCC does not complain about -Wno-unknown-warning.  Invert
+	# and test -Wunknown-warning instead.
+	case $w in
+	-Wno-*)
+		wtest=`echo $w | sed 's/-Wno-/-W/g'` ;;
+        -Wformat-nonliteral)
+		# gcc requires -Wformat before -Wformat-nonliteral
+		# will work, so stick them together.
+		w="-Wformat $w"
+		wtest="$w"
+		;;
+	*)
+		wtest=$w ;;
+	esac
+
 	case $w in
 	-Werr*) WERROR_CFLAGS=-Werror ;;
-	*) # Check that GCC accepts it
+	*)
+	    # Check whether GCC accepts it.
 	    saved_CFLAGS="$CFLAGS"
-	    CFLAGS="$CFLAGS -Werror $w"
+	    CFLAGS="$CFLAGS -Werror $wtest"
 	    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 

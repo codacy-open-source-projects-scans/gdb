@@ -85,13 +85,19 @@ struct tui_char_command
    mode.  */
 static const struct tui_char_command tui_commands[] = {
   { 'c', "continue" },
+  { 'C', "reverse-continue" },
   { 'd', "down" },
   { 'f', "finish" },
+  { 'F', "reverse-finish" },
   { 'n', "next" },
+  { 'N', "reverse-next" },
   { 'o', "nexti" },
+  { 'O', "reverse-nexti" },
   { 'r', "run" },
   { 's', "step" },
+  { 'S', "reverse-step" },
   { 'i', "stepi" },
+  { 'I', "reverse-stepi" },
   { 'u', "up" },
   { 'v', "info locals" },
   { 'w', "where" },
@@ -492,11 +498,6 @@ tui_enable (void)
       tui_set_win_resized_to (false);
       tui_resize_all ();
     }
-
-  if (deprecated_safe_get_selected_frame ())
-    tui_show_frame_info (deprecated_safe_get_selected_frame ());
-  else
-    tui_display_main ();
 
   /* Install the TUI specific hooks.  This must be done after the call to
      tui_display_main so that we don't detect the symtab changed event it

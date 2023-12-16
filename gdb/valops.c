@@ -603,15 +603,13 @@ value_cast (struct type *type, struct value *arg2)
 	 pointers and four byte addresses.  */
 
       int addr_bit = gdbarch_addr_bit (type2->arch ());
-      LONGEST longest = value_as_long (arg2);
+      gdb_mpz longest = value_as_mpz (arg2);
 
-      if (addr_bit < sizeof (LONGEST) * HOST_CHAR_BIT)
-	{
-	  if (longest >= ((LONGEST) 1 << addr_bit)
-	      || longest <= -((LONGEST) 1 << addr_bit))
-	    warning (_("value truncated"));
-	}
-      return value_from_longest (to_type, longest);
+      gdb_mpz addr_val = gdb_mpz (1) << addr_bit;
+      if (longest >= addr_val || longest <= -addr_val)
+	warning (_("value truncated"));
+
+      return value_from_mpz (to_type, longest);
     }
   else if (code1 == TYPE_CODE_METHODPTR && code2 == TYPE_CODE_INT
 	   && value_as_long (arg2) == 0)
@@ -858,7 +856,7 @@ value_dynamic_cast (struct type *type, struct value *arg)
 
   /* If the classes are the same, just return the argument.  */
   if (class_types_same_p (class_type, arg_type))
-    return value_cast (type, arg);
+    return value_cast (type, original_arg);
 
   /* If the target type is a unique base class of the argument's
      declared type, just cast it.  */
@@ -890,14 +888,18 @@ value_dynamic_cast (struct type *type, struct value *arg)
       && resolved_type->target_type ()->code () == TYPE_CODE_VOID)
     return value_at_lazy (type, addr);
 
-  tem = value_at (type, addr);
-  type = tem->type ();
+  tem = value_at (resolved_type->target_type (), addr);
+  type = (is_ref
+	  ? lookup_reference_type (tem->type (), resolved_type->code ())
+	  : lookup_pointer_type (tem->type ()));
 
   /* The first dynamic check specified in 5.2.7.  */
   if (is_public_ancestor (arg_type, resolved_type->target_type ()))
     {
       if (class_types_same_p (rtti_type, resolved_type->target_type ()))
-	return tem;
+	return (is_ref
+		? value_ref (tem, resolved_type->code ())
+		: value_addr (tem));
       result = NULL;
       if (dynamic_cast_check_1 (resolved_type->target_type (),
 				tem->contents_for_printing ().data (),
@@ -1191,10 +1193,6 @@ value_assign (struct value *toval, struct value *fromval)
 
     case lval_register:
       {
-	frame_info_ptr frame;
-	struct gdbarch *gdbarch;
-	int value_reg;
-
 	/* Figure out which frame this register value is in.  The value
 	   holds the frame_id for the next frame, that is the frame this
 	   register value was unwound from.
@@ -1202,15 +1200,14 @@ value_assign (struct value *toval, struct value *fromval)
 	   Below we will call put_frame_register_bytes which requires that
 	   we pass it the actual frame in which the register value is
 	   valid, i.e. not the next frame.  */
-	frame = frame_find_by_id (VALUE_NEXT_FRAME_ID (toval));
-	frame = get_prev_frame_always (frame);
+	frame_info_ptr next_frame = frame_find_by_id (VALUE_NEXT_FRAME_ID (toval));
 
-	value_reg = VALUE_REGNUM (toval);
+	int value_reg = VALUE_REGNUM (toval);
 
-	if (!frame)
+	if (next_frame == nullptr)
 	  error (_("Value being assigned to is no longer active."));
 
-	gdbarch = get_frame_arch (frame);
+	gdbarch *gdbarch = frame_unwind_arch (next_frame);
 
 	if (toval->bitsize ())
 	  {
@@ -1230,9 +1227,9 @@ value_assign (struct value *toval, struct value *fromval)
 		       "don't fit in a %d bit word."),
 		     (int) sizeof (LONGEST) * HOST_CHAR_BIT);
 
-	    if (!get_frame_register_bytes (frame, value_reg, offset,
-					   {buffer, changed_len},
-					   &optim, &unavail))
+	    if (!get_frame_register_bytes (next_frame, value_reg, offset,
+					   { buffer, changed_len }, &optim,
+					   &unavail))
 	      {
 		if (optim)
 		  throw_error (OPTIMIZED_OUT_ERROR,
@@ -1245,8 +1242,8 @@ value_assign (struct value *toval, struct value *fromval)
 	    modify_field (type, buffer, value_as_long (fromval),
 			  toval->bitpos (), toval->bitsize ());
 
-	    put_frame_register_bytes (frame, value_reg, offset,
-				      {buffer, changed_len});
+	    put_frame_register_bytes (next_frame, value_reg, offset,
+				      { buffer, changed_len });
 	  }
 	else
 	  {
@@ -1256,17 +1253,19 @@ value_assign (struct value *toval, struct value *fromval)
 		/* If TOVAL is a special machine register requiring
 		   conversion of program values to a special raw
 		   format.  */
-		gdbarch_value_to_register (gdbarch, frame,
+		gdbarch_value_to_register (gdbarch,
+					   get_prev_frame_always (next_frame),
 					   VALUE_REGNUM (toval), type,
 					   fromval->contents ().data ());
 	      }
 	    else
-	      put_frame_register_bytes (frame, value_reg,
+	      put_frame_register_bytes (next_frame, value_reg,
 					toval->offset (),
 					fromval->contents ());
 	  }
 
-	gdb::observers::register_changed.notify (frame, value_reg);
+	gdb::observers::register_changed.notify
+	  (get_prev_frame_always (next_frame), value_reg);
 	break;
       }
 
@@ -3224,6 +3223,7 @@ find_oload_champ (gdb::array_view<value *> args,
     {
       int jj;
       int static_offset = 0;
+      bool varargs = false;
       std::vector<type *> parm_types;
 
       if (xmethods != NULL)
@@ -3236,9 +3236,13 @@ find_oload_champ (gdb::array_view<value *> args,
 	    {
 	      nparms = TYPE_FN_FIELD_TYPE (methods, ix)->num_fields ();
 	      static_offset = oload_method_static_p (methods, ix);
+	      varargs = TYPE_FN_FIELD_TYPE (methods, ix)->has_varargs ();
 	    }
 	  else
-	    nparms = functions[ix]->type ()->num_fields ();
+	    {
+	      nparms = functions[ix]->type ()->num_fields ();
+	      varargs = functions[ix]->type ()->has_varargs ();
+	    }
 
 	  parm_types.reserve (nparms);
 	  for (jj = 0; jj < nparms; jj++)
@@ -3253,7 +3257,8 @@ find_oload_champ (gdb::array_view<value *> args,
       /* Compare parameter types to supplied argument types.  Skip
 	 THIS for static methods.  */
       bv = rank_function (parm_types,
-			  args.slice (static_offset));
+			  args.slice (static_offset),
+			  varargs);
 
       if (overload_debug)
 	{

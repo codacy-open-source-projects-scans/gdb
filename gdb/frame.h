@@ -714,7 +714,7 @@ extern LONGEST frame_unwind_register_signed (frame_info_ptr next_frame,
 					     int regnum);
 extern LONGEST get_frame_register_signed (frame_info_ptr frame,
 					  int regnum);
-extern ULONGEST frame_unwind_register_unsigned (frame_info_ptr frame,
+extern ULONGEST frame_unwind_register_unsigned (frame_info_ptr next_frame,
 						int regnum);
 extern ULONGEST get_frame_register_unsigned (frame_info_ptr frame,
 					     int regnum);
@@ -727,24 +727,24 @@ extern ULONGEST get_frame_register_unsigned (frame_info_ptr frame,
 extern bool read_frame_register_unsigned (frame_info_ptr frame,
 					  int regnum, ULONGEST *val);
 
-/* The reverse.  Store a register value relative to the specified
-   frame.  Note: this call makes the frame's state undefined.  The
-   register and frame caches must be flushed.  */
-extern void put_frame_register (frame_info_ptr frame, int regnum,
-				const gdb_byte *buf);
+/* The reverse.  Store a register value relative to NEXT_FRAME's previous frame.
+   Note: this call makes the frame's state undefined.  The register and frame
+   caches must be flushed.  */
+extern void put_frame_register (frame_info_ptr next_frame, int regnum,
+				gdb::array_view<const gdb_byte> buf);
 
-/* Read LEN bytes from one or multiple registers starting with REGNUM
-   in frame FRAME, starting at OFFSET, into BUF.  If the register
-   contents are optimized out or unavailable, set *OPTIMIZEDP,
-   *UNAVAILABLEP accordingly.  */
-extern bool get_frame_register_bytes (frame_info_ptr frame, int regnum,
+/* Read LEN bytes from one or multiple registers starting with REGNUM in
+   NEXT_FRAME's previous frame, starting at OFFSET, into BUF.  If the register
+   contents are optimized out or unavailable, set *OPTIMIZEDP, *UNAVAILABLEP
+   accordingly.  */
+extern bool get_frame_register_bytes (frame_info_ptr next_frame, int regnum,
 				      CORE_ADDR offset,
 				      gdb::array_view<gdb_byte> buffer,
 				      int *optimizedp, int *unavailablep);
 
 /* Write bytes from BUFFER to one or multiple registers starting with REGNUM
-   in frame FRAME, starting at OFFSET.  */
-extern void put_frame_register_bytes (frame_info_ptr frame, int regnum,
+   in NEXT_FRAME's previous frame, starting at OFFSET.  */
+extern void put_frame_register_bytes (frame_info_ptr next_frame, int regnum,
 				      CORE_ADDR offset,
 				      gdb::array_view<const gdb_byte> buffer);
 

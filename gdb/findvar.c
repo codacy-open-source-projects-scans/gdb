@@ -159,12 +159,12 @@ extract_typed_address (const gdb_byte *buf, struct type *type)
    target-format integer at ADDR which is LEN bytes long.  */
 template<typename T, typename>
 void
-store_integer (gdb_byte *addr, int len, enum bfd_endian byte_order,
+store_integer (gdb::array_view<gdb_byte> dst, enum bfd_endian byte_order,
 	       T val)
 {
   gdb_byte *p;
-  gdb_byte *startaddr = addr;
-  gdb_byte *endaddr = startaddr + len;
+  gdb_byte *startaddr = dst.data ();
+  gdb_byte *endaddr = startaddr + dst.size ();
 
   /* Start at the least significant end of the integer, and work towards
      the most significant.  */
@@ -187,13 +187,11 @@ store_integer (gdb_byte *addr, int len, enum bfd_endian byte_order,
 }
 
 /* Explicit instantiations.  */
-template void store_integer (gdb_byte *addr, int len,
-			     enum bfd_endian byte_order,
-			     LONGEST val);
+template void store_integer (gdb::array_view<gdb_byte> dst,
+			     bfd_endian byte_order, LONGEST val);
 
-template void store_integer (gdb_byte *addr, int len,
-			     enum bfd_endian byte_order,
-			     ULONGEST val);
+template void store_integer (gdb::array_view<gdb_byte> dst,
+			     bfd_endian byte_order, ULONGEST val);
 
 /* Store the address ADDR as a pointer of type TYPE at BUF, in target
    form.  */
@@ -245,42 +243,32 @@ copy_integer_to_size (gdb_byte *dest, int dest_size, const gdb_byte *source,
     }
 }
 
-/* Return a `value' with the contents of (virtual or cooked) register
-   REGNUM as found in the specified FRAME.  The register's type is
-   determined by register_type ().  */
+/* See value.h.  */
 
-struct value *
-value_of_register (int regnum, frame_info_ptr frame)
+value *
+value_of_register (int regnum, frame_info_ptr next_frame)
 {
-  struct gdbarch *gdbarch = get_frame_arch (frame);
-  struct value *reg_val;
+  gdbarch *gdbarch = frame_unwind_arch (next_frame);
 
   /* User registers lie completely outside of the range of normal
      registers.  Catch them early so that the target never sees them.  */
   if (regnum >= gdbarch_num_cooked_regs (gdbarch))
-    return value_of_user_reg (regnum, frame);
+    return value_of_user_reg (regnum, get_prev_frame_always (next_frame));
 
-  reg_val = value_of_register_lazy (frame, regnum);
+  value *reg_val = value_of_register_lazy (next_frame, regnum);
   reg_val->fetch_lazy ();
   return reg_val;
 }
 
-/* Return a `value' with the contents of (virtual or cooked) register
-   REGNUM as found in the specified FRAME.  The register's type is
-   determined by register_type ().  The value is not fetched.  */
+/* See value.h.  */
 
-struct value *
-value_of_register_lazy (frame_info_ptr frame, int regnum)
+value *
+value_of_register_lazy (frame_info_ptr next_frame, int regnum)
 {
-  struct gdbarch *gdbarch = get_frame_arch (frame);
-  struct value *reg_val;
-  frame_info_ptr next_frame;
+  gdbarch *gdbarch = frame_unwind_arch (next_frame);
 
   gdb_assert (regnum < gdbarch_num_cooked_regs (gdbarch));
-
-  gdb_assert (frame != NULL);
-
-  next_frame = get_next_frame_sentinel_okay (frame);
+  gdb_assert (next_frame != nullptr);
 
   /* In some cases NEXT_FRAME may not have a valid frame-id yet.  This can
      happen if we end up trying to unwind a register as part of the frame
@@ -293,7 +281,7 @@ value_of_register_lazy (frame_info_ptr frame, int regnum)
   /* We should have a valid next frame.  */
   gdb_assert (frame_id_p (get_frame_id (next_frame)));
 
-  reg_val = value::allocate_lazy (register_type (gdbarch, regnum));
+  value *reg_val = value::allocate_lazy (register_type (gdbarch, regnum));
   reg_val->set_lval (lval_register);
   VALUE_REGNUM (reg_val) = regnum;
   VALUE_NEXT_FRAME_ID (reg_val) = get_frame_id (next_frame);
@@ -534,8 +522,16 @@ language_defn::read_var_value (struct symbol *var,
     case LOC_CONST:
       if (is_dynamic_type (type))
 	{
-	  /* Value is a constant byte-sequence and needs no memory access.  */
-	  type = resolve_dynamic_type (type, {}, /* Unused address.  */ 0);
+	  gdb_byte bytes[sizeof (LONGEST)];
+
+	  size_t len = std::min (sizeof (LONGEST), (size_t) type->length ());
+	  store_unsigned_integer (bytes, len,
+				  type_byte_order (type),
+				  var->value_longest ());
+	  gdb::array_view<const gdb_byte> view (bytes, len);
+
+	  /* Value is a constant byte-sequence.  */
+	  type = resolve_dynamic_type (type, view, /* Unused address.  */ 0);
 	}
       /* Put the constant back in target format. */
       v = value::allocate (type);
@@ -575,8 +571,11 @@ language_defn::read_var_value (struct symbol *var,
     case LOC_CONST_BYTES:
       if (is_dynamic_type (type))
 	{
-	  /* Value is a constant byte-sequence and needs no memory access.  */
-	  type = resolve_dynamic_type (type, {}, /* Unused address.  */ 0);
+	  gdb::array_view<const gdb_byte> view (var->value_bytes (),
+						type->length ());
+
+	  /* Value is a constant byte-sequence.  */
+	  type = resolve_dynamic_type (type, view, /* Unused address.  */ 0);
 	}
       v = value::allocate (type);
       memcpy (v->contents_raw ().data (), var->value_bytes (),

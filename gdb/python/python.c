@@ -264,30 +264,6 @@ gdbpy_enter::finalize ()
   python_gdbarch = current_inferior ()->arch ();
 }
 
-/* A helper class to save and restore the GIL, but without touching
-   the other globals that are handled by gdbpy_enter.  */
-
-class gdbpy_gil
-{
-public:
-
-  gdbpy_gil ()
-    : m_state (PyGILState_Ensure ())
-  {
-  }
-
-  ~gdbpy_gil ()
-  {
-    PyGILState_Release (m_state);
-  }
-
-  DISABLE_COPY_AND_ASSIGN (gdbpy_gil);
-
-private:
-
-  PyGILState_STATE m_state;
-};
-
 /* Set the quit flag.  */
 
 static void
@@ -1114,6 +1090,23 @@ gdbpy_post_event (PyObject *self, PyObject *args)
   gdbpy_ref<> func_ref = gdbpy_ref<>::new_reference (func);
   gdbpy_event event (std::move (func_ref));
   run_on_main_thread (event);
+
+  Py_RETURN_NONE;
+}
+
+/* Interrupt the current operation on the main thread.  */
+static PyObject *
+gdbpy_interrupt (PyObject *self, PyObject *args)
+{
+  {
+    /* Make sure the interrupt isn't delivered immediately somehow.
+       This probably is not truly needed, but at the same time it
+       seems more clear to be explicit about the intent.  */
+    gdbpy_allow_threads temporarily_exit_python;
+    scoped_disable_cooperative_sigint_handling no_python_sigint;
+
+    set_quit_flag ();
+  }
 
   Py_RETURN_NONE;
 }
@@ -2678,6 +2671,8 @@ Parse String as an expression, evaluate it, and return the result as a Value."
 
   { "post_event", gdbpy_post_event, METH_VARARGS,
     "Post an event into gdb's event loop." },
+  { "interrupt", gdbpy_interrupt, METH_NOARGS,
+    "Interrupt gdb's current operation." },
 
   { "target_charset", gdbpy_target_charset, METH_NOARGS,
     "target_charset () -> string.\n\

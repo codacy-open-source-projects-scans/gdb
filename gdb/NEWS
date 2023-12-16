@@ -38,6 +38,24 @@ set remote thread-options-packet
 show remote thread-options-packet
   Set/show the use of the thread options packet.
 
+* New features in the GDB remote stub, GDBserver
+
+  ** The --remote-debug and --event-loop-debug command line options
+     have been removed.
+
+  ** The --debug command line option now takes an optional comma
+     separated list of components to emit debug for.  The currently
+     supported components are: all, threads, event-loop, and remote.
+     If no components are given then threads is assumed.
+
+  ** The 'monitor set remote-debug' and 'monitor set event-loop-debug'
+     command have been removed.
+
+  ** The 'monitor set debug 0|1' command has been extended to take a
+     component name, e.g.: 'monitor set debug COMPONENT off|on'.
+     Possible component names are: all, threads, event-loop, and
+     remote.
+
 * Python API
 
   ** New function gdb.notify_mi(NAME, DATA), that emits custom
@@ -56,6 +74,19 @@ show remote thread-options-packet
   ** New class gdb.missing_debug.MissingDebugInfo which can be
      sub-classed to create handlers for objfiles with missing debug
      information.
+
+  ** Stop events now have a "details" attribute that holds a
+     dictionary that carries the same information as an MI "*stopped"
+     event.
+
+  ** New function gdb.interrupt(), that interrupts GDB as if the user
+     typed control-c.
+
+* Debugger Adapter Protocol changes
+
+  ** GDB now emits the "process" event.
+
+  ** GDB now supports the "cancel" request.
 
 * New remote packets
 

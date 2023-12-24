@@ -496,7 +496,7 @@ standard_option_handler (SIM_DESC sd, sim_cpu *cpu, int opt,
 
     case OPTION_ENV_UNSET:
       {
-	int i, varlen;
+	int varlen;
 	char **envp;
 
 	if (STATE_PROG_ENVP (sd) == NULL)
@@ -1078,7 +1078,6 @@ complete_option_list (char **ret, size_t *cnt, const struct option_list *ol,
 		      const char *text, const char *word)
 {
   const OPTION *opt = NULL;
-  int argi;
   size_t len = strlen (word);
 
   for ( ; ol != NULL; ol = ol->next)

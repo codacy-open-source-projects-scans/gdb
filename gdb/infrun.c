@@ -2021,8 +2021,6 @@ displaced_step_finish (thread_info *event_thread,
 		       const target_waitstatus &event_status)
 {
   /* Check whether the parent is displaced stepping.  */
-  struct regcache *regcache = get_thread_regcache (event_thread);
-  struct gdbarch *gdbarch = regcache->arch ();
   inferior *parent_inf = event_thread->inf;
 
   /* If this was a fork/vfork/clone, this event indicates that the
@@ -2040,10 +2038,15 @@ displaced_step_finish (thread_info *event_thread,
      gdbarch_displaced_step_restore_all_in_ptid.  This is not enforced
      during gdbarch validation to support architectures which support
      displaced stepping but not forks.  */
-  if (event_status.kind () == TARGET_WAITKIND_FORKED
-      && gdbarch_supports_displaced_stepping (gdbarch))
-    gdbarch_displaced_step_restore_all_in_ptid
-      (gdbarch, parent_inf, event_status.child_ptid ());
+  if (event_status.kind () == TARGET_WAITKIND_FORKED)
+    {
+      struct regcache *parent_regcache = get_thread_regcache (event_thread);
+      struct gdbarch *gdbarch = parent_regcache->arch ();
+
+      if (gdbarch_supports_displaced_stepping (gdbarch))
+	gdbarch_displaced_step_restore_all_in_ptid
+	  (gdbarch, parent_inf, event_status.child_ptid ());
+    }
 
   displaced_step_thread_state *displaced = &event_thread->displaced_step_state;
 
@@ -2082,11 +2085,13 @@ displaced_step_finish (thread_info *event_thread,
 	 child hasn't been added to the inferior list yet at this
 	 point.  */
 
+      struct regcache *parent_regcache = get_thread_regcache (event_thread);
+      struct gdbarch *gdbarch = parent_regcache->arch ();
       struct regcache *child_regcache
 	= get_thread_arch_regcache (parent_inf, event_status.child_ptid (),
 				    gdbarch);
       /* Read PC value of parent.  */
-      CORE_ADDR parent_pc = regcache_read_pc (regcache);
+      CORE_ADDR parent_pc = regcache_read_pc (parent_regcache);
 
       displaced_debug_printf ("write child pc from %s to %s",
 			      paddress (gdbarch,
@@ -5880,6 +5885,13 @@ handle_thread_exited (execution_control_state *ecs)
      update the thread list and delete the event thread.  */
   bool abort_cmd = (ecs->event_thread->thread_fsm () != nullptr);
 
+  /* Mark the thread exited right now, because finish_step_over may
+     update the thread list and that may delete the thread silently
+     (depending on target), while we always want to emit the "[Thread
+     ... exited]" notification.  Don't actually delete the thread yet,
+     because we need to pass its pointer down to finish_step_over.  */
+  set_thread_exited (ecs->event_thread);
+
   /* Maybe the thread was doing a step-over, if so release
      resources and start any further pending step-overs.
 
@@ -5895,7 +5907,10 @@ handle_thread_exited (execution_control_state *ecs)
 
   if (abort_cmd)
     {
-      delete_thread (ecs->event_thread);
+      /* We're stopping for the thread exit event.  Switch to the
+	 event thread again, as finish_step_over may have switched
+	 threads.  */
+      switch_to_thread (ecs->event_thread);
       ecs->event_thread = nullptr;
       return false;
     }

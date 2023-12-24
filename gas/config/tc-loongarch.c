@@ -682,7 +682,7 @@ loongarch_args_parser_can_match_arg_helper (char esc_ch1, char esc_ch2,
 		      esc_ch1, esc_ch2, bit_field, arg);
 
 	  if (ip->reloc_info[0].type >= BFD_RELOC_LARCH_B16
-	      && ip->reloc_info[0].type < BFD_RELOC_LARCH_64_PCREL)
+	      && ip->reloc_info[0].type < BFD_RELOC_UNUSED)
 	    {
 	      /* As we compact stack-relocs, it is no need for pop operation.
 		 But break out until here in order to check the imm field.
@@ -956,6 +956,10 @@ move_insn (struct loongarch_cl_insn *insn, fragS *frag, long where)
 static void
 append_fixed_insn (struct loongarch_cl_insn *insn)
 {
+  /* Ensure the jirl is emitted to the same frag as the pcaddu18i.  */
+  if (BFD_RELOC_LARCH_CALL36 == insn->reloc_info[0].type)
+    frag_grow (8);
+
   char *f = frag_more (insn->insn_length);
   move_insn (insn, frag_now, f - frag_now->fr_literal);
 }
@@ -1648,13 +1652,15 @@ loongarch_make_nops (char *buf, bfd_vma bytes)
    the correct alignment now because of other linker relaxations.  */
 
 bool
-loongarch_frag_align_code (int n)
+loongarch_frag_align_code (int n, int max)
 {
-  bfd_vma bytes = (bfd_vma) 1 << n;
-  bfd_vma insn_alignment = 4;
-  bfd_vma worst_case_bytes = bytes - insn_alignment;
   char *nops;
+  symbolS *s;
   expressionS ex;
+
+  bfd_vma insn_alignment = 4;
+  bfd_vma bytes = (bfd_vma) 1 << n;
+  bfd_vma worst_case_bytes = bytes - insn_alignment;
 
   /* If we are moving to a smaller alignment than the instruction size, then no
      alignment is required.  */
@@ -1667,8 +1673,14 @@ loongarch_frag_align_code (int n)
 
   nops = frag_more (worst_case_bytes);
 
-  ex.X_op = O_constant;
-  ex.X_add_number = worst_case_bytes;
+  s = symbol_find (".Lla-relax-align");
+  if (s == NULL)
+    s = (symbolS *)local_symbol_make (".Lla-relax-align", now_seg,
+				      &zero_address_frag, 0);
+
+  ex.X_add_symbol = s;
+  ex.X_op = O_symbol;
+  ex.X_add_number = (max << 8) | n;
 
   loongarch_make_nops (nops, worst_case_bytes);
 

@@ -32,6 +32,7 @@ if [istarget "loongarch64-*-*"] {
     run_dump_test "syscall"
     run_dump_test "disas-jirl"
     run_dump_test "local-ifunc-reloc"
+    run_dump_test "anno-sym"
 }
 
 if [istarget "loongarch32-*-*"] {
@@ -53,6 +54,18 @@ if [istarget "loongarch64-*-*"] {
 		  [list objdump -D 64_pcrel.d] \
 	      ] \
 	      "64_pcrel" \
+	  ] \
+      ]
+
+  run_ld_link_tests \
+      [list \
+	  [list \
+	      "medium code model call" \
+	      "-e 0x0" "" \
+	      "" \
+	      {medium-call.s} \
+	      {} \
+	      "medium-call" \
 	  ] \
       ]
 }

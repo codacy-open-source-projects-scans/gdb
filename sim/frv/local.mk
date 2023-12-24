@@ -19,7 +19,6 @@
 AM_CPPFLAGS_%C% = $(SIM_FRV_TRAPDUMP_FLAGS)
 
 ## Some modules don't build cleanly yet.
-AM_CFLAGS_%C%_memory.o = -Wno-error
 AM_CFLAGS_%C%_sem.o = -Wno-error
 
 nodist_%C%_libsim_a_SOURCES = \
@@ -92,11 +91,10 @@ BUILT_SOURCES += %D%/eng.h
 
 ## FIXME: Use of `mono' is wip.
 %D%/mloop.c %D%/eng.h: %D%/stamp-mloop ; @true
-%D%/stamp-mloop: $(srccom)/genmloop.sh %D%/mloop.in
-	$(AM_V_GEN)$(SHELL) $(srccom)/genmloop.sh -shell $(SHELL) \
+%D%/stamp-mloop: %D%/mloop.in $(srccom)/genmloop.sh
+	$(AM_V_GEN)$(CGEN_GEN_MLOOP) \
 		-mono -scache -parallel-generic-write -parallel-only \
-		-cpu frvbf \
-		-infile $(srcdir)/%D%/mloop.in -outfile-prefix %D%/
+		-cpu frvbf
 	$(AM_V_at)$(SHELL) $(srcroot)/move-if-change %D%/eng.hin %D%/eng.h
 	$(AM_V_at)$(SHELL) $(srcroot)/move-if-change %D%/mloop.cin %D%/mloop.c
 	$(AM_V_at)touch $@

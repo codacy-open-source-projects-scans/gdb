@@ -303,9 +303,8 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
   int memops;
   int bonus_cycles;
   int insts;
-  int w;
-  int cycs;
 #ifdef WATCHFUNCTIONS
+  int w;
   int32_t WLhash;
 #endif
 
@@ -356,8 +355,8 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 
       if ((WLincyc == 1) && (pc == WLendpc))
 	{
-	  cycs = (mcore_cpu->cycles + (insts + bonus_cycles +
-				       (memops * memcycles)) - WLbcyc);
+	  int cycs = (mcore_cpu->cycles + (insts + bonus_cycles +
+					   (memops * memcycles)) - WLbcyc);
 
 	  if (WLcnts[WLW] == 1)
 	    {
@@ -1015,7 +1014,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 	case 0x38: case 0x39:				/* xsr, rotli */
 	  {
 	    unsigned imm = IMM5;
-	    unsigned long tmp = gr[RD];
+	    uint32_t tmp = gr[RD];
 	    if (imm == 0)
 	      {
 		int32_t cbit;
@@ -1106,6 +1105,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 	    fprintf (stderr,
 		     "func call: r2 = %x r3 = %x r4 = %x r5 = %x r6 = %x r7 = %x\n",
 		     gr[2], gr[3], gr[4], gr[5], gr[6], gr[7]);
+	  ATTRIBUTE_FALLTHROUGH;
 	case 0x70:					/* jmpi */
 	  pc = rlat ((pc + ((inst & 0xFF) << 2)) & 0xFFFFFFFC);
 	  memops++;
@@ -1193,6 +1193,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 	case 0xF8: case 0xF9: case 0xFA: case 0xFB:
 	case 0xFC: case 0xFD: case 0xFE: case 0xFF:	/* bsr */
 	  gr[15] = pc;
+	  ATTRIBUTE_FALLTHROUGH;
 	case 0xF0: case 0xF1: case 0xF2: case 0xF3:
 	case 0xF4: case 0xF5: case 0xF6: case 0xF7:	/* br */
 	  {

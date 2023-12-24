@@ -799,6 +799,7 @@ mec_write(uint32_t addr, uint32_t data)
     case MEC_UARTA:
     case MEC_UARTB:
         if (data & 0xFFFFFF00) mecparerror();
+        ATTRIBUTE_FALLTHROUGH;
     case MEC_UART_CTRL:
         if (data & 0xFF00FF00) mecparerror();
 	write_uart(addr, data);
@@ -1632,10 +1633,7 @@ memory_read(int32_t asi, uint32_t addr, void *data, int32_t sz, int32_t *ws)
 int
 memory_write(int32_t asi, uint32_t addr, uint32_t *data, int32_t sz, int32_t *ws)
 {
-    uint32_t          byte_addr;
-    uint32_t          byte_mask;
     uint32_t          waddr;
-    uint32_t         *ram;
     int32_t           mexc;
     int             i;
     int             wphit[2];

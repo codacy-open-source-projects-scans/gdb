@@ -103,7 +103,6 @@ void
 bfin_syscall (SIM_CPU *cpu)
 {
   SIM_DESC sd = CPU_STATE (cpu);
-  char * const *argv = (void *)STATE_PROG_ARGV (sd);
   host_callback *cb = STATE_CALLBACK (sd);
   bu32 args[6];
   CB_SYSCALL sc;
@@ -397,12 +396,14 @@ bfin_syscall (SIM_CPU *cpu)
       goto sys_finish;
     case CB_SYS_setuid:
       sc.arg1 &= 0xffff;
+      ATTRIBUTE_FALLTHROUGH;
     case CB_SYS_setuid32:
       tbuf += sprintf (tbuf, "setuid(%u)", args[0]);
       sc.result = setuid (sc.arg1);
       goto sys_finish;
     case CB_SYS_setgid:
       sc.arg1 &= 0xffff;
+      ATTRIBUTE_FALLTHROUGH;
     case CB_SYS_setgid32:
       tbuf += sprintf (tbuf, "setgid(%u)", args[0]);
       sc.result = setgid (sc.arg1);

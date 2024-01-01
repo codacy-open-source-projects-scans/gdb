@@ -6481,6 +6481,8 @@ process_die (struct die_info *die, struct dwarf2_cu *cu)
 	  && die->parent->tag == DW_TAG_subprogram)
 	cu->processing_has_namespace_info = true;
       [[fallthrough]];
+      /* Fall through.  */
+    case DW_TAG_entry_point:
     case DW_TAG_inlined_subroutine:
       read_func_scope (die, cu);
       break;
@@ -6597,6 +6599,7 @@ die_needs_namespace (struct die_info *die, struct dwarf2_cu *cu)
     case DW_TAG_enumerator:
     case DW_TAG_subprogram:
     case DW_TAG_inlined_subroutine:
+    case DW_TAG_entry_point:
     case DW_TAG_member:
     case DW_TAG_imported_declaration:
       return 1;
@@ -10987,20 +10990,54 @@ dwarf2_ranges_read_low_addrs (unsigned offset, struct dwarf2_cu *cu,
     });
 }
 
-/* Get low and high pc attributes from a die.  See enum pc_bounds_kind
-   definition for the return value.  *LOWPC and *HIGHPC are set iff
-   neither PC_BOUNDS_NOT_PRESENT nor PC_BOUNDS_INVALID are returned.  */
+/* Determine the low and high pc of a DW_TAG_entry_point.  */
 
-static enum pc_bounds_kind
-dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
-		      unrelocated_addr *highpc, struct dwarf2_cu *cu,
-		      addrmap *map, void *datum)
+static pc_bounds_kind
+dwarf2_get_pc_bounds_entry_point (die_info *die, unrelocated_addr *low,
+				  unrelocated_addr *high, dwarf2_cu *cu)
 {
-  dwarf2_per_objfile *per_objfile = cu->per_objfile;
+  gdb_assert (low != nullptr);
+  gdb_assert (high != nullptr);
+
+  if (die->parent->tag != DW_TAG_subprogram)
+    {
+      complaint (_("DW_TAG_entry_point not embedded in DW_TAG_subprogram"));
+      return PC_BOUNDS_INVALID;
+    }
+
+  /* A DW_TAG_entry_point is embedded in an subprogram.  Therefore, we can use
+     the highpc from its enveloping subprogram and get the lowpc from
+     DWARF.  */
+  const enum pc_bounds_kind bounds_kind = dwarf2_get_pc_bounds (die->parent,
+								low, high,
+								cu, nullptr,
+								nullptr);
+  if (bounds_kind == PC_BOUNDS_INVALID || bounds_kind == PC_BOUNDS_NOT_PRESENT)
+    return bounds_kind;
+
+  attribute *attr_low = dwarf2_attr (die, DW_AT_low_pc, cu);
+  if (!attr_low)
+    {
+      complaint (_("DW_TAG_entry_point is missing DW_AT_low_pc"));
+      return PC_BOUNDS_INVALID;
+    }
+  *low = attr_low->as_address ();
+  return bounds_kind;
+}
+
+/* Determine the low and high pc using the DW_AT_low_pc and DW_AT_high_pc or
+   DW_AT_ranges attributes of a DIE.  */
+
+static pc_bounds_kind
+dwarf_get_pc_bounds_ranges_or_highlow_pc (die_info *die, unrelocated_addr *low,
+					  unrelocated_addr *high, dwarf2_cu *cu,
+					  addrmap *map, void *datum)
+{
+  gdb_assert (low != nullptr);
+  gdb_assert (high != nullptr);
+
   struct attribute *attr;
   struct attribute *attr_high;
-  unrelocated_addr low = {};
-  unrelocated_addr high = {};
   enum pc_bounds_kind ret;
 
   attr_high = dwarf2_attr (die, DW_AT_high_pc, cu);
@@ -11009,17 +11046,19 @@ dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
       attr = dwarf2_attr (die, DW_AT_low_pc, cu);
       if (attr != nullptr)
 	{
-	  low = attr->as_address ();
-	  high = attr_high->as_address ();
+	  *low = attr->as_address ();
+	  *high = attr_high->as_address ();
 	  if (cu->header.version >= 4 && attr_high->form_is_constant ())
-	    high = (unrelocated_addr) ((ULONGEST) high + (ULONGEST) low);
+	    *high = (unrelocated_addr) ((ULONGEST) *high + (ULONGEST) *low);
+
+	  /* Found consecutive range of addresses.  */
+	  ret = PC_BOUNDS_HIGH_LOW;
 	}
       else
-	/* Found high w/o low attribute.  */
-	return PC_BOUNDS_INVALID;
-
-      /* Found consecutive range of addresses.  */
-      ret = PC_BOUNDS_HIGH_LOW;
+	{
+	  /* Found high w/o low attribute.  */
+	  ret = PC_BOUNDS_INVALID;
+	}
     }
   else
     {
@@ -11037,15 +11076,46 @@ dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
 
 	  /* Value of the DW_AT_ranges attribute is the offset in the
 	     .debug_ranges section.  */
-	  if (!dwarf2_ranges_read (ranges_offset, &low, &high, cu,
+	  if (!dwarf2_ranges_read (ranges_offset, low, high, cu,
 				   map, datum, die->tag))
 	    return PC_BOUNDS_INVALID;
 	  /* Found discontinuous range of addresses.  */
 	  ret = PC_BOUNDS_RANGES;
 	}
       else
-	return PC_BOUNDS_NOT_PRESENT;
+	{
+	  /* Could not find high_pc or ranges attributed and thus no bounds
+	     pair.  */
+	  ret = PC_BOUNDS_NOT_PRESENT;
+	}
     }
+
+    return ret;
+}
+
+/* Get low and high pc attributes from a die.  See enum pc_bounds_kind
+   definition for the return value.  *LOWPC and *HIGHPC are set iff
+   neither PC_BOUNDS_NOT_PRESENT nor PC_BOUNDS_INVALID are returned.  */
+
+static enum pc_bounds_kind
+dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
+		      unrelocated_addr *highpc, struct dwarf2_cu *cu,
+		      addrmap *map, void *datum)
+{
+  dwarf2_per_objfile *per_objfile = cu->per_objfile;
+
+  unrelocated_addr low = {};
+  unrelocated_addr high = {};
+  enum pc_bounds_kind ret;
+
+  if (die->tag == DW_TAG_entry_point)
+    ret = dwarf2_get_pc_bounds_entry_point (die, &low, &high, cu);
+  else
+    ret = dwarf_get_pc_bounds_ranges_or_highlow_pc (die, &low, &high, cu, map,
+						    datum);
+
+  if (ret == PC_BOUNDS_NOT_PRESENT || ret == PC_BOUNDS_INVALID)
+    return ret;
 
   /* partial_die_info::read has also the strict LOW < HIGH requirement.  */
   if (high <= low)
@@ -11063,8 +11133,9 @@ dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
       && !per_objfile->per_bfd->has_section_at_zero)
     return PC_BOUNDS_INVALID;
 
+  gdb_assert (lowpc != nullptr);
   *lowpc = low;
-  if (highpc)
+  if (highpc != nullptr)
     *highpc = high;
   return ret;
 }
@@ -16346,6 +16417,11 @@ cooked_indexer::index_dies (cutu_reader *reader,
       cooked_index_flag flags = IS_STATIC;
       sect_offset sibling {};
       const cooked_index_entry *this_parent_entry = parent_entry;
+
+      /* The scope of a DW_TAG_entry_point cooked_index_entry is the one of
+	 its surrounding subroutine.  */
+      if (abbrev->tag == DW_TAG_entry_point)
+	this_parent_entry = parent_entry->parent_entry;
       info_ptr = scan_attributes (reader->cu->per_cu, reader, info_ptr,
 				  info_ptr, abbrev, &name, &linkage_name,
 				  &flags, &sibling, &this_parent_entry,
@@ -18856,6 +18932,20 @@ new_symbol (struct die_info *die, struct type *type, struct dwarf2_cu *cu,
 	  sym->set_domain (LABEL_DOMAIN);
 	  add_symbol_to_list (sym, cu->list_in_scope);
 	  break;
+	case DW_TAG_entry_point:
+	  /* SYMBOL_BLOCK_VALUE (sym) will be filled in later by
+	     finish_block.  */
+	  sym->set_aclass_index (LOC_BLOCK);
+	  /* DW_TAG_entry_point provides an additional entry_point to an
+	     existing sub_program.  Therefore, we inherit the "external"
+	     attribute from the sub_program to which the entry_point
+	     belongs to.  */
+	  attr2 = dwarf2_attr (die->parent, DW_AT_external, cu);
+	  if (attr2 != nullptr && attr2->as_boolean ())
+	    list_to_add = cu->get_builder ()->get_global_symbols ();
+	  else
+	    list_to_add = cu->list_in_scope;
+	  break;
 	case DW_TAG_subprogram:
 	  /* SYMBOL_BLOCK_VALUE (sym) will be filled in later by
 	     finish_block.  */
@@ -19601,6 +19691,7 @@ read_type_die_1 (struct die_info *die, struct dwarf2_cu *cu)
     case DW_TAG_enumeration_type:
       this_type = read_enumeration_type (die, cu);
       break;
+    case DW_TAG_entry_point:
     case DW_TAG_subprogram:
     case DW_TAG_subroutine_type:
     case DW_TAG_inlined_subroutine:
@@ -19920,12 +20011,15 @@ determine_prefix (struct die_info *die, struct dwarf2_cu *cu)
 	return "";
       case DW_TAG_subprogram:
 	/* Nested subroutines in Fortran get a prefix with the name
-	   of the parent's subroutine.  */
+	   of the parent's subroutine.  Entry points are prefixed by the
+	   parent's namespace.  */
 	if (cu->lang () == language_fortran)
 	  {
 	    if ((die->tag ==  DW_TAG_subprogram)
 		&& (dwarf2_name (parent, cu) != NULL))
 	      return dwarf2_name (parent, cu);
+	    else if (die->tag == DW_TAG_entry_point)
+	      return determine_prefix (parent, cu);
 	  }
 	return "";
       case DW_TAG_enumeration_type:

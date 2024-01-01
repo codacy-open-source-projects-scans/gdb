@@ -24,3 +24,4 @@
 set -e
 
 grep -q "mov[ \t]\+\$0x[a-f0-9]\+,%r9" x86_64_gd_to_le.stdout
+grep -q "mov[ \t]\+\$0x[a-f0-9]\+,%r29" x86_64_gd_to_le.stdout

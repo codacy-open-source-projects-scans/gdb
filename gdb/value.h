@@ -159,12 +159,17 @@ public:
   /* Allocate a value and its contents for type TYPE.  */
   static struct value *allocate (struct type *type);
 
-  /* Allocate a non-lazy value representing register RENUM in the frame previous
-     to NEXT_FRAME.  The type of the value is found using `register_type`.
+  /* Allocate a lazy value representing register REGNUM in the frame previous
+     to NEXT_FRAME.  If TYPE is non-nullptr, use it as the value type.
+     Otherwise, use `register_type` to obtain the type.  */
+  static struct value *allocate_register_lazy (frame_info_ptr next_frame,
+					  int regnum, type *type = nullptr);
 
+  /* Same as `allocate_register_lazy`, but make the value non-lazy.
+  
      The caller is responsible for filling the value's contents.  */
   static struct value *allocate_register (frame_info_ptr next_frame,
-					  int regnum);
+					  int regnum, type *type = nullptr);
 
   /* Create a computed lvalue, with type TYPE, function pointers
      FUNCS, and closure CLOSURE.  */
@@ -368,9 +373,26 @@ public:
   struct internalvar **deprecated_internalvar_hack ()
   { return &m_location.internalvar; }
 
-  struct frame_id *deprecated_next_frame_id_hack ();
+  /* Return this value's next frame id.
 
-  int *deprecated_regnum_hack ();
+     The value must be of lval == lval_register.  */
+  frame_id next_frame_id ()
+  {
+    gdb_assert (m_lval == lval_register);
+
+    return m_location.reg.next_frame_id;
+  }
+
+  /* Return this value's register number.
+
+     The value must be of lval == lval_register.  */
+  int regnum ()
+  {
+    gdb_assert (m_lval == lval_register);
+
+    return m_location.reg.regnum;
+  }
+
 
   /* contents() and contents_raw() both return the address of the gdb
      buffer used to hold a copy of the contents of the lval.
@@ -669,10 +691,10 @@ private:
     {
       /* Register number.  */
       int regnum;
-      /* Frame ID of "next" frame to which a register value is relative.
-	 If the register value is found relative to frame F, then the
-	 frame id of F->next will be stored in next_frame_id.  */
-      struct frame_id next_frame_id;
+
+      /* Frame ID of the next physical (non-inline) frame to which a register
+	 value is relative.  */
+      frame_id next_frame_id;
     } reg;
 
     /* Pointer to internal variable.  */
@@ -959,15 +981,6 @@ extern void error_value_optimized_out (void);
 /* Pointer to internal variable.  */
 #define VALUE_INTERNALVAR(val) (*((val)->deprecated_internalvar_hack ()))
 
-/* Frame ID of "next" frame to which a register value is relative.  A
-   register value is indicated by VALUE_LVAL being set to lval_register.
-   So, if the register value is found relative to frame F, then the
-   frame id of F->next will be stored in VALUE_NEXT_FRAME_ID.  */
-#define VALUE_NEXT_FRAME_ID(val) (*((val)->deprecated_next_frame_id_hack ()))
-
-/* Register number if the value is from a register.  */
-#define VALUE_REGNUM(val) (*((val)->deprecated_regnum_hack ()))
-
 /* Return value after lval_funcs->coerce_ref (after check_typedef).  Return
    NULL if lval_funcs->coerce_ref is not applicable for whatever reason.  */
 
@@ -1110,13 +1123,9 @@ extern struct value *value_from_contents_and_address
       frame_info_ptr frame = nullptr);
 extern struct value *value_from_contents (struct type *, const gdb_byte *);
 
-extern struct value *default_value_from_register (struct gdbarch *gdbarch,
-						  struct type *type,
-						  int regnum,
-						  struct frame_id frame_id);
-
-extern void read_frame_register_value (struct value *value,
-				       frame_info_ptr frame);
+extern value *default_value_from_register (gdbarch *gdbarch, type *type,
+					   int regnum,
+					   const frame_info_ptr &this_frame);
 
 extern struct value *value_from_register (struct type *type, int regnum,
 					  frame_info_ptr frame);

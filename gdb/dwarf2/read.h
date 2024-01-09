@@ -898,7 +898,7 @@ struct dwarf2_base_index_functions : public quick_symbol_functions
   struct compunit_symtab *find_pc_sect_compunit_symtab
     (struct objfile *objfile, struct bound_minimal_symbol msymbol,
      CORE_ADDR pc, struct obj_section *section, int warn_if_readin)
-       override final;
+       override;
 
   struct compunit_symtab *find_compunit_symtab_by_address
     (struct objfile *objfile, CORE_ADDR address) override
@@ -966,8 +966,7 @@ extern void finalize_all_units (dwarf2_per_bfd *per_bfd);
 
 /* Create a list of all compilation units in OBJFILE.  */
 
-extern void create_all_units (dwarf2_per_objfile *per_objfile,
-			      bool pre_read_p = true);
+extern void create_all_units (dwarf2_per_objfile *per_objfile);
 
 /* Create a quick_file_names hash table.  */
 

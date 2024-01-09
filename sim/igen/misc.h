@@ -19,7 +19,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-
+#ifndef IGEN_MISC_H
+#define IGEN_MISC_H
 
 /* Frustrating header junk */
 
@@ -56,12 +57,12 @@ extern error_func warning;
 extern error_func notify;
 
 
-#define ERROR(EXPRESSION) \
+#define ERROR(EXPRESSION, args...) \
 do { \
   line_ref line; \
   line.file_name = filter_filename (__FILE__); \
   line.line_nr = __LINE__; \
-  error (&line, EXPRESSION "\n"); \
+  error (&line, EXPRESSION "\n", ## args); \
 } while (0)
 
 #define ASSERT(EXPRESSION) \
@@ -102,3 +103,5 @@ name_map;
 extern int name2i (const char *name, const name_map * map);
 
 extern const char *i2name (const int i, const name_map * map);
+
+#endif /* IGEN_MISC_H */

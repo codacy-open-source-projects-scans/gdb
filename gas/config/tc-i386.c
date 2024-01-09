@@ -1,5 +1,5 @@
 /* tc-i386.c -- Assemble code for the Intel 80386
-   Copyright (C) 1989-2023 Free Software Foundation, Inc.
+   Copyright (C) 1989-2024 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -1018,6 +1018,7 @@ static const arch_entry cpu_arch[] =
   ARCH (znver2, ZNVER, ZNVER2, false),
   ARCH (znver3, ZNVER, ZNVER3, false),
   ARCH (znver4, ZNVER, ZNVER4, false),
+  ARCH (znver5, ZNVER, ZNVER5, false),
   ARCH (btver1, BT, BTVER1, false),
   ARCH (btver2, BT, BTVER2, false),
 
@@ -1702,21 +1703,34 @@ static i386_cpu_flags cpu_flags_from_attr (i386_cpu_attr a)
   const unsigned int bps = sizeof (a.array[0]) * CHAR_BIT;
   i386_cpu_flags f = { .array[0] = 0 };
 
-  switch (ARRAY_SIZE(a.array))
+  switch (ARRAY_SIZE (a.array))
     {
     case 1:
       f.array[CpuAttrEnums / bps]
-        |= (a.array[0] >> CpuIsaBits) << (CpuAttrEnums % bps);
-      if (CpuAttrEnums % bps > CpuIsaBits)
+#ifndef WORDS_BIGENDIAN
+	|= (a.array[0] >> CpuIsaBits) << (CpuAttrEnums % bps);
+#else
+	|= (a.array[0] << CpuIsaBits) >> (CpuAttrEnums % bps);
+#endif
+      if (CpuMax / bps > CpuAttrEnums / bps)
 	f.array[CpuAttrEnums / bps + 1]
+#ifndef WORDS_BIGENDIAN
 	  = (a.array[0] >> CpuIsaBits) >> (bps - CpuAttrEnums % bps);
+#else
+	  = (a.array[0] << CpuIsaBits) << (bps - CpuAttrEnums % bps);
+#endif
       break;
+
     default:
       abort ();
     }
 
   if (a.bitfield.isa)
+#ifndef WORDS_BIGENDIAN
     f.array[(a.bitfield.isa - 1) / bps] |= 1u << ((a.bitfield.isa - 1) % bps);
+#else
+    f.array[(a.bitfield.isa - 1) / bps] |= 1u << (~(a.bitfield.isa - 1) % bps);
+#endif
 
   return f;
 }

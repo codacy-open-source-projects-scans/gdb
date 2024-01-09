@@ -1,5 +1,5 @@
 /* LoongArch-specific support for NN-bit ELF.
-   Copyright (C) 2021-2023 Free Software Foundation, Inc.
+   Copyright (C) 2021-2024 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -891,8 +891,12 @@ loongarch_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	    h->non_got_ref = 1;
 	  break;
 
+	/* For normal cmodel, pcalau12i + addi.d/w used to data.
+	   For first version medium cmodel, pcalau12i + jirl are used to
+	   function call, it need to creat PLT entry for STT_FUNC and
+	   STT_GNU_IFUNC type symbol.  */
 	case R_LARCH_PCALA_HI20:
-	  if (h != NULL)
+	  if (h != NULL && (STT_FUNC == h->type || STT_GNU_IFUNC == h->type))
 	    {
 	      /* For pcalau12i + jirl.  */
 	      h->needs_plt = 1;
@@ -4305,8 +4309,8 @@ loongarch_relax_align (bfd *abfd, asection *sec,
 {
   bfd_vma  addend, max = 0, alignment = 1;
 
-  int index = ELFNN_R_SYM (rel->r_info);
-  if (index > 0)
+  int sym_index = ELFNN_R_SYM (rel->r_info);
+  if (sym_index > 0)
     {
       alignment = 1 << (rel->r_addend & 0xff);
       max = rel->r_addend >> 8;

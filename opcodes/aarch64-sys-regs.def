@@ -1,5 +1,5 @@
 /* aarch64-system-regs.def -- AArch64 opcode support.
-   Copyright (C) 2009-2023 Free Software Foundation, Inc.
+   Copyright (C) 2009-2024 Free Software Foundation, Inc.
    Contributed by ARM Ltd.
 
    This file is part of the GNU opcodes library.
@@ -984,6 +984,10 @@
   SYSREG ("trcimspec6",		CPENC (2,1,0,6,7),	0,			AARCH64_NO_FEATURES)
   SYSREG ("trcimspec7",		CPENC (2,1,0,7,7),	0,			AARCH64_NO_FEATURES)
   SYSREG ("trcitctrl",		CPENC (2,1,7,0,4),	0,			AARCH64_NO_FEATURES)
+  SYSREG ("trcitecr_el1",	CPENC (3,0,1,2,3),	F_ARCHEXT,		AARCH64_FEATURE (ITE))
+  SYSREG ("trcitecr_el12",	CPENC (3,5,1,2,3),	F_ARCHEXT,		AARCH64_FEATURE (ITE))
+  SYSREG ("trcitecr_el2",	CPENC (3,4,1,2,3),	F_ARCHEXT,		AARCH64_FEATURE (ITE))
+  SYSREG ("trciteedcr",		CPENC (2,1,0,2,1),	F_ARCHEXT,		AARCH64_FEATURE (ITE))
   SYSREG ("trclar",		CPENC (2,1,7,12,6),	F_REG_WRITE,		AARCH64_NO_FEATURES)
   SYSREG ("trclsr",		CPENC (2,1,7,13,6),	F_REG_READ,		AARCH64_NO_FEATURES)
   SYSREG ("trcoslar",		CPENC (2,1,1,0,4),	F_REG_WRITE,		AARCH64_NO_FEATURES)

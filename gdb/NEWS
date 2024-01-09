@@ -9,12 +9,21 @@
 * GDB index now contains information about the main function.  This speeds up
   startup when it is being used for some large binaries.
 
+* On hosts where threading is available, DWARF reading is now done in
+  the background, resulting in faster startup.  This can be controlled
+  using "maint set dwarf synchronous".
+
 * Changed commands
 
 disassemble
   Attempting to use both the 'r' and 'b' flags with the disassemble
   command will now give an error.  Previously the 'b' flag would
   always override the 'r' flag.
+
+maintenance info line-table
+  Add an EPILOGUE-BEGIN column to the output of the command.  It indicates
+  if the line is considered the start of the epilgoue, and thus a point at
+  which the frame can be considered destroyed.
 
 * New commands
 

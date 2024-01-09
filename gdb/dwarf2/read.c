@@ -94,8 +94,8 @@
 #include "dwarf2/abbrev-cache.h"
 #include "cooked-index.h"
 #include "split-name.h"
-#include "gdbsupport/parallel-for.h"
 #include "gdbsupport/thread-pool.h"
+#include "run-on-main-thread.h"
 
 /* When == 1, print basic high level tracing messages.
    When > 1, be more verbose.
@@ -353,7 +353,7 @@ struct dwo_file
      For virtual DWO files the name is constructed from the section offsets
      of abbrev,line,loc,str_offsets so that we combine virtual DWO files
      from related CU+TUs.  */
-  const char *dwo_name = nullptr;
+  std::string dwo_name;
 
   /* The DW_AT_comp_dir attribute.  */
   const char *comp_dir = nullptr;
@@ -736,17 +736,26 @@ show_dwarf_max_cache_age (struct ui_file *file, int from_tty,
 		      "DWARF compilation units is %s.\n"),
 	      value);
 }
+
+/* When true, wait for DWARF reading to be complete.  */
+static bool dwarf_synchronous = false;
+
+/* "Show" callback for "maint set dwarf synchronous".  */
+static void
+show_dwarf_synchronous (struct ui_file *file, int from_tty,
+			struct cmd_list_element *c, const char *value)
+{
+  gdb_printf (file, _("Whether DWARF reading is synchronous is %s.\n"),
+	      value);
+}
 
 /* local function prototypes */
 
 static void dwarf2_find_base_address (struct die_info *die,
 				      struct dwarf2_cu *cu);
 
-class cooked_index_storage;
 static void build_type_psymtabs_reader (cutu_reader *reader,
 					cooked_index_storage *storage);
-
-static void dwarf2_build_psymtabs_hard (dwarf2_per_objfile *per_objfile);
 
 static void var_decode_location (struct attribute *attr,
 				 struct symbol *sym,
@@ -1345,14 +1354,10 @@ dwarf2_per_objfile::set_symtab (const dwarf2_per_cu_data *per_cu,
   this->m_symtabs[per_cu->index] = symtab;
 }
 
-/* Try to locate the sections we need for DWARF 2 debugging
-   information and return true if we have enough to do something.
-   NAMES points to the dwarf2 section names, or is NULL if the standard
-   ELF names are used.  CAN_COPY is true for formats where symbol
-   interposition is possible and so symbol values must follow copy
-   relocation rules.  */
+/* Helper function for dwarf2_initialize_objfile that creates the
+   per-BFD object.  */
 
-bool
+static bool
 dwarf2_has_info (struct objfile *objfile,
 		 const struct dwarf2_debug_sections *names,
 		 bool can_copy)
@@ -3185,13 +3190,19 @@ get_gdb_index_contents_from_cache_dwz (objfile *obj, dwz_file *dwz)
   return global_index_cache.lookup_gdb_index (build_id, &dwz->index_cache_res);
 }
 
-static quick_symbol_functions_up make_cooked_index_funcs ();
+static quick_symbol_functions_up make_cooked_index_funcs
+     (dwarf2_per_objfile *);
 
 /* See dwarf2/public.h.  */
 
-void
-dwarf2_initialize_objfile (struct objfile *objfile)
+bool
+dwarf2_initialize_objfile (struct objfile *objfile,
+			   const struct dwarf2_debug_sections *names,
+			   bool can_copy)
 {
+  if (!dwarf2_has_info (objfile, names, can_copy))
+    return false;
+
   dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
   dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
 
@@ -3201,7 +3212,7 @@ dwarf2_initialize_objfile (struct objfile *objfile)
      main thread.  */
   try
     {
-      dwarf2_get_dwz_file (per_bfd);
+      dwarf2_read_dwz_file (per_objfile);
     }
   catch (const gdb_exception_error &err)
     {
@@ -3221,71 +3232,45 @@ dwarf2_initialize_objfile (struct objfile *objfile)
 	= create_quick_file_names_table (per_bfd->all_units.size ());
 
       objfile->qf.emplace_front (new readnow_functions);
-      return;
     }
-
   /* Was a GDB index already read when we processed an objfile sharing
      PER_BFD?  */
-  if (per_bfd->index_table != nullptr)
+  else if (per_bfd->index_table != nullptr)
     {
       dwarf_read_debug_printf ("re-using symbols");
       objfile->qf.push_front (per_bfd->index_table->make_quick_functions ());
-      return;
     }
-
-  if (dwarf2_read_debug_names (per_objfile))
+  else if (dwarf2_read_debug_names (per_objfile))
     {
       dwarf_read_debug_printf ("found debug names");
       objfile->qf.push_front
 	(per_bfd->index_table->make_quick_functions ());
-      return;
     }
-
-  if (dwarf2_read_gdb_index (per_objfile,
-			     get_gdb_index_contents_from_section<struct dwarf2_per_bfd>,
-			     get_gdb_index_contents_from_section<dwz_file>))
+  else if (dwarf2_read_gdb_index (per_objfile,
+				  get_gdb_index_contents_from_section<struct dwarf2_per_bfd>,
+				  get_gdb_index_contents_from_section<dwz_file>))
     {
       dwarf_read_debug_printf ("found gdb index from file");
       objfile->qf.push_front (per_bfd->index_table->make_quick_functions ());
-      return;
     }
-
   /* ... otherwise, try to find the index in the index cache.  */
-  if (dwarf2_read_gdb_index (per_objfile,
+  else if (dwarf2_read_gdb_index (per_objfile,
 			     get_gdb_index_contents_from_cache,
 			     get_gdb_index_contents_from_cache_dwz))
     {
       dwarf_read_debug_printf ("found gdb index from cache");
       global_index_cache.hit ();
       objfile->qf.push_front (per_bfd->index_table->make_quick_functions ());
-      return;
     }
-
-  global_index_cache.miss ();
-  objfile->qf.push_front (make_cooked_index_funcs ());
+  else
+    {
+      global_index_cache.miss ();
+      objfile->qf.push_front (make_cooked_index_funcs (per_objfile));
+    }
+  return true;
 }
 
 
-
-/* Build a partial symbol table.  */
-
-static void
-dwarf2_build_psymtabs (struct objfile *objfile)
-{
-  dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
-
-  if (per_objfile->per_bfd->index_table != nullptr)
-    return;
-
-  try
-    {
-      dwarf2_build_psymtabs_hard (per_objfile);
-    }
-  catch (const gdb_exception_error &except)
-    {
-      exception_print (gdb_stderr, except);
-    }
-}
 
 /* Find the base address of the compilation unit for range lists and
    location lists.  It will normally be specified by DW_AT_low_pc.
@@ -3920,8 +3905,7 @@ static struct dwo_unit *
 lookup_dwo_unit (dwarf2_cu *cu, die_info *comp_unit_die, const char *dwo_name)
 {
 #if CXX_STD_THREAD
-  /* We need a lock here both to handle the DWO hash table, and BFD,
-     which is not thread-safe.  */
+  /* We need a lock here to handle the DWO hash table.  */
   static std::mutex dwo_lock;
 
   std::lock_guard<std::mutex> guard (dwo_lock);
@@ -4419,105 +4403,53 @@ get_type_unit_group (struct dwarf2_cu *cu, const struct attribute *stmt_list)
 }
 
 
-/* An instance of this is created when scanning DWARF to create a
-   cooked index.  */
-
-class cooked_index_storage
+cooked_index_storage::cooked_index_storage ()
+  : m_reader_hash (htab_create_alloc (10, hash_cutu_reader,
+				      eq_cutu_reader,
+				      htab_delete_entry<cutu_reader>,
+				      xcalloc, xfree)),
+    m_index (new cooked_index_shard)
 {
-public:
+}
 
-  cooked_index_storage ()
-    : m_reader_hash (htab_create_alloc (10, hash_cutu_reader,
-					eq_cutu_reader,
-					htab_delete_entry<cutu_reader>,
-					xcalloc, xfree)),
-      m_index (new cooked_index_shard)
-  {
-  }
+cutu_reader *
+cooked_index_storage::get_reader (dwarf2_per_cu_data *per_cu)
+{
+  int index = per_cu->index;
+  return (cutu_reader *) htab_find_with_hash (m_reader_hash.get (),
+					      &index, index);
+}
 
-  DISABLE_COPY_AND_ASSIGN (cooked_index_storage);
+cutu_reader *
+cooked_index_storage::preserve (std::unique_ptr<cutu_reader> reader)
+{
+  m_abbrev_cache.add (reader->release_abbrev_table ());
 
-  /* Return the current abbrev cache.  */
-  abbrev_cache *get_abbrev_cache ()
-  {
-    return &m_abbrev_cache;
-  }
+  int index = reader->cu->per_cu->index;
+  void **slot = htab_find_slot_with_hash (m_reader_hash.get (), &index,
+					  index, INSERT);
+  gdb_assert (*slot == nullptr);
+  cutu_reader *result = reader.get ();
+  *slot = reader.release ();
+  return result;
+}
 
-  /* Return the DIE reader corresponding to PER_CU.  If no such reader
-     has been registered, return NULL.  */
-  cutu_reader *get_reader (dwarf2_per_cu_data *per_cu)
-  {
-    int index = per_cu->index;
-    return (cutu_reader *) htab_find_with_hash (m_reader_hash.get (),
-						&index, index);
-  }
+/* Hash function for a cutu_reader.  */
+hashval_t
+cooked_index_storage::hash_cutu_reader (const void *a)
+{
+  const cutu_reader *reader = (const cutu_reader *) a;
+  return reader->cu->per_cu->index;
+}
 
-  /* Preserve READER by storing it in the local hash table.  */
-  cutu_reader *preserve (std::unique_ptr<cutu_reader> reader)
-  {
-    m_abbrev_cache.add (reader->release_abbrev_table ());
-
-    int index = reader->cu->per_cu->index;
-    void **slot = htab_find_slot_with_hash (m_reader_hash.get (), &index,
-					    index, INSERT);
-    gdb_assert (*slot == nullptr);
-    cutu_reader *result = reader.get ();
-    *slot = reader.release ();
-    return result;
-  }
-
-  /* Add an entry to the index.  The arguments describe the entry; see
-     cooked-index.h.  The new entry is returned.  */
-  const cooked_index_entry *add (sect_offset die_offset, enum dwarf_tag tag,
-				 cooked_index_flag flags,
-				 const char *name,
-				 const cooked_index_entry *parent_entry,
-				 dwarf2_per_cu_data *per_cu)
-  {
-    return m_index->add (die_offset, tag, flags, name, parent_entry, per_cu);
-  }
-
-  /* Install the current addrmap into the index shard being constructed,
-     then transfer ownership of the index to the caller.  */
-  std::unique_ptr<cooked_index_shard> release ()
-  {
-    m_index->install_addrmap (&m_addrmap);
-    return std::move (m_index);
-  }
-
-  /* Return the mutable addrmap that is currently being created.  */
-  addrmap_mutable *get_addrmap ()
-  {
-    return &m_addrmap;
-  }
-
-private:
-
-  /* Hash function for a cutu_reader.  */
-  static hashval_t hash_cutu_reader (const void *a)
-  {
-    const cutu_reader *reader = (const cutu_reader *) a;
-    return reader->cu->per_cu->index;
-  }
-
-  /* Equality function for cutu_reader.  */
-  static int eq_cutu_reader (const void *a, const void *b)
-  {
-    const cutu_reader *ra = (const cutu_reader *) a;
-    const int *rb = (const int *) b;
-    return ra->cu->per_cu->index == *rb;
-  }
-
-  /* The abbrev cache used by this indexer.  */
-  abbrev_cache m_abbrev_cache;
-  /* A hash table of cutu_reader objects.  */
-  htab_up m_reader_hash;
-  /* The index shard that is being constructed.  */
-  std::unique_ptr<cooked_index_shard> m_index;
-
-  /* A writeable addrmap being constructed by this scanner.  */
-  addrmap_mutable m_addrmap;
-};
+/* Equality function for cutu_reader.  */
+int
+cooked_index_storage::eq_cutu_reader (const void *a, const void *b)
+{
+  const cutu_reader *ra = (const cutu_reader *) a;
+  const int *rb = (const int *) b;
+  return ra->cu->per_cu->index == *rb;
+}
 
 /* An instance of this is created to index a CU.  */
 
@@ -4905,12 +4837,11 @@ process_skeletonless_type_units (dwarf2_per_objfile *per_objfile,
     }
 }
 
-/* Build the partial symbol table by doing a quick pass through the
-   .debug_info and .debug_abbrev sections.  */
-
-static void
-dwarf2_build_psymtabs_hard (dwarf2_per_objfile *per_objfile)
+cooked_index_worker::cooked_index_worker (dwarf2_per_objfile *per_objfile)
+  : m_per_objfile (per_objfile)
 {
+  gdb_assert (is_main_thread ());
+
   struct objfile *objfile = per_objfile->objfile;
   dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
 
@@ -4918,104 +4849,254 @@ dwarf2_build_psymtabs_hard (dwarf2_per_objfile *per_objfile)
 			   objfile_name (objfile));
 
   per_bfd->map_info_sections (objfile);
+}
 
-  cooked_index_storage index_storage;
-  create_all_units (per_objfile);
-  build_type_psymtabs (per_objfile, &index_storage);
+void
+cooked_index_worker::start ()
+{
+  gdb::thread_pool::g_thread_pool->post_task ([=] ()
+  {
+    this->start_reading ();
+  });
+}
+
+void
+cooked_index_worker::process_cus (size_t task_number, unit_iterator first,
+				  unit_iterator end)
+{
+  SCOPE_EXIT { bfd_thread_cleanup (); };
+
+  /* Ensure that complaints are handled correctly.  */
+  complaint_interceptor complaint_handler;
+
+  std::vector<gdb_exception> errors;
+  cooked_index_storage thread_storage;
+  for (auto inner = first; inner != end; ++inner)
+    {
+      dwarf2_per_cu_data *per_cu = inner->get ();
+      try
+	{
+	  process_psymtab_comp_unit (per_cu, m_per_objfile, &thread_storage);
+	}
+      catch (gdb_exception &except)
+	{
+	  errors.push_back (std::move (except));
+	}
+    }
+
+  m_results[task_number] = result_type (thread_storage.release (),
+					complaint_handler.release (),
+					std::move (errors));
+}
+
+void
+cooked_index_worker::done_reading ()
+{
+  /* Only handle the scanning results here.  Complaints and exceptions
+     can only be dealt with on the main thread.  */
   std::vector<std::unique_ptr<cooked_index_shard>> indexes;
+  for (auto &one_result : m_results)
+    indexes.push_back (std::move (std::get<0> (one_result)));
+
+  /* This has to wait until we read the CUs, we need the list of DWOs.  */
+  process_skeletonless_type_units (m_per_objfile, &m_index_storage);
+
+  indexes.push_back (m_index_storage.release ());
+  indexes.shrink_to_fit ();
+
+  dwarf2_per_bfd *per_bfd = m_per_objfile->per_bfd;
+  cooked_index *table
+    = (gdb::checked_static_cast<cooked_index *>
+       (per_bfd->index_table.get ()));
+  table->set_contents (std::move (indexes));
+}
+
+void
+cooked_index_worker::start_reading ()
+{
+  SCOPE_EXIT { bfd_thread_cleanup (); };
+
+  try
+    {
+      do_reading ();
+    }
+  catch (const gdb_exception &exc)
+    {
+      m_failed = exc;
+      set (cooked_state::CACHE_DONE);
+    }
+}
+
+void
+cooked_index_worker::do_reading ()
+{
+  dwarf2_per_bfd *per_bfd = m_per_objfile->per_bfd;
+
+  create_all_units (m_per_objfile);
+  build_type_psymtabs (m_per_objfile, &m_index_storage);
 
   per_bfd->quick_file_names_table
     = create_quick_file_names_table (per_bfd->all_units.size ());
   if (!per_bfd->debug_aranges.empty ())
-    read_addrmap_from_aranges (per_objfile, &per_bfd->debug_aranges,
-			       index_storage.get_addrmap ());
+    read_addrmap_from_aranges (m_per_objfile, &per_bfd->debug_aranges,
+			       m_index_storage.get_addrmap (),
+			       &m_warnings);
 
+  /* We want to balance the load between the worker threads.  This is
+     done by using the size of each CU as a rough estimate of how
+     difficult it will be to operate on.  This isn't ideal -- for
+     example if dwz is used, the early CUs will all tend to be
+     "included" and won't be parsed independently.  However, this
+     heuristic works well for typical compiler output.  */
+
+  size_t total_size = 0;
+  for (const auto &per_cu : per_bfd->all_units)
+    total_size += per_cu->length ();
+
+  /* How many worker threads we plan to use.  We may not actually use
+     this many.  We use 1 as the minimum to avoid division by zero,
+     and anyway in the N==0 case the work will be done
+     synchronously.  */
+  const size_t n_worker_threads
+    = std::max (gdb::thread_pool::g_thread_pool->thread_count (), (size_t) 1);
+
+  /* How much effort should be put into each worker.  */
+  const size_t size_per_thread
+    = std::max (total_size / n_worker_threads, (size_t) 1);
+
+  /* Work is done in a task group.  */
+  gdb::task_group workers ([this] ()
   {
-    /* Ensure that complaints are handled correctly.  */
-    complaint_interceptor complaint_handler;
+    this->done_reading ();
+  });
 
-    using iter_type = decltype (per_bfd->all_units.begin ());
+  auto end = per_bfd->all_units.end ();
+  size_t task_count = 0;
+  for (auto iter = per_bfd->all_units.begin (); iter != end; )
+    {
+      auto last = iter;
+      /* Put all remaining CUs into the last task.  */
+      if (task_count == n_worker_threads - 1)
+	last = end;
+      else
+	{
+	  size_t chunk_size = 0;
+	  for (; last != end && chunk_size < size_per_thread; ++last)
+	    chunk_size += (*last)->length ();
+	}
 
-    auto task_size_ = [] (iter_type iter)
+      gdb_assert (iter != last);
+      workers.add_task ([=] ()
+	{
+	  process_cus (task_count, iter, last);
+	});
+
+      ++task_count;
+      iter = last;
+    }
+
+  m_results.resize (task_count);
+  workers.start ();
+}
+
+bool
+cooked_index_worker::wait (cooked_state desired_state, bool allow_quit)
+{
+  bool done;
+#if CXX_STD_THREAD
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);
+
+    /* This may be called from a non-main thread -- this functionality
+       is needed for the index cache -- but in this case we require
+       that the desired state already have been attained.  */
+    gdb_assert (is_main_thread () || desired_state <= m_state);
+
+    while (desired_state > m_state)
       {
-	dwarf2_per_cu_data *per_cu = iter->get ();
-	return (size_t)per_cu->length ();
-      };
-    auto task_size = gdb::make_function_view (task_size_);
-
-    /* Each thread returns a pair holding a cooked index, and a vector
-       of errors that should be printed.  The latter is done because
-       GDB's I/O system is not thread-safe.  run_on_main_thread could be
-       used, but that would mean the messages are printed after the
-       prompt, which looks weird.  */
-    using result_type = std::pair<std::unique_ptr<cooked_index_shard>,
-				  std::vector<gdb_exception>>;
-    std::vector<result_type> results
-      = gdb::parallel_for_each (1, per_bfd->all_units.begin (),
-				per_bfd->all_units.end (),
-				[=] (iter_type iter, iter_type end)
-      {
-	std::vector<gdb_exception> errors;
-	cooked_index_storage thread_storage;
-	for (; iter != end; ++iter)
+	if (allow_quit)
 	  {
-	    dwarf2_per_cu_data *per_cu = iter->get ();
-	    try
-	      {
-		process_psymtab_comp_unit (per_cu, per_objfile,
-					   &thread_storage);
-	      }
-	    catch (gdb_exception &except)
-	      {
-		errors.push_back (std::move (except));
-	      }
+	    std::chrono::milliseconds duration { 15 };
+	    if (m_cond.wait_for (lock, duration) == std::cv_status::timeout)
+	      QUIT;
 	  }
-	return result_type (thread_storage.release (), std::move (errors));
-      }, task_size);
-
-    /* Only show a given exception a single time.  */
-    std::unordered_set<gdb_exception> seen_exceptions;
-    for (auto &one_result : results)
-      {
-	indexes.push_back (std::move (one_result.first));
-	for (auto &one_exc : one_result.second)
-	  if (seen_exceptions.insert (one_exc).second)
-	    exception_print (gdb_stderr, one_exc);
+	else
+	  m_cond.wait (lock);
       }
+    done = m_state == cooked_state::CACHE_DONE;
   }
+#else
+  /* Without threads, all the work is done immediately on the main
+     thread, and there is never anything to wait for.  */
+  done = true;
+#endif /* CXX_STD_THREAD */
 
-  /* This has to wait until we read the CUs, we need the list of DWOs.  */
-  process_skeletonless_type_units (per_objfile, &index_storage);
+  /* Only the main thread is allowed to report complaints and the
+     like.  */
+  if (!is_main_thread ())
+    return false;
+
+  if (m_reported)
+    return done;
+  m_reported = true;
+
+  /* Emit warnings first, maybe they were emitted before an exception
+     (if any) was thrown.  */
+  m_warnings.emit ();
+
+  if (m_failed.has_value ())
+    {
+      /* start_reading failed -- report it.  */
+      exception_print (gdb_stderr, *m_failed);
+      m_failed.reset ();
+      return done;
+    }
+
+  /* Only show a given exception a single time.  */
+  std::unordered_set<gdb_exception> seen_exceptions;
+  for (auto &one_result : m_results)
+    {
+      re_emit_complaints (std::get<1> (one_result));
+      for (auto &one_exc : std::get<2> (one_result))
+	if (seen_exceptions.insert (one_exc).second)
+	  exception_print (gdb_stderr, one_exc);
+    }
 
   if (dwarf_read_debug > 0)
-    print_tu_stats (per_objfile);
+    print_tu_stats (m_per_objfile);
 
-  indexes.push_back (index_storage.release ());
-  indexes.shrink_to_fit ();
+  struct objfile *objfile = m_per_objfile->objfile;
+  dwarf2_per_bfd *per_bfd = m_per_objfile->per_bfd;
+  cooked_index *table
+    = (gdb::checked_static_cast<cooked_index *>
+       (per_bfd->index_table.get ()));
 
-  cooked_index *vec = new cooked_index (std::move (indexes));
-  per_bfd->index_table.reset (vec);
-
-  /* Cannot start writing the index entry until after the
-     'index_table' member has been set.  */
-  vec->start_writing_index (per_bfd);
-
-  const cooked_index_entry *main_entry = vec->get_main ();
-  if (main_entry != nullptr)
-    {
-      /* We only do this for names not requiring canonicalization.  At
-	 this point in the process names have not been canonicalized.
-	 However, currently, languages that require this step also do
-	 not use DW_AT_main_subprogram.  An assert is appropriate here
-	 because this filtering is done in get_main.  */
-      enum language lang = main_entry->per_cu->lang ();
-      gdb_assert (!language_requires_canonicalization (lang));
-      const char *full_name = main_entry->full_name (&per_bfd->obstack, true);
-      set_objfile_main_name (objfile, full_name, lang);
-    }
+  auto_obstack temp_storage;
+  enum language lang = language_unknown;
+  const char *main_name = table->get_main_name (&temp_storage, &lang);
+  if (main_name != nullptr)
+    set_objfile_main_name (objfile, main_name, lang);
 
   dwarf_read_debug_printf ("Done building psymtabs of %s",
 			   objfile_name (objfile));
+
+  return done;
+}
+
+void
+cooked_index_worker::set (cooked_state desired_state)
+{
+  gdb_assert (desired_state != cooked_state::INITIAL);
+
+#if CXX_STD_THREAD
+  std::lock_guard<std::mutex> guard (m_mutex);
+  gdb_assert (desired_state > m_state);
+  m_state = desired_state;
+  m_cond.notify_one ();
+#else
+  /* Without threads, all the work is done immediately on the main
+     thread, and there is never anything to do.  */
+#endif /* CXX_STD_THREAD */
 }
 
 static void
@@ -5101,7 +5182,7 @@ finalize_all_units (dwarf2_per_bfd *per_bfd)
 /* See read.h.  */
 
 void
-create_all_units (dwarf2_per_objfile *per_objfile, bool pre_read_p)
+create_all_units (dwarf2_per_objfile *per_objfile)
 {
   htab_up types_htab;
   gdb_assert (per_objfile->per_bfd->all_units.empty ());
@@ -5117,15 +5198,6 @@ create_all_units (dwarf2_per_objfile *per_objfile, bool pre_read_p)
   dwz_file *dwz = dwarf2_get_dwz_file (per_objfile->per_bfd);
   if (dwz != NULL)
     {
-      if (pre_read_p)
-	{
-	  /* Pre-read the sections we'll need to construct an index.  */
-	  struct objfile *objfile = per_objfile->objfile;
-	  dwz->abbrev.read (objfile);
-	  dwz->info.read (objfile);
-	  dwz->str.read (objfile);
-	  dwz->line.read (objfile);
-	}
       read_comp_units_from_section (per_objfile, &dwz->info, &dwz->abbrev, 1,
 				    types_htab, rcuh_kind::COMPILE);
 
@@ -7717,19 +7789,30 @@ hash_dwo_file (const void *item)
   const struct dwo_file *dwo_file = (const struct dwo_file *) item;
   hashval_t hash;
 
-  hash = htab_hash_string (dwo_file->dwo_name);
+  hash = htab_hash_string (dwo_file->dwo_name.c_str ());
   if (dwo_file->comp_dir != NULL)
     hash += htab_hash_string (dwo_file->comp_dir);
   return hash;
 }
 
+/* This is used when looking up entries in the DWO hash table.  */
+
+struct dwo_file_search
+{
+  /* Name of the DWO to look for.  */
+  const char *dwo_name;
+  /* Compilation directory to look for.  */
+  const char *comp_dir;
+};
+
 static int
 eq_dwo_file (const void *item_lhs, const void *item_rhs)
 {
   const struct dwo_file *lhs = (const struct dwo_file *) item_lhs;
-  const struct dwo_file *rhs = (const struct dwo_file *) item_rhs;
+  const struct dwo_file_search *rhs
+    = (const struct dwo_file_search *) item_rhs;
 
-  if (strcmp (lhs->dwo_name, rhs->dwo_name) != 0)
+  if (lhs->dwo_name != rhs->dwo_name)
     return 0;
   if (lhs->comp_dir == NULL || rhs->comp_dir == NULL)
     return lhs->comp_dir == rhs->comp_dir;
@@ -7755,7 +7838,7 @@ lookup_dwo_file_slot (dwarf2_per_objfile *per_objfile,
 		      const char *dwo_name,
 		      const char *comp_dir)
 {
-  struct dwo_file find_entry;
+  struct dwo_file_search find_entry;
   void **slot;
 
   if (per_objfile->per_bfd->dwo_files == NULL)
@@ -7823,7 +7906,7 @@ create_dwo_cu_reader (const struct die_reader_specs *reader,
     {
       complaint (_("Dwarf Error: debug entry at offset %s is missing"
 		   " its dwo_id [in module %s]"),
-		 sect_offset_str (sect_off), dwo_file->dwo_name);
+		 sect_offset_str (sect_off), dwo_file->dwo_name.c_str ());
       return;
     }
 
@@ -8474,7 +8557,7 @@ create_dwo_unit_in_dwp_v1 (dwarf2_per_objfile *per_objfile,
 			       virtual_dwo_name.c_str ());
 
       dwo_file = new struct dwo_file;
-      dwo_file->dwo_name = per_objfile->objfile->intern (virtual_dwo_name);
+      dwo_file->dwo_name = std::move (virtual_dwo_name);
       dwo_file->comp_dir = comp_dir;
       dwo_file->sections.abbrev = sections.abbrev;
       dwo_file->sections.line = sections.line;
@@ -8659,7 +8742,7 @@ create_dwo_unit_in_dwp_v2 (dwarf2_per_objfile *per_objfile,
 			       virtual_dwo_name.c_str ());
 
       dwo_file = new struct dwo_file;
-      dwo_file->dwo_name = per_objfile->objfile->intern (virtual_dwo_name);
+      dwo_file->dwo_name = std::move (virtual_dwo_name);
       dwo_file->comp_dir = comp_dir;
       dwo_file->sections.abbrev =
 	create_dwp_v2_or_v5_section (per_objfile, &dwp_file->sections.abbrev,
@@ -8831,7 +8914,7 @@ create_dwo_unit_in_dwp_v5 (dwarf2_per_objfile *per_objfile,
 			       virtual_dwo_name.c_str ());
 
       dwo_file = new struct dwo_file;
-      dwo_file->dwo_name = per_objfile->objfile->intern (virtual_dwo_name);
+      dwo_file->dwo_name = std::move (virtual_dwo_name);
       dwo_file->comp_dir = comp_dir;
       dwo_file->sections.abbrev =
 	create_dwp_v2_or_v5_section (per_objfile,
@@ -9171,6 +9254,8 @@ open_and_init_dwo_file (dwarf2_cu *cu, const char *dwo_name,
 
   dwarf_read_debug_printf ("DWO file found: %s", dwo_name);
 
+  bfd_cache_close (dwo_file->dbfd.get ());
+
   return dwo_file.release ();
 }
 
@@ -9462,6 +9547,8 @@ open_and_init_dwp_file (dwarf2_per_objfile *per_objfile)
   dwarf_read_debug_printf ("    %s CUs, %s TUs",
 			   pulongest (dwp_file->cus ? dwp_file->cus->nr_units : 0),
 			   pulongest (dwp_file->tus ? dwp_file->tus->nr_units : 0));
+
+  bfd_cache_close (dwp_file->dbfd.get ());
 
   return dwp_file;
 }
@@ -16561,24 +16648,58 @@ cooked_indexer::make_index (cutu_reader *reader)
 
 struct cooked_index_functions : public dwarf2_base_index_functions
 {
+  cooked_index *wait (struct objfile *objfile, bool allow_quit)
+  {
+    dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
+    cooked_index *table
+      = (gdb::checked_static_cast<cooked_index *>
+	 (per_objfile->per_bfd->index_table.get ()));
+    table->wait (cooked_state::MAIN_AVAILABLE, allow_quit);
+    return table;
+  }
+
   dwarf2_per_cu_data *find_per_cu (dwarf2_per_bfd *per_bfd,
 				   CORE_ADDR adjusted_pc) override;
 
   struct compunit_symtab *find_compunit_symtab_by_address
     (struct objfile *objfile, CORE_ADDR address) override;
 
+  bool has_unexpanded_symtabs (struct objfile *objfile) override
+  {
+    wait (objfile, true);
+    return dwarf2_base_index_functions::has_unexpanded_symtabs (objfile);
+  }
+
+  struct symtab *find_last_source_symtab (struct objfile *objfile) override
+  {
+    wait (objfile, true);
+    return dwarf2_base_index_functions::find_last_source_symtab (objfile);
+  }
+
+  void forget_cached_source_info (struct objfile *objfile) override
+  {
+    wait (objfile, true);
+    dwarf2_base_index_functions::forget_cached_source_info (objfile);
+  }
+
+  void print_stats (struct objfile *objfile, bool print_bcache) override
+  {
+    wait (objfile, true);
+    dwarf2_base_index_functions::print_stats (objfile, print_bcache);
+  }
+
   void dump (struct objfile *objfile) override
   {
-    dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
-    cooked_index *index
-      = (gdb::checked_static_cast<cooked_index *>
-	  (per_objfile->per_bfd->index_table.get ()));
-    if (index == nullptr)
-      return;
-
+    cooked_index *index = wait (objfile, true);
     gdb_printf ("Cooked index in use:\n");
     gdb_printf ("\n");
     index->dump (objfile->arch ());
+  }
+
+  void expand_all_symtabs (struct objfile *objfile) override
+  {
+    wait (objfile, true);
+    dwarf2_base_index_functions::expand_all_symtabs (objfile);
   }
 
   bool expand_symtabs_matching
@@ -16591,55 +16712,28 @@ struct cooked_index_functions : public dwarf2_base_index_functions
      domain_enum domain,
      enum search_domain kind) override;
 
-  bool can_lazily_read_symbols () override
+  struct compunit_symtab *find_pc_sect_compunit_symtab
+    (struct objfile *objfile, struct bound_minimal_symbol msymbol,
+     CORE_ADDR pc, struct obj_section *section, int warn_if_readin) override
   {
-    return true;
+    wait (objfile, true);
+    return (dwarf2_base_index_functions::find_pc_sect_compunit_symtab
+	    (objfile, msymbol, pc, section, warn_if_readin));
   }
 
-  void read_partial_symbols (struct objfile *objfile) override
+  void map_symbol_filenames
+       (struct objfile *objfile,
+	gdb::function_view<symbol_filename_ftype> fun,
+	bool need_fullname) override
   {
-    if (dwarf2_has_info (objfile, nullptr))
-      dwarf2_build_psymtabs (objfile);
+    wait (objfile, true);
+    return (dwarf2_base_index_functions::map_symbol_filenames
+	    (objfile, fun, need_fullname));
   }
 
-  enum language lookup_global_symbol_language (struct objfile *objfile,
-					       const char *name,
-					       domain_enum domain,
-					       bool *symbol_found_p) override
+  void compute_main_name (struct objfile *objfile) override
   {
-    *symbol_found_p = false;
-
-    if (!(domain == VAR_DOMAIN && streq (name, "main")))
-      return language_unknown;
-
-    dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
-    struct dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
-    if (per_bfd->index_table == nullptr)
-      return language_unknown;
-
-    /* Expansion of large CUs can be slow.  By returning the language of main
-       here for C and C++, we avoid CU expansion during set_initial_language.
-       But by doing a symbol lookup in the cooked index, we are forced to wait
-       for finalization to complete.  See PR symtab/30174 for ideas how to
-       bypass that as well.  */
-    cooked_index *table
-      = (gdb::checked_static_cast<cooked_index *>
-	 (per_bfd->index_table.get ()));
-
-    for (const cooked_index_entry *entry : table->find (name, false))
-      {
-	if (entry->tag != DW_TAG_subprogram)
-	  continue;
-
-	enum language lang = entry->per_cu->lang ();
-	if (!(lang == language_c || lang == language_cplus))
-	  continue;
-
-	*symbol_found_p = true;
-	return lang;
-      }
-
-    return language_unknown;
+    wait (objfile, false);
   }
 };
 
@@ -16650,8 +16744,6 @@ cooked_index_functions::find_per_cu (dwarf2_per_bfd *per_bfd,
   cooked_index *table
     = (gdb::checked_static_cast<cooked_index *>
        (per_bfd->index_table.get ()));
-  if (table == nullptr)
-    return nullptr;
   return table->lookup (adjusted_pc);
 }
 
@@ -16663,11 +16755,7 @@ cooked_index_functions::find_compunit_symtab_by_address
     return nullptr;
 
   dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
-  cooked_index *table
-    = (gdb::checked_static_cast<cooked_index *>
-       (per_objfile->per_bfd->index_table.get ()));
-  if (table == nullptr)
-    return nullptr;
+  cooked_index *table = wait (objfile, true);
 
   CORE_ADDR baseaddr = objfile->data_section_offset ();
   dwarf2_per_cu_data *per_cu = table->lookup (address - baseaddr);
@@ -16690,13 +16778,7 @@ cooked_index_functions::expand_symtabs_matching
 {
   dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
 
-  cooked_index *table
-    = (gdb::checked_static_cast<cooked_index *>
-       (per_objfile->per_bfd->index_table.get ()));
-  if (table == nullptr)
-    return true;
-
-  table->wait ();
+  cooked_index *table = wait (objfile, true);
 
   dw_expand_symtabs_matching_file_matcher (per_objfile, file_matcher);
 
@@ -16816,15 +16898,27 @@ cooked_index_functions::expand_symtabs_matching
 /* Return a new cooked_index_functions object.  */
 
 static quick_symbol_functions_up
-make_cooked_index_funcs ()
+make_cooked_index_funcs (dwarf2_per_objfile *per_objfile)
 {
+  /* Set the index table early so that sharing works even while
+     scanning; and then start the scanning.  */
+  dwarf2_per_bfd *per_bfd = per_objfile->per_bfd;
+  cooked_index *idx = new cooked_index (per_objfile);
+  per_bfd->index_table.reset (idx);
+  /* Don't start reading until after 'index_table' is set.  This
+     avoids races.  */
+  idx->start_reading ();
+
+  if (dwarf_synchronous)
+    idx->wait_completely ();
+
   return quick_symbol_functions_up (new cooked_index_functions);
 }
 
 quick_symbol_functions_up
 cooked_index::make_quick_functions () const
 {
-  return make_cooked_index_funcs ();
+  return quick_symbol_functions_up (new cooked_index_functions);
 }
 
 
@@ -17583,7 +17677,7 @@ read_dwo_str_index (const struct die_reader_specs *reader, ULONGEST str_index)
 	     least has a limit. */
 	  complaint (_("Section .debug_str_offsets in %s has unsupported"
 		       " version %d, use empty string."),
-		   reader->dwo_file->dwo_name, version);
+		     reader->dwo_file->dwo_name.c_str (), version);
 	  return "";
 	}
 
@@ -18037,6 +18131,7 @@ public:
     record_line (false);
     m_discriminator = 0;
     m_flags &= ~LEF_PROLOGUE_END;
+    m_flags &= ~LEF_EPILOGUE_BEGIN;
   }
 
   /* Handle DW_LNE_end_sequence.  */
@@ -18049,6 +18144,11 @@ public:
   void handle_set_prologue_end ()
   {
     m_flags |= LEF_PROLOGUE_END;
+  }
+
+  void handle_set_epilogue_begin ()
+  {
+    m_flags |= LEF_EPILOGUE_BEGIN;
   }
 
 private:
@@ -18140,6 +18240,7 @@ lnp_state_machine::handle_special_opcode (unsigned char op_code)
   record_line (false);
   m_discriminator = 0;
   m_flags &= ~LEF_PROLOGUE_END;
+  m_flags &= ~LEF_EPILOGUE_BEGIN;
 }
 
 void
@@ -18278,11 +18379,13 @@ lnp_state_machine::record_line (bool end_sequence)
     {
       gdb_printf (gdb_stdlog,
 		  "Processing actual line %u: file %u,"
-		  " address %s, is_stmt %u, prologue_end %u, discrim %u%s\n",
+		  " address %s, is_stmt %u, prologue_end %u,"
+		  " epilogue_begin %u, discrim %u%s\n",
 		  m_line, m_file,
 		  paddress (m_gdbarch, (CORE_ADDR) m_address),
 		  (m_flags & LEF_IS_STMT) != 0,
 		  (m_flags & LEF_PROLOGUE_END) != 0,
+		  (m_flags & LEF_EPILOGUE_BEGIN) != 0,
 		  m_discriminator,
 		  (end_sequence ? "\t(end sequence)" : ""));
     }
@@ -18584,6 +18687,9 @@ dwarf_decode_lines_1 (struct line_header *lh, struct dwarf2_cu *cu,
 	      break;
 	    case DW_LNS_set_prologue_end:
 	      state_machine.handle_set_prologue_end ();
+	      break;
+	    case DW_LNS_set_epilogue_begin:
+	      state_machine.handle_set_epilogue_begin ();
 	      break;
 	    default:
 	      {
@@ -21962,6 +22068,21 @@ in memory longer, and more total memory will be used.  Zero disables\n\
 caching, which can slow down startup."),
 			    NULL,
 			    show_dwarf_max_cache_age,
+			    &set_dwarf_cmdlist,
+			    &show_dwarf_cmdlist);
+
+  add_setshow_boolean_cmd ("synchronous", class_obscure,
+			    &dwarf_synchronous, _("\
+Set whether DWARF is read synchronously."), _("\
+Show whether DWARF is read synchronously."), _("\
+By default, DWARF information is read in worker threads,\n\
+and gdb will not generally wait for the reading to complete\n\
+before continuing with other work, for example presenting a\n\
+prompt to the user.\n\
+Enabling this setting will cause the DWARF reader to always wait\n\
+for debug info processing to be finished before gdb can proceed."),
+			    nullptr,
+			    show_dwarf_synchronous,
 			    &set_dwarf_cmdlist,
 			    &show_dwarf_cmdlist);
 

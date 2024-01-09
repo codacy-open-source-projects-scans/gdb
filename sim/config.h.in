@@ -132,6 +132,9 @@
 /* Define to 1 if you have the <linux/types.h> header file. */
 #undef HAVE_LINUX_TYPES_H
 
+/* Define to 1 if the system has the type `long long'. */
+#undef HAVE_LONG_LONG
+
 /* Define to 1 if you have the `lseek' function. */
 #undef HAVE_LSEEK
 
@@ -216,6 +219,9 @@
 /* Define to 1 if you have the `strsignal' function. */
 #undef HAVE_STRSIGNAL
 
+/* Define if struct statfs is defined in <sys/mount.h> */
+#undef HAVE_STRUCT_STATFS
+
 /* Define to 1 if `st_atime' is a member of `struct stat'. */
 #undef HAVE_STRUCT_STAT_ST_ATIME
 
@@ -272,6 +278,12 @@
 
 /* Define to 1 if you have the `symlink' function. */
 #undef HAVE_SYMLINK
+
+/* Define if System V semaphores are supported */
+#undef HAVE_SYSV_SEM
+
+/* Define if System V shared memory is supported */
+#undef HAVE_SYSV_SHM
 
 /* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
    */
@@ -341,8 +353,20 @@
 /* Define to 1 if you have the `tcsetpgrp' function. */
 #undef HAVE_TCSETPGRP
 
+/* Define if struct termios has c_line. */
+#undef HAVE_TERMIOS_CLINE
+
 /* Define to 1 if you have the <termios.h> header file. */
 #undef HAVE_TERMIOS_H
+
+/* Define if struct termios exists. */
+#undef HAVE_TERMIOS_STRUCTURE
+
+/* Define if struct termio has c_line. */
+#undef HAVE_TERMIO_CLINE
+
+/* Define if struct termio exists. */
+#undef HAVE_TERMIO_STRUCTURE
 
 /* Define to 1 if you have the `time' function. */
 #undef HAVE_TIME
@@ -360,6 +384,9 @@
 
 /* Define to 1 if you have the `umask' function. */
 #undef HAVE_UMASK
+
+/* Define if union semun is defined in <sys/sem.h> */
+#undef HAVE_UNION_SEMUN
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H

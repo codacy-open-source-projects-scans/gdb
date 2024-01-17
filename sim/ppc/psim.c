@@ -359,7 +359,7 @@ psim_options(device *root,
 	  {
 	    extern const char version[];
 	    printf ("GNU simulator %s%s\n", PKGVERSION, version);
-	    printf ("Copyright (C) 2023 Free Software Foundation, Inc.\n");
+	    printf ("Copyright (C) 2024 Free Software Foundation, Inc.\n");
 	    printf ( "\
 License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\
 \nThis is free software: you are free to change and redistribute it.\n\
@@ -889,8 +889,7 @@ psim_read_register(psim *system,
   default:
     printf_filtered("psim_read_register(processor=%p,buf=%p,reg=%s) %s\n",
 		    processor, buf, reg, "read of this register unimplemented");
-    break;
-
+    return 0;
   }
 
   /* the PSIM internal values are in host order.  To fetch raw data,
@@ -1077,8 +1076,7 @@ psim_write_register(psim *system,
     printf_filtered("psim_write_register(processor=%p,cooked_buf=%p,reg=%s) %s\n",
 		    processor, cooked_buf, reg,
 		    "read of this register unimplemented");
-    break;
-
+    return 0;
   }
 
   return description.size;

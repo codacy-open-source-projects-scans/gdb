@@ -210,6 +210,15 @@ enum aarch64_field_kind
   FLD_sz,
   FLD_type,
   FLD_vldst_size,
+  FLD_off3,
+  FLD_off2,
+  FLD_ZAn_1,
+  FLD_ol,
+  FLD_ZAn_2,
+  FLD_ZAn_3,
+  FLD_ZAn,
+  FLD_opc2,
+  FLD_rcpc3_size,
 };
 
 /* Field description.  */
@@ -299,6 +308,7 @@ verify_constraints (const struct aarch64_inst *, const aarch64_insn, bfd_vma,
 
 #undef F_REG_128
 #define F_REG_128	(1 << 7) /* System regsister implementable as 128-bit wide.  */
+
 
 /* PSTATE field name for the MSR instruction this is encoded in "op1:op2:CRm".
    Part of CRm can be used to encode <pstatefield>. E.g. CRm[3:1] for SME.

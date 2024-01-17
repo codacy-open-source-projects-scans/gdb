@@ -1,6 +1,6 @@
 /* DIE indexing 
 
-   Copyright (C) 2022-2023 Free Software Foundation, Inc.
+   Copyright (C) 2022-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -51,6 +51,7 @@ to_string (cooked_index_flag flags)
     MAP_ENUM_FLAG (IS_ENUM_CLASS),
     MAP_ENUM_FLAG (IS_LINKAGE),
     MAP_ENUM_FLAG (IS_TYPE_DECLARATION),
+    MAP_ENUM_FLAG (IS_PARENT_DEFERRED),
   };
 
   return flags.to_string (mapping);
@@ -203,7 +204,7 @@ cooked_index_entry::full_name (struct obstack *storage, bool for_main) const
 {
   const char *local_name = for_main ? name : canonical;
 
-  if ((flags & IS_LINKAGE) != 0 || parent_entry == nullptr)
+  if ((flags & IS_LINKAGE) != 0 || get_parent () == nullptr)
     return local_name;
 
   const char *sep = nullptr;
@@ -224,7 +225,7 @@ cooked_index_entry::full_name (struct obstack *storage, bool for_main) const
       return local_name;
     }
 
-  parent_entry->write_scope (storage, sep, for_main);
+  get_parent ()->write_scope (storage, sep, for_main);
   obstack_grow0 (storage, local_name, strlen (local_name));
   return (const char *) obstack_finish (storage);
 }
@@ -236,8 +237,8 @@ cooked_index_entry::write_scope (struct obstack *storage,
 				 const char *sep,
 				 bool for_main) const
 {
-  if (parent_entry != nullptr)
-    parent_entry->write_scope (storage, sep, for_main);
+  if (get_parent () != nullptr)
+    get_parent ()->write_scope (storage, sep, for_main);
   const char *local_name = for_main ? name : canonical;
   obstack_grow (storage, local_name, strlen (local_name));
   obstack_grow (storage, sep, strlen (sep));
@@ -245,10 +246,10 @@ cooked_index_entry::write_scope (struct obstack *storage,
 
 /* See cooked-index.h.  */
 
-const cooked_index_entry *
+cooked_index_entry *
 cooked_index_shard::add (sect_offset die_offset, enum dwarf_tag tag,
 			 cooked_index_flag flags, const char *name,
-			 const cooked_index_entry *parent_entry,
+			 cooked_index_entry_ref parent_entry,
 			 dwarf2_per_cu_data *per_cu)
 {
   cooked_index_entry *result = create (die_offset, tag, flags, name,
@@ -259,7 +260,8 @@ cooked_index_shard::add (sect_offset die_offset, enum dwarf_tag tag,
      implicit "main" discovery.  */
   if ((flags & IS_MAIN) != 0)
     m_main = result;
-  else if (parent_entry == nullptr
+  else if ((flags & IS_PARENT_DEFERRED) == 0
+	   && parent_entry.resolved == nullptr
 	   && m_main == nullptr
 	   && language_may_use_plain_main (per_cu->lang ())
 	   && strcmp (name, "main") == 0)
@@ -310,7 +312,7 @@ cooked_index_shard::handle_gnat_encoded_entry (cooked_index_entry *entry,
       parent = last;
     }
 
-  entry->parent_entry = parent;
+  entry->set_parent (parent);
   return make_unique_xstrndup (tail.data (), tail.length ());
 }
 
@@ -522,7 +524,7 @@ cooked_index::~cooked_index ()
 /* See cooked-index.h.  */
 
 dwarf2_per_cu_data *
-cooked_index::lookup (CORE_ADDR addr)
+cooked_index::lookup (unrelocated_addr addr)
 {
   /* Ensure that the address maps are ready.  */
   wait (cooked_state::MAIN_AVAILABLE, true);
@@ -638,9 +640,12 @@ cooked_index::dump (gdbarch *arch)
       gdb_printf ("    flags:      %s\n", to_string (entry->flags).c_str ());
       gdb_printf ("    DIE offset: %s\n", sect_offset_str (entry->die_offset));
 
-      if (entry->parent_entry != nullptr)
+      if ((entry->flags & IS_PARENT_DEFERRED) != 0)
+	gdb_printf ("    parent:     deferred (%" PRIx64 ")\n",
+		    entry->get_deferred_parent ());
+      else if (entry->get_parent () != nullptr)
 	gdb_printf ("    parent:     ((cooked_index_entry *) %p) [%s]\n",
-		    entry->parent_entry, entry->parent_entry->name);
+		    entry->get_parent (), entry->get_parent ()->name);
       else
 	gdb_printf ("    parent:     ((cooked_index_entry *) 0)\n");
 

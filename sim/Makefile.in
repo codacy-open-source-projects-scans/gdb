@@ -14,7 +14,7 @@
 
 @SET_MAKE@
 
-#   Copyright (C) 1993-2023 Free Software Foundation, Inc.
+#   Copyright (C) 1993-2024 Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -353,6 +353,7 @@ am__aclocal_m4_deps = $(top_srcdir)/../config/acx.m4 \
 	$(top_srcdir)/m4/sim_ac_option_warnings.m4 \
 	$(top_srcdir)/m4/sim_ac_platform.m4 \
 	$(top_srcdir)/m4/sim_ac_toolchain.m4 \
+	$(top_srcdir)/../gdbsupport/libiberty.m4 \
 	$(top_srcdir)/frv/acinclude.m4 $(top_srcdir)/mips/acinclude.m4 \
 	$(top_srcdir)/ppc/acinclude.m4 \
 	$(top_srcdir)/riscv/acinclude.m4 $(top_srcdir)/rx/acinclude.m4 \
@@ -2572,7 +2573,6 @@ testsuite_common_CPPFLAGS = \
 # opc2c leaks memory, and therefore makes AddressSanitizer unhappy.  Disable
 # leak detection while running it.
 @SIM_ENABLE_ARCH_m32c_TRUE@m32c_OPC2C_RUN = ASAN_OPTIONS=detect_leaks=0 m32c/opc2c$(EXEEXT)
-@SIM_ENABLE_ARCH_m32r_TRUE@AM_CFLAGS_m32r_traps.o = -Wno-error
 @SIM_ENABLE_ARCH_m32r_TRUE@nodist_m32r_libsim_a_SOURCES = \
 @SIM_ENABLE_ARCH_m32r_TRUE@	m32r/modules.c
 
@@ -5823,7 +5823,7 @@ testsuite/common/bits64m63.c: testsuite/common/bits-gen$(EXEEXT) testsuite/commo
 
 @SIM_ENABLE_ARCH_ppc_TRUE@ppc/defines.h: ppc/stamp-defines ; @true
 @SIM_ENABLE_ARCH_ppc_TRUE@ppc/stamp-defines: config.h Makefile
-@SIM_ENABLE_ARCH_ppc_TRUE@	$(AM_V_GEN)sed -n -e '/^#define HAVE_/s/ 1$$/",/' -e '/^#define HAVE_/s//"HAVE_/p' < config.h > ppc/defines.hin
+@SIM_ENABLE_ARCH_ppc_TRUE@	$(AM_V_GEN)$(SED) -n -e '/^#define HAVE_.*1$$/{ s/ 1$$/",/; s/.* HAVE_/"HAVE_/; p }' < config.h > ppc/defines.hin
 @SIM_ENABLE_ARCH_ppc_TRUE@	$(AM_V_at)$(SHELL) $(srcroot)/move-if-change ppc/defines.hin ppc/defines.h
 @SIM_ENABLE_ARCH_ppc_TRUE@	$(AM_V_at)touch $@
 

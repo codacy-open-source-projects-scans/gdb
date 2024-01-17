@@ -1,6 +1,6 @@
 /* DWARF aranges handling
 
-   Copyright (C) 1994-2023 Free Software Foundation, Inc.
+   Copyright (C) 1994-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -26,7 +26,7 @@
 bool
 read_addrmap_from_aranges (dwarf2_per_objfile *per_objfile,
 			   dwarf2_section_info *section,
-			   addrmap *mutable_map,
+			   addrmap_mutable *mutable_map,
 			   deferred_warnings *warn)
 {
   /* Caller must ensure that the section has already been read.  */

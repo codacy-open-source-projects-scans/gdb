@@ -1,6 +1,6 @@
 /* DIE indexing 
 
-   Copyright (C) 2022-2023 Free Software Foundation, Inc.
+   Copyright (C) 2022-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -48,6 +48,7 @@
 struct dwarf2_per_cu_data;
 struct dwarf2_per_bfd;
 struct index_cache_store_context;
+struct cooked_index_entry;
 
 /* Flags that describe an entry in the index.  */
 enum cooked_index_flag_enum : unsigned char
@@ -63,8 +64,29 @@ enum cooked_index_flag_enum : unsigned char
   /* True if this entry is just for the declaration of a type, not the
      definition.  */
   IS_TYPE_DECLARATION = 16,
+  /* True is parent_entry.deferred has a value rather than parent_entry
+     .resolved.  */
+  IS_PARENT_DEFERRED = 32,
 };
 DEF_ENUM_FLAGS_TYPE (enum cooked_index_flag_enum, cooked_index_flag);
+
+/* Type representing either a resolved or deferred cooked_index_entry.  */
+
+union cooked_index_entry_ref
+{
+  cooked_index_entry_ref (CORE_ADDR deferred_)
+  {
+    deferred = deferred_;
+  }
+
+  cooked_index_entry_ref (const cooked_index_entry *resolved_)
+  {
+    resolved = resolved_;
+  }
+
+  const cooked_index_entry *resolved;
+  CORE_ADDR deferred;
+};
 
 /* Return a string representation of FLAGS.  */
 
@@ -88,14 +110,14 @@ struct cooked_index_entry : public allocate_on_obstack
 {
   cooked_index_entry (sect_offset die_offset_, enum dwarf_tag tag_,
 		      cooked_index_flag flags_, const char *name_,
-		      const cooked_index_entry *parent_entry_,
+		      cooked_index_entry_ref parent_entry_,
 		      dwarf2_per_cu_data *per_cu_)
     : name (name_),
       tag (tag_),
       flags (flags_),
       die_offset (die_offset_),
-      parent_entry (parent_entry_),
-      per_cu (per_cu_)
+      per_cu (per_cu_),
+      m_parent_entry (parent_entry_)
   {
   }
 
@@ -220,6 +242,35 @@ struct cooked_index_entry : public allocate_on_obstack
     return compare (canonical, other.canonical, SORT) < 0;
   }
 
+  /* Set parent entry to PARENT.  */
+  void set_parent (const cooked_index_entry *parent)
+  {
+    gdb_assert ((flags & IS_PARENT_DEFERRED) == 0);
+    m_parent_entry.resolved = parent;
+  }
+
+  /* Resolve deferred parent entry to PARENT.  */
+  void resolve_parent (const cooked_index_entry *parent)
+  {
+    gdb_assert ((flags & IS_PARENT_DEFERRED) != 0);
+    flags = flags & ~IS_PARENT_DEFERRED;
+    m_parent_entry.resolved = parent;
+  }
+
+  /* Return parent entry.  */
+  const cooked_index_entry *get_parent () const
+  {
+    gdb_assert ((flags & IS_PARENT_DEFERRED) == 0);
+    return m_parent_entry.resolved;
+  }
+
+  /* Return deferred parent entry.  */
+  CORE_ADDR get_deferred_parent () const
+  {
+    gdb_assert ((flags & IS_PARENT_DEFERRED) != 0);
+    return m_parent_entry.deferred;
+  }
+
   /* The name as it appears in DWARF.  This always points into one of
      the mapped DWARF sections.  Note that this may be the name or the
      linkage name -- two entries are created for DIEs which have both
@@ -234,10 +285,6 @@ struct cooked_index_entry : public allocate_on_obstack
   cooked_index_flag flags;
   /* The offset of this DIE.  */
   sect_offset die_offset;
-  /* The parent entry.  This is NULL for top-level entries.
-     Otherwise, it points to the parent entry, such as a namespace or
-     class.  */
-  const cooked_index_entry *parent_entry;
   /* The CU from which this entry originates.  */
   dwarf2_per_cu_data *per_cu;
 
@@ -248,6 +295,11 @@ private:
      a parent, its write_scope method is called first.  */
   void write_scope (struct obstack *storage, const char *sep,
 		    bool for_name) const;
+
+  /* The parent entry.  This is NULL for top-level entries.
+     Otherwise, it points to the parent entry, such as a namespace or
+     class.  */
+  cooked_index_entry_ref m_parent_entry;
 };
 
 class cooked_index;
@@ -267,11 +319,11 @@ public:
 
   /* Create a new cooked_index_entry and register it with this object.
      Entries are owned by this object.  The new item is returned.  */
-  const cooked_index_entry *add (sect_offset die_offset, enum dwarf_tag tag,
-				 cooked_index_flag flags,
-				 const char *name,
-				 const cooked_index_entry *parent_entry,
-				 dwarf2_per_cu_data *per_cu);
+  cooked_index_entry *add (sect_offset die_offset, enum dwarf_tag tag,
+			   cooked_index_flag flags,
+			   const char *name,
+			   cooked_index_entry_ref parent_entry,
+			   dwarf2_per_cu_data *per_cu);
 
   /* Install a new fixed addrmap from the given mutable addrmap.  */
   void install_addrmap (addrmap_mutable *map)
@@ -309,9 +361,10 @@ private:
   /* Look up ADDR in the address map, and return either the
      corresponding CU, or nullptr if the address could not be
      found.  */
-  dwarf2_per_cu_data *lookup (CORE_ADDR addr)
+  dwarf2_per_cu_data *lookup (unrelocated_addr addr)
   {
-    return static_cast<dwarf2_per_cu_data *> (m_addrmap->find (addr));
+    return (static_cast<dwarf2_per_cu_data *>
+	    (m_addrmap->find ((CORE_ADDR) addr)));
   }
 
   /* Create a new cooked_index_entry and register it with this object.
@@ -320,7 +373,7 @@ private:
 			      enum dwarf_tag tag,
 			      cooked_index_flag flags,
 			      const char *name,
-			      const cooked_index_entry *parent_entry,
+			      cooked_index_entry_ref parent_entry,
 			      dwarf2_per_cu_data *per_cu)
   {
     return new (&m_storage) cooked_index_entry (die_offset, tag, flags,
@@ -382,11 +435,11 @@ public:
 
   /* Add an entry to the index.  The arguments describe the entry; see
      cooked-index.h.  The new entry is returned.  */
-  const cooked_index_entry *add (sect_offset die_offset, enum dwarf_tag tag,
-				 cooked_index_flag flags,
-				 const char *name,
-				 const cooked_index_entry *parent_entry,
-				 dwarf2_per_cu_data *per_cu)
+  cooked_index_entry *add (sect_offset die_offset, enum dwarf_tag tag,
+			   cooked_index_flag flags,
+			   const char *name,
+			   cooked_index_entry_ref parent_entry,
+			   dwarf2_per_cu_data *per_cu)
   {
     return m_index->add (die_offset, tag, flags, name, parent_entry, per_cu);
   }
@@ -516,18 +569,18 @@ private:
 #if CXX_STD_THREAD
   /* Current state of this object.  */
   cooked_state m_state = cooked_state::INITIAL;
+  /* Mutex and condition variable used to synchronize.  */
+  std::mutex m_mutex;
+  std::condition_variable m_cond;
+#endif /* CXX_STD_THREAD */
   /* This flag indicates whether any complaints or exceptions that
      arose during scanning have been reported by 'wait'.  This may
      only be modified on the main thread.  */
   bool m_reported = false;
-  /* Mutex and condition variable used to synchronize.  */
-  std::mutex m_mutex;
-  std::condition_variable m_cond;
   /* If set, an exception occurred during start_reading; in this case
      the scanning is stopped and this exception will later be reported
      by the 'wait' method.  */
   std::optional<gdb_exception> m_failed;
-#endif /* CXX_STD_THREAD */
 };
 
 /* The main index of DIEs.
@@ -625,7 +678,7 @@ public:
   /* Look up ADDR in the address map, and return either the
      corresponding CU, or nullptr if the address could not be
      found.  */
-  dwarf2_per_cu_data *lookup (CORE_ADDR addr);
+  dwarf2_per_cu_data *lookup (unrelocated_addr addr);
 
   /* Return a new vector of all the addrmaps used by all the indexes
      held by this object.  */

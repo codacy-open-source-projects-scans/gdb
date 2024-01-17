@@ -1,4 +1,4 @@
-# Copyright 2022-2023 Free Software Foundation, Inc.
+# Copyright 2022-2024 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ if { [build_executable "failed to prepare" ${testfile} ${srcfile}] } {
 }
 
 proc do_test {} {
-    save_vars { $::GDBFLAGS } {
+    save_vars { ::GDBFLAGS } {
 	append ::GDBFLAGS " -ex \"maint set target-non-stop on\""
 	clean_restart $::binfile
     }

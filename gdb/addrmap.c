@@ -1,6 +1,6 @@
 /* addrmap.c --- implementation of address map data structure.
 
-   Copyright (C) 2007-2023 Free Software Foundation, Inc.
+   Copyright (C) 2007-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -29,15 +29,6 @@ static_assert (sizeof (splay_tree_value) >= sizeof (void *));
 
 
 /* Fixed address maps.  */
-
-void
-addrmap_fixed::set_empty (CORE_ADDR start, CORE_ADDR end_inclusive,
-			  void *obj)
-{
-  internal_error ("addrmap_fixed_set_empty: "
-		  "fixed addrmaps can't be changed\n");
-}
-
 
 void *
 addrmap_fixed::do_find (CORE_ADDR addr) const

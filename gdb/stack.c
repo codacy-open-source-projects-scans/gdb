@@ -1,6 +1,6 @@
 /* Print and select stack frames for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2023 Free Software Foundation, Inc.
+   Copyright (C) 1986-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1722,10 +1722,8 @@ info_frame_command_core (frame_info_ptr fi, bool selected_frame_p)
 		gdb_printf ("\n");
 	      }
 	    else if (value->lval () == lval_register)
-	      {
-		gdb_printf (" Previous frame's sp in %s\n",
-			    gdbarch_register_name (gdbarch, value->regnum ()));
-	      }
+	      gdb_printf (" Previous frame's sp in %s\n",
+			  gdbarch_register_name (gdbarch, value->regnum ()));
 
 	    release_value (value);
 	    need_nl = 0;

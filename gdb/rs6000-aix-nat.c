@@ -1,6 +1,6 @@
 /* IBM RS/6000 native-dependent code for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2023 Free Software Foundation, Inc.
+   Copyright (C) 1986-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -103,6 +103,9 @@ public:
   void follow_fork (inferior *, ptid_t, target_waitkind, bool, bool) override;
 
   const struct target_desc *read_description ()  override;
+
+  int insert_fork_catchpoint (int) override;
+  int remove_fork_catchpoint (int) override;
 
 protected:
 
@@ -475,6 +478,19 @@ rs6000_nat_target::follow_fork (inferior *child_inf, ptid_t child_ptid,
     else
       rs6000_ptrace32 (PT_DETACH, child_ptid.pid (), 0, 0, 0);
   }
+}
+
+/* Functions for catchpoint in AIX.  */
+int
+rs6000_nat_target::insert_fork_catchpoint (int pid)
+{
+  return 0;
+}
+
+int
+rs6000_nat_target::remove_fork_catchpoint (int pid)
+{
+  return 0;
 }
 
 /* Fetch register REGNO from the inferior.  */

@@ -1,6 +1,6 @@
 /* The IGEN simulator generator for GDB, the GNU Debugger.
 
-   Copyright 2002-2023 Free Software Foundation, Inc.
+   Copyright 2002-2024 Free Software Foundation, Inc.
 
    Contributed by Andrew Cagney.
 
@@ -50,11 +50,11 @@ struct _line_ref
 
 /* Error appends a new line, warning and notify do not */
 typedef void error_func (const line_ref *line, const char *msg, ...)
-  ATTRIBUTE_PRINTF (2, 3);
+  ATTRIBUTE_PRINTF_2;
 
-extern ATTRIBUTE_NORETURN error_func error;
-extern error_func warning;
-extern error_func notify;
+extern error_func error ATTRIBUTE_PRINTF_2 ATTRIBUTE_NORETURN;
+extern error_func warning ATTRIBUTE_PRINTF_2;
+extern error_func notify ATTRIBUTE_PRINTF_2;
 
 
 #define ERROR(EXPRESSION, args...) \

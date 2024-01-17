@@ -1,4 +1,4 @@
-dnl Copyright (C) 1997-2023 Free Software Foundation, Inc.
+dnl Copyright (C) 1997-2024 Free Software Foundation, Inc.
 dnl
 dnl This program is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -132,7 +132,8 @@ AC_CHECK_TYPES(socklen_t, [], [],
 [#include <sys/types.h>
 #include <sys/socket.h>
 ])
-AC_CHECK_TYPES([long long])
+
+AC_CHECK_SIZEOF([void *])
 
 dnl Check for struct statfs.
 AC_CACHE_CHECK([for struct statfs],

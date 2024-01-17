@@ -1,4 +1,4 @@
-# Copyright (C) 2010-2023 Free Software Foundation, Inc.
+# Copyright (C) 2010-2024 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -52,6 +52,12 @@ gdb_py_test_silent_cmd "python progspace.random_attribute = 42" \
     "Set random attribute in progspace" 1
 gdb_test "python print (progspace.random_attribute)" "42" \
     "Verify set of random attribute in progspace"
+
+# Check that we can't create new (invalid) gdb.Progspace objects.
+gdb_test "python gdb.Progspace()" \
+    [multi_line "TypeError: cannot create 'gdb.Progspace' instances" \
+	 "Error while executing Python code\\."] \
+    "check for error when calling gdb.Progspace() directly"
 
 if {![runto_main]} {
     return

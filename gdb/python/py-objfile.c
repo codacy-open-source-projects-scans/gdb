@@ -1,6 +1,6 @@
 /* Python interface to objfiles.
 
-   Copyright (C) 2008-2023 Free Software Foundation, Inc.
+   Copyright (C) 2008-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -537,7 +537,7 @@ objfpy_repr (PyObject *self_)
   objfile *obj = self->objfile;
 
   if (obj == nullptr)
-    return PyUnicode_FromString ("<gdb.Objfile (invalid)>");
+    return gdb_py_invalid_object_repr (self_);
 
   return PyUnicode_FromFormat ("<gdb.Objfile filename=%s>",
 			       objfile_name (obj));

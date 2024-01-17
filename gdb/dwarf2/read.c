@@ -1,6 +1,6 @@
 /* DWARF 2 debugging format support for GDB.
 
-   Copyright (C) 1994-2023 Free Software Foundation, Inc.
+   Copyright (C) 1994-2024 Free Software Foundation, Inc.
 
    Adapted by Gary Funck (gary@intrepid.com), Intrepid Technology,
    Inc.  with support from Florida State University (under contract
@@ -907,7 +907,7 @@ static enum pc_bounds_kind dwarf2_get_pc_bounds (struct die_info *,
 						 unrelocated_addr *,
 						 unrelocated_addr *,
 						 struct dwarf2_cu *,
-						 addrmap *,
+						 addrmap_mutable *,
 						 void *);
 
 static void get_scope_pc_bounds (struct die_info *,
@@ -2993,12 +2993,12 @@ recursively_find_pc_sect_compunit_symtab (struct compunit_symtab *cust,
 
 dwarf2_per_cu_data *
 dwarf2_base_index_functions::find_per_cu (dwarf2_per_bfd *per_bfd,
-					  CORE_ADDR adjusted_pc)
+					  unrelocated_addr adjusted_pc)
 {
   if (per_bfd->index_addrmap == nullptr)
     return nullptr;
 
-  void *obj = per_bfd->index_addrmap->find (adjusted_pc);
+  void *obj = per_bfd->index_addrmap->find ((CORE_ADDR) adjusted_pc);
   return static_cast<dwarf2_per_cu_data *> (obj);
 }
 
@@ -3015,8 +3015,8 @@ dwarf2_base_index_functions::find_pc_sect_compunit_symtab
   dwarf2_per_objfile *per_objfile = get_dwarf2_per_objfile (objfile);
 
   CORE_ADDR baseaddr = objfile->text_section_offset ();
-  struct dwarf2_per_cu_data *data = find_per_cu (per_objfile->per_bfd,
-						 pc - baseaddr);
+  struct dwarf2_per_cu_data *data
+    = find_per_cu (per_objfile->per_bfd, (unrelocated_addr) (pc - baseaddr));
   if (data == nullptr)
     return nullptr;
 
@@ -4552,16 +4552,6 @@ private:
      understand this.  */
   addrmap_mutable m_die_range_map;
 
-  /* A single deferred entry.  */
-  struct deferred_entry
-  {
-    sect_offset die_offset;
-    const char *name;
-    CORE_ADDR spec_offset;
-    dwarf_tag tag;
-    cooked_index_flag flags;
-  };
-
   /* The generated DWARF can sometimes have the declaration for a
      method in a class (or perhaps namespace) scope, with the
      definition appearing outside this scope... just one of the many
@@ -4569,7 +4559,7 @@ private:
      defer certain entries until the end of scanning, at which point
      we'll know the containing context of all the DIEs that we might
      have scanned.  This vector stores these deferred entries.  */
-  std::vector<deferred_entry> m_deferred_entries;
+  std::vector<cooked_index_entry *> m_deferred_entries;
 };
 
 /* Subroutine of dwarf2_build_psymtabs_hard to simplify it.
@@ -7783,16 +7773,24 @@ read_type_unit_scope (struct die_info *die, struct dwarf2_cu *cu)
    and DWP files (a file with the DWOs packaged up into one file), we treat
    DWP files as having a collection of virtual DWO files.  */
 
+/* A helper function to hash two file names.  This is a separate
+   function because the hash table uses a search with a different
+   type.  The second file may be NULL.  */
+
+static hashval_t
+hash_two_files (const char *one, const char *two)
+{
+  hashval_t hash = htab_hash_string (one);
+  if (two != nullptr)
+    hash += htab_hash_string (two);
+  return hash;
+}
+
 static hashval_t
 hash_dwo_file (const void *item)
 {
   const struct dwo_file *dwo_file = (const struct dwo_file *) item;
-  hashval_t hash;
-
-  hash = htab_hash_string (dwo_file->dwo_name.c_str ());
-  if (dwo_file->comp_dir != NULL)
-    hash += htab_hash_string (dwo_file->comp_dir);
-  return hash;
+  return hash_two_files (dwo_file->dwo_name.c_str (), dwo_file->comp_dir);
 }
 
 /* This is used when looking up entries in the DWO hash table.  */
@@ -7803,6 +7801,12 @@ struct dwo_file_search
   const char *dwo_name;
   /* Compilation directory to look for.  */
   const char *comp_dir;
+
+  /* Return a hash value compatible with the table.  */
+  hashval_t hash () const
+  {
+    return hash_two_files (dwo_name, comp_dir);
+  }
 };
 
 static int
@@ -7846,8 +7850,9 @@ lookup_dwo_file_slot (dwarf2_per_objfile *per_objfile,
 
   find_entry.dwo_name = dwo_name;
   find_entry.comp_dir = comp_dir;
-  slot = htab_find_slot (per_objfile->per_bfd->dwo_files.get (), &find_entry,
-			 INSERT);
+  slot = htab_find_slot_with_hash (per_objfile->per_bfd->dwo_files.get (),
+				   &find_entry, find_entry.hash (),
+				   INSERT);
 
   return slot;
 }
@@ -11008,7 +11013,7 @@ dwarf2_ranges_process (unsigned offset, struct dwarf2_cu *cu, dwarf_tag tag,
 static int
 dwarf2_ranges_read (unsigned offset, unrelocated_addr *low_return,
 		    unrelocated_addr *high_return, struct dwarf2_cu *cu,
-		    addrmap *map, void *datum, dwarf_tag tag)
+		    addrmap_mutable *map, void *datum, dwarf_tag tag)
 {
   dwarf2_per_objfile *per_objfile = cu->per_objfile;
   int low_set = 0;
@@ -11118,7 +11123,7 @@ dwarf2_get_pc_bounds_entry_point (die_info *die, unrelocated_addr *low,
 static pc_bounds_kind
 dwarf_get_pc_bounds_ranges_or_highlow_pc (die_info *die, unrelocated_addr *low,
 					  unrelocated_addr *high, dwarf2_cu *cu,
-					  addrmap *map, void *datum)
+					  addrmap_mutable *map, void *datum)
 {
   gdb_assert (low != nullptr);
   gdb_assert (high != nullptr);
@@ -11187,7 +11192,7 @@ dwarf_get_pc_bounds_ranges_or_highlow_pc (die_info *die, unrelocated_addr *low,
 static enum pc_bounds_kind
 dwarf2_get_pc_bounds (struct die_info *die, unrelocated_addr *lowpc,
 		      unrelocated_addr *highpc, struct dwarf2_cu *cu,
-		      addrmap *map, void *datum)
+		      addrmap_mutable *map, void *datum)
 {
   dwarf2_per_objfile *per_objfile = cu->per_objfile;
 
@@ -16508,7 +16513,7 @@ cooked_indexer::index_dies (cutu_reader *reader,
       /* The scope of a DW_TAG_entry_point cooked_index_entry is the one of
 	 its surrounding subroutine.  */
       if (abbrev->tag == DW_TAG_entry_point)
-	this_parent_entry = parent_entry->parent_entry;
+	this_parent_entry = parent_entry->get_parent ();
       info_ptr = scan_attributes (reader->cu->per_cu, reader, info_ptr,
 				  info_ptr, abbrev, &name, &linkage_name,
 				  &flags, &sibling, &this_parent_entry,
@@ -16525,17 +16530,21 @@ cooked_indexer::index_dies (cutu_reader *reader,
 	  name = nullptr;
 	}
 
-      const cooked_index_entry *this_entry = nullptr;
+      cooked_index_entry *this_entry = nullptr;
       if (name != nullptr)
 	{
 	  if (defer != 0)
-	    m_deferred_entries.push_back ({
-		this_die, name, defer, abbrev->tag, flags
-	      });
+	    {
+	      this_entry
+		= m_index_storage->add (this_die, abbrev->tag,
+					flags | IS_PARENT_DEFERRED, name,
+					defer, m_per_cu);
+	      m_deferred_entries.push_back (this_entry);
+	    }
 	  else
-	    this_entry = m_index_storage->add (this_die, abbrev->tag, flags,
-					       name, this_parent_entry,
-					       m_per_cu);
+	    this_entry
+	      = m_index_storage->add (this_die, abbrev->tag, flags, name,
+				      this_parent_entry, m_per_cu);
 	}
 
       if (linkage_name != nullptr)
@@ -16636,10 +16645,9 @@ cooked_indexer::make_index (cutu_reader *reader)
 
   for (const auto &entry : m_deferred_entries)
     {
-      void *obj = m_die_range_map.find (entry.spec_offset);
+      void *obj = m_die_range_map.find (entry->get_deferred_parent ());
       cooked_index_entry *parent = static_cast<cooked_index_entry *> (obj);
-      m_index_storage->add (entry.die_offset, entry.tag, entry.flags,
-			    entry.name, parent, m_per_cu);
+      entry->resolve_parent (parent);
     }
 }
 
@@ -16659,7 +16667,7 @@ struct cooked_index_functions : public dwarf2_base_index_functions
   }
 
   dwarf2_per_cu_data *find_per_cu (dwarf2_per_bfd *per_bfd,
-				   CORE_ADDR adjusted_pc) override;
+				   unrelocated_addr adjusted_pc) override;
 
   struct compunit_symtab *find_compunit_symtab_by_address
     (struct objfile *objfile, CORE_ADDR address) override;
@@ -16739,7 +16747,7 @@ struct cooked_index_functions : public dwarf2_base_index_functions
 
 dwarf2_per_cu_data *
 cooked_index_functions::find_per_cu (dwarf2_per_bfd *per_bfd,
-				     CORE_ADDR adjusted_pc)
+				     unrelocated_addr adjusted_pc)
 {
   cooked_index *table
     = (gdb::checked_static_cast<cooked_index *>
@@ -16758,7 +16766,8 @@ cooked_index_functions::find_compunit_symtab_by_address
   cooked_index *table = wait (objfile, true);
 
   CORE_ADDR baseaddr = objfile->data_section_offset ();
-  dwarf2_per_cu_data *per_cu = table->lookup (address - baseaddr);
+  dwarf2_per_cu_data *per_cu
+    = table->lookup ((unrelocated_addr) (address - baseaddr));
   if (per_cu == nullptr)
     return nullptr;
 
@@ -16846,7 +16855,7 @@ cooked_index_functions::expand_symtabs_matching
 	     matches.  */
 	  bool found = true;
 
-	  const cooked_index_entry *parent = entry->parent_entry;
+	  const cooked_index_entry *parent = entry->get_parent ();
 	  for (int i = name_vec.size () - 1; i > 0; --i)
 	    {
 	      /* If we ran out of entries, or if this segment doesn't
@@ -16859,7 +16868,7 @@ cooked_index_functions::expand_symtabs_matching
 		  break;
 		}
 
-	      parent = parent->parent_entry;
+	      parent = parent->get_parent ();
 	    }
 
 	  if (!found)

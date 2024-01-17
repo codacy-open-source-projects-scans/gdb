@@ -1,6 +1,6 @@
 /* Perform non-arithmetic operations on values, for GDB.
 
-   Copyright (C) 1986-2023 Free Software Foundation, Inc.
+   Copyright (C) 1986-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1244,7 +1244,8 @@ value_assign (struct value *toval, struct value *fromval)
 		/* If TOVAL is a special machine register requiring
 		   conversion of program values to a special raw
 		   format.  */
-		gdbarch_value_to_register (gdbarch, next_frame,
+		gdbarch_value_to_register (gdbarch,
+					   get_prev_frame_always (next_frame),
 					   toval->regnum (), type,
 					   fromval->contents ().data ());
 	      }

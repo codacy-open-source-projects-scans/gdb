@@ -1,6 +1,6 @@
 /* Python interface to types.
 
-   Copyright (C) 2008-2023 Free Software Foundation, Inc.
+   Copyright (C) 2008-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1083,8 +1083,7 @@ typy_repr (PyObject *self)
 {
   const auto type = type_object_to_type (self);
   if (type == nullptr)
-    return PyUnicode_FromFormat ("<%s (invalid)>",
-				 Py_TYPE (self)->tp_name);
+    return gdb_py_invalid_object_repr (self);
 
   const char *code = pyty_codes[type->code ()].name;
   string_file type_name;

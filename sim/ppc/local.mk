@@ -1,6 +1,6 @@
 ## See sim/Makefile.am
 ##
-## Copyright (C) 1994-2023 Free Software Foundation, Inc.
+## Copyright (C) 1994-2024 Free Software Foundation, Inc.
 ##
 ## This program is free software; you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -80,7 +80,7 @@ noinst_PROGRAMS += %D%/run
 
 %D%/defines.h: %D%/stamp-defines ; @true
 %D%/stamp-defines: config.h Makefile
-	$(AM_V_GEN)sed -n -e '/^#define HAVE_/s/ 1$$/",/' -e '/^#define HAVE_/s//"HAVE_/p' < config.h > %D%/defines.hin
+	$(AM_V_GEN)$(SED) -n -e '/^#define HAVE_.*1$$/{ s/ 1$$/",/; s/.* HAVE_/"HAVE_/; p }' < config.h > %D%/defines.hin
 	$(AM_V_at)$(SHELL) $(srcroot)/move-if-change %D%/defines.hin %D%/defines.h
 	$(AM_V_at)touch $@
 

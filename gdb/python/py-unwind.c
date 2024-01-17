@@ -1,6 +1,6 @@
 /* Python frame unwinder interface.
 
-   Copyright (C) 2015-2023 Free Software Foundation, Inc.
+   Copyright (C) 2015-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -425,7 +425,7 @@ pending_framepy_repr (PyObject *self)
   frame_info_ptr frame = pending_frame->frame_info;
 
   if (frame == nullptr)
-    return PyUnicode_FromFormat ("<%s (invalid)>", Py_TYPE (self)->tp_name);
+    return gdb_py_invalid_object_repr (self);
 
   const char *sp_str = nullptr;
   const char *pc_str = nullptr;

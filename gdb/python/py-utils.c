@@ -1,6 +1,6 @@
 /* General utility routines for GDB/Python.
 
-   Copyright (C) 2008-2023 Free Software Foundation, Inc.
+   Copyright (C) 2008-2024 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -596,4 +596,12 @@ gdbpy_fix_doc_string_indentation (gdb::unique_xmalloc_ptr<char> doc)
   dst[dst_offset] = '\0';
 
   return doc;
+}
+
+/* See python-internal.h.  */
+
+PyObject *
+gdb_py_invalid_object_repr (PyObject *self)
+{
+  return PyUnicode_FromFormat ("<%s (invalid)>", Py_TYPE (self)->tp_name);
 }

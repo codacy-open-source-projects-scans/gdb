@@ -318,8 +318,9 @@ address_to_signed_pointer (struct gdbarch *gdbarch, struct type *type,
 enum symbol_needs_kind
 symbol_read_needs (struct symbol *sym)
 {
-  if (SYMBOL_COMPUTED_OPS (sym) != NULL)
-    return SYMBOL_COMPUTED_OPS (sym)->get_symbol_read_needs (sym);
+  if (const symbol_computed_ops *computed_ops = sym->computed_ops ();
+      computed_ops != nullptr)
+    return computed_ops->get_symbol_read_needs (sym);
 
   switch (sym->aclass ())
     {
@@ -498,8 +499,8 @@ language_defn::read_var_value (struct symbol *var,
   if (frame != NULL)
     frame = get_hosting_frame (var, var_block, frame);
 
-  if (SYMBOL_COMPUTED_OPS (var) != NULL)
-    return SYMBOL_COMPUTED_OPS (var)->read_variable (var, frame);
+  if (const symbol_computed_ops *computed_ops = var->computed_ops ())
+    return computed_ops->read_variable (var, frame);
 
   switch (var->aclass ())
     {
@@ -621,31 +622,14 @@ language_defn::read_var_value (struct symbol *var,
     case LOC_REGISTER:
     case LOC_REGPARM_ADDR:
       {
-	int regno = SYMBOL_REGISTER_OPS (var)
-		      ->register_number (var, get_frame_arch (frame));
-	struct value *regval;
+	const symbol_register_ops *reg_ops = var->register_ops ();
+	int regno = reg_ops->register_number (var, get_frame_arch (frame));
 
 	if (var->aclass () == LOC_REGPARM_ADDR)
-	  {
-	    regval = value_from_register (lookup_pointer_type (type),
-					  regno,
-					  frame);
-
-	    if (regval == NULL)
-	      error (_("Value of register variable not available for `%s'."),
-		     var->print_name ());
-
-	    addr = value_as_address (regval);
-	  }
+	  addr = value_as_address
+	   (value_from_register (lookup_pointer_type (type), regno, frame));
 	else
-	  {
-	    regval = value_from_register (type, regno, frame);
-
-	    if (regval == NULL)
-	      error (_("Value of register variable not available for `%s'."),
-		     var->print_name ());
-	    return regval;
-	  }
+	  return value_from_register (type, regno, frame);
       }
       break;
 

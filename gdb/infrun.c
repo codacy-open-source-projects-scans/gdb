@@ -8831,7 +8831,7 @@ insert_exception_resume_breakpoint (struct thread_info *tp,
       struct breakpoint *bp;
 
       vsym = lookup_symbol_search_name (sym->search_name (),
-					b, VAR_DOMAIN);
+					b, SEARCH_VAR_DOMAIN);
       value = read_var_value (vsym.symbol, vsym.block, frame);
       /* If the value was optimized out, revert to the old behavior.  */
       if (! value->optimized_out ())
@@ -8847,9 +8847,6 @@ insert_exception_resume_breakpoint (struct thread_info *tp,
 	  bp = set_momentary_breakpoint_at_pc (get_frame_arch (frame),
 					       handler,
 					       bp_exception_resume).release ();
-
-	  /* set_momentary_breakpoint_at_pc invalidates FRAME.  */
-	  frame = nullptr;
 
 	  tp->control.exception_resume_breakpoint = bp;
 	}

@@ -817,7 +817,7 @@ print_frame_args (const frame_print_options &fp_opts,
 	      struct symbol *nsym;
 
 	      nsym = lookup_symbol_search_name (sym->search_name (),
-						b, VAR_DOMAIN).symbol;
+						b, SEARCH_VAR_DOMAIN).symbol;
 	      gdb_assert (nsym != NULL);
 	      if (nsym->aclass () == LOC_REGISTER
 		  && !nsym->is_argument ())
@@ -2307,9 +2307,6 @@ print_variable_and_value_data::operator() (const char *print_name,
 
   print_variable_and_value (print_name, sym, frame, stream, num_tabs);
 
-  /* print_variable_and_value invalidates FRAME.  */
-  frame = NULL;
-
   values_printed = 1;
 }
 
@@ -2485,7 +2482,7 @@ iterate_over_block_arg_vars (const struct block *b,
 
 	  struct symbol *sym2
 	    = lookup_symbol_search_name (sym->search_name (),
-					 b, VAR_DOMAIN).symbol;
+					 b, SEARCH_VAR_DOMAIN).symbol;
 	  cb (sym->print_name (), sym2);
 	}
     }

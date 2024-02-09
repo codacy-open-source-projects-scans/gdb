@@ -4889,8 +4889,8 @@ global_symbol_searcher::add_matching_symbols
 	      if (!sym->matches (kind))
 		continue;
 
-	      if (preg.has_value () && !preg->exec (sym->natural_name (), 0,
-						    nullptr, 0) == 0)
+	      if (preg.has_value () && preg->exec (sym->natural_name (), 0,
+						   nullptr, 0) != 0)
 		continue;
 
 	      if (((sym->domain () == VAR_DOMAIN
@@ -5993,7 +5993,7 @@ default_collect_symbol_completion_matches_break_on
 			       return true;
 			     },
 			   SEARCH_GLOBAL_BLOCK | SEARCH_STATIC_BLOCK,
-			   SEARCH_ALL);
+			   SEARCH_ALL_DOMAINS);
 
   /* Search upwards from currently selected frame (so that we can
      complete on local vars).  Also catch fields of types defined in

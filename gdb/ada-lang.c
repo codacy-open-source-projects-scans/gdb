@@ -679,7 +679,7 @@ ada_discrete_type_high_bound (struct type *type)
 	  return high.const_val ();
 	else
 	  {
-	    gdb_assert (high.kind () == PROP_UNDEFINED);
+	    gdb_assert (!high.is_available ());
 
 	    /* This happens when trying to evaluate a type's dynamic bound
 	       without a live target.  There is nothing relevant for us to
@@ -714,7 +714,7 @@ ada_discrete_type_low_bound (struct type *type)
 	  return low.const_val ();
 	else
 	  {
-	    gdb_assert (low.kind () == PROP_UNDEFINED);
+	    gdb_assert (!low.is_available ());
 
 	    /* This happens when trying to evaluate a type's dynamic bound
 	       without a live target.  There is nothing relevant for us to
@@ -13533,7 +13533,7 @@ public:
 			     NULL,
 			     NULL,
 			     SEARCH_GLOBAL_BLOCK | SEARCH_STATIC_BLOCK,
-			     SEARCH_ALL);
+			     SEARCH_ALL_DOMAINS);
 
     /* At this point scan through the misc symbol vectors and add each
        symbol you find to the list.  Eventually we want to ignore

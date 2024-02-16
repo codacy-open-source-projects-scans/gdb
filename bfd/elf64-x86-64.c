@@ -4581,8 +4581,6 @@ elf_x86_64_finish_dynamic_symbol (bfd *output_bfd,
   bool local_undefweak;
 
   htab = elf_x86_hash_table (info, X86_64_ELF_DATA);
-  if (htab == NULL)
-    return false;
 
   /* Use the second PLT section only if there is .plt section.  */
   use_plt_second = htab->elf.splt != NULL && htab->plt_second != NULL;

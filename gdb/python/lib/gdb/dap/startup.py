@@ -64,7 +64,6 @@ def start_thread(name, target, args=()):
     correctly blocked."""
 
     def thread_wrapper(*args):
-        thread_name = threading.current_thread().name
         # Catch any exception, and log it.  If we let it escape here, it'll be
         # printed in gdb_stderr, which is not safe to access from anywhere but
         # gdb's main thread.
@@ -72,14 +71,15 @@ def start_thread(name, target, args=()):
             target(*args)
         except Exception as err:
             err_string = "%s, %s" % (err, type(err))
-            log(thread_name + ": caught exception: " + err_string)
+            thread_log("caught exception: " + err_string)
             log_stack()
         finally:
             # Log when a thread terminates.
-            log(thread_name + ": terminating")
+            thread_log("terminating")
 
     result = gdb.Thread(name=name, target=thread_wrapper, args=args, daemon=True)
     result.start()
+    return result
 
 
 def start_dap(target):
@@ -93,7 +93,15 @@ def start_dap(target):
         _dap_thread = threading.current_thread()
         target()
 
-    start_thread("DAP", really_start_dap)
+    # Note: unlike _dap_thread, dap_thread is a local variable.
+    dap_thread = start_thread("DAP", really_start_dap)
+
+    def _on_gdb_exiting(event):
+        thread_log("joining DAP thread ...")
+        dap_thread.join()
+        thread_log("joining DAP thread done")
+
+    gdb.events.gdb_exiting.connect(_on_gdb_exiting)
 
 
 def in_gdb_thread(func):
@@ -146,6 +154,7 @@ class LoggingParam(gdb.Parameter):
     set_doc = "Set the DAP logging status."
     show_doc = "Show the DAP logging status."
 
+    lock = threading.Lock()
     log_file = None
 
     def __init__(self):
@@ -155,12 +164,13 @@ class LoggingParam(gdb.Parameter):
         self.value = None
 
     def get_set_string(self):
-        # Close any existing log file, no matter what.
-        if self.log_file is not None:
-            self.log_file.close()
-            self.log_file = None
-        if self.value is not None:
-            self.log_file = open(self.value, "w")
+        with dap_log.lock:
+            # Close any existing log file, no matter what.
+            if self.log_file is not None:
+                self.log_file.close()
+                self.log_file = None
+            if self.value is not None:
+                self.log_file = open(self.value, "w")
         return ""
 
 
@@ -169,15 +179,28 @@ dap_log = LoggingParam()
 
 def log(something, level=LogLevel.DEFAULT):
     """Log SOMETHING to the log file, if logging is enabled."""
-    if dap_log.log_file is not None and level <= _log_level.value:
-        print(something, file=dap_log.log_file)
-        dap_log.log_file.flush()
+    with dap_log.lock:
+        if dap_log.log_file is not None and level <= _log_level.value:
+            print(something, file=dap_log.log_file)
+            dap_log.log_file.flush()
+
+
+def thread_log(something, level=LogLevel.DEFAULT):
+    """Log SOMETHING to the log file, if logging is enabled, and prefix
+    the thread name."""
+    if threading.current_thread() is _gdb_thread:
+        thread_name = "GDB main"
+    else:
+        thread_name = threading.current_thread().name
+    log(thread_name + ": " + something, level)
 
 
 def log_stack(level=LogLevel.DEFAULT):
     """Log a stack trace to the log file, if logging is enabled."""
-    if dap_log.log_file is not None and level <= _log_level.value:
-        traceback.print_exc(file=dap_log.log_file)
+    with dap_log.lock:
+        if dap_log.log_file is not None and level <= _log_level.value:
+            traceback.print_exc(file=dap_log.log_file)
+            dap_log.log_file.flush()
 
 
 @in_gdb_thread

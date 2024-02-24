@@ -15,7 +15,7 @@
 
 import json
 
-from .startup import start_thread, send_gdb, log, log_stack, LogLevel
+from .startup import start_thread, log, log_stack, LogLevel
 
 
 def read_json(stream):
@@ -79,4 +79,4 @@ def start_json_writer(stream, queue):
             stream.write(body_bytes)
             stream.flush()
 
-    start_thread("JSON writer", _json_writer)
+    return start_thread("JSON writer", _json_writer)

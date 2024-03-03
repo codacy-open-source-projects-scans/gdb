@@ -851,7 +851,8 @@ extern bfd_vma _bfd_safe_read_leb128
 extern bfd_byte * _bfd_write_unsigned_leb128
   (bfd_byte *, bfd_byte *, bfd_vma) ATTRIBUTE_HIDDEN;
 
-extern struct bfd_link_info *_bfd_get_link_info (bfd *);
+extern struct bfd_link_info *_bfd_get_link_info (bfd *)
+  ATTRIBUTE_HIDDEN;
 
 extern bool _bfd_link_keep_memory (struct bfd_link_info *)
   ATTRIBUTE_HIDDEN;
@@ -2409,6 +2410,10 @@ static const char *const bfd_reloc_code_real_names[] = { "@@uninitialized@@",
   "BFD_RELOC_RISCV_TLS_DTPREL64",
   "BFD_RELOC_RISCV_TLS_TPREL32",
   "BFD_RELOC_RISCV_TLS_TPREL64",
+  "BFD_RELOC_RISCV_TLSDESC_HI20",
+  "BFD_RELOC_RISCV_TLSDESC_LOAD_LO12",
+  "BFD_RELOC_RISCV_TLSDESC_ADD_LO12",
+  "BFD_RELOC_RISCV_TLSDESC_CALL",
   "BFD_RELOC_RISCV_ALIGN",
   "BFD_RELOC_RISCV_RVC_BRANCH",
   "BFD_RELOC_RISCV_RVC_JUMP",

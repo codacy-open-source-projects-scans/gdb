@@ -1449,6 +1449,16 @@ _bfd_doprnt_scan (const char *format, va_list ap, union _bfd_doprnt_args *args)
   return arg_count;
 }
 
+static void
+_bfd_print (bfd_print_callback print_func, void *stream,
+	    const char *fmt, va_list ap)
+{
+  union _bfd_doprnt_args args[MAX_ARGS];
+
+  _bfd_doprnt_scan (fmt, ap, args);
+  _bfd_doprnt (print_func, stream, fmt, args);
+}
+
 /*
 FUNCTION
 	bfd_print_error
@@ -1471,11 +1481,8 @@ void
 bfd_print_error (bfd_print_callback print_func, void *stream,
 		 const char *fmt, va_list ap)
 {
-  union _bfd_doprnt_args args[MAX_ARGS];
-
   print_func (stream, "%s: ", _bfd_get_error_program_name ());
-  _bfd_doprnt_scan (fmt, ap, args);
-  _bfd_doprnt (print_func, stream, fmt, args);
+  _bfd_print (print_func, stream, fmt, ap);
 }
 
 /* The standard error handler that prints to stderr.  */
@@ -1544,7 +1551,7 @@ error_handler_sprintf (const char *fmt, va_list ap)
   error_stream.ptr = error_buf;
   error_stream.left = sizeof (error_buf);
 
-  bfd_print_error (err_sprintf, &error_stream, fmt, ap);
+  _bfd_print (err_sprintf, &error_stream, fmt, ap);
 
   size_t len = error_stream.ptr - error_buf;
   struct per_xvec_message **warn
@@ -1766,7 +1773,6 @@ bfd_init (void)
   input_bfd = NULL;
   _bfd_clear_error_data ();
   input_error = bfd_error_no_error;
-  _bfd_error_program_name = NULL;
   _bfd_error_internal = error_handler_fprintf;
   _bfd_assert_handler = _bfd_default_assert_handler;
 
@@ -2050,17 +2056,17 @@ bfd_assert (const char *file, int line)
 void
 _bfd_abort (const char *file, int line, const char *fn)
 {
+  fflush (stdout);
+
   if (fn != NULL)
-    _bfd_error_handler
-      /* xgettext:c-format */
-      (_("BFD %s internal error, aborting at %s:%d in %s\n"),
-       BFD_VERSION_STRING, file, line, fn);
+    fprintf (stderr, _("%s: BFD %s internal error, aborting at %s:%d in %s\n"),
+	     _bfd_get_error_program_name (), BFD_VERSION_STRING,
+	     file, line, fn);
   else
-    _bfd_error_handler
-      /* xgettext:c-format */
-      (_("BFD %s internal error, aborting at %s:%d\n"),
-       BFD_VERSION_STRING, file, line);
-  _bfd_error_handler (_("Please report this bug.\n"));
+    fprintf (stderr, _("%s: BFD %s internal error, aborting at %s:%d\n"),
+	     _bfd_get_error_program_name (), BFD_VERSION_STRING,
+	     file, line);
+  fprintf (stderr, _("Please report this bug.\n"));
   _exit (EXIT_FAILURE);
 }
 

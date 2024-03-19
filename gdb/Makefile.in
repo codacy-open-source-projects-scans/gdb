@@ -318,7 +318,6 @@ SUBDIR_TUI_SRCS = \
 	tui/tui-io.c \
 	tui/tui-layout.c \
 	tui/tui-location.c \
-	tui/tui-out.c \
 	tui/tui-regs.c \
 	tui/tui-source.c \
 	tui/tui-status.c \
@@ -1605,7 +1604,6 @@ HFILES_NO_SRCDIR = \
 	tui/tui-io.h \
 	tui/tui-layout.h \
 	tui/tui-location.h \
-	tui/tui-out.h \
 	tui/tui-regs.h \
 	tui/tui-source.h \
 	tui/tui-status.h \
@@ -2317,7 +2315,6 @@ config.status: $(srcdir)/configure configure.nat configure.tgt configure.host ..
 	$(SHELL) config.status --recheck
 
 ACLOCAL = aclocal
-ACLOCAL_AMFLAGS = -I ../config
 
 # Keep these in sync with the includes in acinclude.m4.
 aclocal_m4_deps = \
@@ -2345,7 +2342,7 @@ aclocal_m4_deps = \
 	../config/ax_pthread.m4
 
 $(srcdir)/aclocal.m4: @MAINTAINER_MODE_TRUE@ $(aclocal_m4_deps)
-	cd $(srcdir) && $(ACLOCAL) $(ACLOCAL_AMFLAGS)
+	cd $(srcdir) && $(ACLOCAL)
 
 AUTOCONF = autoconf
 configure_deps = $(srcdir)/configure.ac $(srcdir)/aclocal.m4

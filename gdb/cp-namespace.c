@@ -18,7 +18,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "cp-support.h"
 #include "gdbsupport/gdb_obstack.h"
 #include "symtab.h"
@@ -1024,10 +1023,10 @@ cp_lookup_nested_symbol (struct type *parent_type,
    released version of GCC with such information.)  */
 
 struct type *
-cp_lookup_transparent_type (const char *name)
+cp_lookup_transparent_type (const char *name, domain_search_flags flags)
 {
   /* First, try the honest way of looking up the definition.  */
-  struct type *t = basic_lookup_transparent_type (name);
+  struct type *t = basic_lookup_transparent_type (name, flags);
   const char *scope;
 
   if (t != NULL)

@@ -104,7 +104,7 @@ extern bool language_requires_canonicalization (enum language lang);
    This is an "open" class and the members are all directly
    accessible.  It is read-only after the index has been fully read
    and processed.  */
-struct cooked_index_entry : public allocate_on_obstack
+struct cooked_index_entry : public allocate_on_obstack<cooked_index_entry>
 {
   cooked_index_entry (sect_offset die_offset_, enum dwarf_tag tag_,
 		      cooked_index_flag flags_,
@@ -362,7 +362,7 @@ private:
   cooked_index_entry *m_main = nullptr;
   /* The addrmap.  This maps address ranges to dwarf2_per_cu_data
      objects.  */
-  addrmap *m_addrmap = nullptr;
+  addrmap_fixed *m_addrmap = nullptr;
   /* Storage for canonical names.  */
   std::vector<gdb::unique_xmalloc_ptr<char>> m_names;
 };
@@ -494,7 +494,8 @@ protected:
   void set (cooked_state desired_state);
 
   /* Write to the index cache.  */
-  void write_to_cache (const cooked_index *idx) const;
+  void write_to_cache (const cooked_index *idx,
+		       deferred_warnings *warn) const;
 
   /* Helper function that does the work of reading.  This must be able
      to be run in a worker thread without problems.  */
@@ -615,8 +616,10 @@ public:
   void start_reading ();
 
   /* Called by cooked_index_worker to set the contents of this index
-     and transition to the MAIN_AVAILABLE state.  */
-  void set_contents (vec_type &&vec);
+     and transition to the MAIN_AVAILABLE state.  WARN is used to
+     collect any warnings that may arise when writing to the
+     cache.  */
+  void set_contents (vec_type &&vec, deferred_warnings *warn);
 
   /* A range over a vector of subranges.  */
   using range = range_chain<cooked_index_shard::range>;

@@ -19,7 +19,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "bfd.h"
 #include "symtab.h"
 #include "symfile.h"
@@ -4203,6 +4202,19 @@ types_equal (struct type *a, struct type *b)
       for (i = 0; i < a->num_fields (); ++i)
 	if (!types_equal (a->field (i).type (), b->field (i).type ()))
 	  return false;
+
+      return true;
+    }
+
+  /* Two array types are the same if they have the same element types
+     and array bounds.  */
+  if (a->code () == TYPE_CODE_ARRAY)
+    {
+      if (!types_equal (a->target_type (), b->target_type ()))
+	return false;
+
+      if (*a->bounds () != *b->bounds ())
+	return false;
 
       return true;
     }

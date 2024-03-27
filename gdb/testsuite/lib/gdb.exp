@@ -289,6 +289,10 @@ set octal "\[0-7\]+"
 
 set inferior_exited_re "(?:\\\[Inferior \[0-9\]+ \\(\[^\n\r\]*\\) exited)"
 
+# A regular expression that matches the first word of a thread
+# description after the thread number info 'info threads'
+set tdlabel_re "(process|Thread|LWP)"
+
 # A regular expression that matches a value history number.
 # E.g., $1, $2, etc.
 set valnum_re "\\\$$decimal"
@@ -4622,6 +4626,25 @@ proc skip_libstdcxx_probe_tests {} {
     return [skip_libstdcxx_probe_tests_prompt "$gdb_prompt $"]
 }
 
+# Return 1 if libc supports the longjmp probe.  Note that we're not using
+# gdb_caching_proc because the probe may have been disabled.
+
+proc have_longjmp_probe {} {
+    set have_probe -1
+    gdb_test_multiple "info probes stap libc ^longjmp$" "" {
+	-re -wrap "No probes matched\\." {
+	    set have_probe 0
+	}
+	-re -wrap "\r\nstap\[ \t\]+libc\[ \t\]+longjmp\[ \t\]+.*" {
+	    set have_probe 1
+	}
+    }
+    if { $have_probe == -1 } {
+	error "failed to get libc longjmp probe status"
+    }
+    return $have_probe
+}
+
 # Helper for gdb_is_target_* procs.  TARGET_NAME is the name of the target
 # we're looking for (used to build the test name).  TARGET_STACK_REGEXP
 # is a regexp that will match the output of "maint print target-stack" if
@@ -5546,10 +5569,20 @@ proc gdb_compile {source dest type options} {
 	    #  which is time consuming, especially if we're remote
 	    #  host testing.
 	    #
+	    # Note the special care for GDB_PARALLEL.  In that
+	    # scenario, multiple expect instances will potentially try
+	    # to compile the object file at the same time.  The result
+	    # should be identical for every one of them, so we just
+	    # need to make sure that the final objfile is written to
+	    # atomically.
+
 	    if { $gdb_saved_set_unbuffered_mode_obj == "" } {
 		verbose "compiling gdb_saved_set_unbuffered_obj"
 		set unbuf_src ${srcdir}/lib/set_unbuffered_mode.c
-		set unbuf_obj ${objdir}/set_unbuffered_mode.o
+		# This gives us a per-expect-instance unique filename,
+		# which is important for GDB_PARALLEL.  See comments
+		# above.
+		set unbuf_obj [standard_temp_file set_unbuffered_mode.o]
 
 		set result [gdb_compile "${unbuf_src}" "${unbuf_obj}" object {nowarnings}]
 		if { $result != "" } {
@@ -5562,7 +5595,14 @@ proc gdb_compile {source dest type options} {
 		}
 		# Link a copy of the output object, because the
 		# original may be automatically deleted.
-		remote_download host $unbuf_obj $gdb_saved_set_unbuffered_mode_obj
+		if {[info exists ::GDB_PARALLEL]} {
+		    # Make sure to write the .o file atomically.
+		    # (Note GDB_PARALLEL mode does not support remote
+		    # host testing.)
+		    file rename -force -- $unbuf_obj $gdb_saved_set_unbuffered_mode_obj
+		} else {
+		    remote_download host $unbuf_obj $gdb_saved_set_unbuffered_mode_obj
+		}
 	    } else {
 		verbose "gdb_saved_set_unbuffered_obj already compiled"
 	    }

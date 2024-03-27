@@ -17,7 +17,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 
 #include <fcntl.h>
 #include "symtab.h"
@@ -591,8 +590,6 @@ solib_map_sections (solib &so)
      the library's host-side path.  If we let the target dictate
      that objfile's path, and the target is different from the host,
      GDB/MI will not provide the correct host-side path.  */
-  if (strlen (bfd_get_filename (so.abfd.get ())) >= SO_NAME_MAX_PATH_SIZE)
-    error (_ ("Shared library file name is too long."));
 
   so.so_name = bfd_get_filename (so.abfd.get ());
   so.sections = build_section_table (so.abfd.get ());

@@ -17,7 +17,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "symtab.h"
 #include "gdbtypes.h"
 #include "expression.h"
@@ -935,9 +934,11 @@ public:
   }
 
   /* See language.h.  */
-  struct type *lookup_transparent_type (const char *name) const override
+  struct type *lookup_transparent_type (const char *name,
+					domain_search_flags flags)
+    const override
   {
-    return cp_lookup_transparent_type (name);
+    return cp_lookup_transparent_type (name, flags);
   }
 
   /* See language.h.  */

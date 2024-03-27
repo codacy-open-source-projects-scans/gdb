@@ -17,7 +17,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "server.h"
 #include <signal.h>
 #include <limits.h>
 #include <inttypes.h>
@@ -937,6 +936,10 @@ x86_linux_read_description (void)
 	  /* Get XCR0 from XSAVE extended state.  */
 	  xcr0 = xstateregs[(I386_LINUX_XSAVE_XCR0_OFFSET
 			     / sizeof (uint64_t))];
+
+	  /* No MPX on x32.  */
+	  if (machine == EM_X86_64 && !is_elf64)
+	    xcr0 &= ~X86_XSTATE_MPX;
 
 	  xsave_len = x86_xsave_length ();
 

@@ -27,7 +27,6 @@
 /* FIXME: Various die-reading functions need to be more careful with
    reading off the end of the section.  */
 
-#include "defs.h"
 #include "dwarf2/read.h"
 #include "dwarf2/abbrev.h"
 #include "dwarf2/aranges.h"
@@ -148,6 +147,7 @@ static int dwarf2_loclist_block_index;
 static int ada_block_index;
 
 static bool producer_is_gas_lt_2_38 (struct dwarf2_cu *cu);
+static bool producer_is_gas_ge_2_39 (struct dwarf2_cu *cu);
 
 /* Size of .debug_loclists section header for 32-bit DWARF format.  */
 #define LOCLIST_HEADER_SIZE32 12
@@ -4923,7 +4923,7 @@ cooked_index_debug_info::done_reading ()
   cooked_index *table
     = (gdb::checked_static_cast<cooked_index *>
        (per_bfd->index_table.get ()));
-  table->set_contents (std::move (indexes));
+  table->set_contents (std::move (indexes), &m_warnings);
 }
 
 void
@@ -9981,6 +9981,15 @@ read_func_scope (struct die_info *die, struct dwarf2_cu *cu)
   lowpc = per_objfile->relocate (unrel_low);
   highpc = per_objfile->relocate (unrel_high);
 
+  if (gdbarch_bfd_arch_info (gdbarch)->arch == bfd_arch_arm
+      && producer_is_gas_ge_2_39 (cu))
+    {
+      /* Gas version 2.39 produces DWARF for a Thumb subprogram with a low_pc
+	 attribute with the thumb bit set (PR gas/31115).  Work around this.  */
+      lowpc = gdbarch_addr_bits_remove (gdbarch, lowpc);
+      highpc = gdbarch_addr_bits_remove (gdbarch, highpc);
+    }
+
   /* If we have any template arguments, then we must allocate a
      different sort of symbol.  */
   for (child_die = die->child; child_die; child_die = child_die->sibling)
@@ -11333,6 +11342,7 @@ check_producer (struct dwarf2_cu *cu)
     {
       cu->producer_is_gas_lt_2_38 = major < 2 || (major == 2 && minor < 38);
       cu->producer_is_gas_2_39 = major == 2 && minor == 39;
+      cu->producer_is_gas_ge_2_40 = major > 2 || (major == 2 && minor >= 40);
     }
   else
     {
@@ -11385,6 +11395,17 @@ producer_is_gas_2_39 (struct dwarf2_cu *cu)
     check_producer (cu);
 
   return cu->producer_is_gas_2_39;
+}
+
+/* Return true if CU is produced by GAS 2.39 or later.  */
+
+static bool
+producer_is_gas_ge_2_39 (struct dwarf2_cu *cu)
+{
+  if (!cu->checked_producer)
+    check_producer (cu);
+
+  return cu->producer_is_gas_2_39 || cu->producer_is_gas_ge_2_40;
 }
 
 /* Return the accessibility of DIE, as given by DW_AT_accessibility.

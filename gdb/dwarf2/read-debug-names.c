@@ -17,7 +17,6 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "defs.h"
 #include "read-debug-names.h"
 #include "dwarf2/aranges.h"
 #include "dwarf2/cooked-index.h"
@@ -352,7 +351,7 @@ cooked_index_debug_names::do_reading ()
   cooked_index *table
     = (gdb::checked_static_cast<cooked_index *>
        (per_bfd->index_table.get ()));
-  table->set_contents (std::move (indexes));
+  table->set_contents (std::move (indexes), &m_warnings);
 
   bfd_thread_cleanup ();
 }

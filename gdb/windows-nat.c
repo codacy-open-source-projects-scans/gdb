@@ -21,7 +21,6 @@
 
 /* Originally by Steve Chamberlain, sac@cygnus.com */
 
-#include "defs.h"
 #include "frame.h"
 #include "inferior.h"
 #include "infrun.h"
@@ -826,6 +825,10 @@ windows_nat_target::store_registers (struct regcache *regcache, int r)
 static windows_solib *
 windows_make_so (const char *name, LPVOID load_addr)
 {
+  windows_solib *so = &windows_process.solibs.emplace_back ();
+  so->load_addr = load_addr;
+  so->original_name = name;
+
 #ifndef __CYGWIN__
   char *p;
   char buf[__PMAX];
@@ -854,6 +857,8 @@ windows_make_so (const char *name, LPVOID load_addr)
       GetSystemDirectory (buf, sizeof (buf));
       strcat (buf, "\\ntdll.dll");
     }
+
+  so->name = buf;
 #else
   wchar_t buf[__PMAX];
 
@@ -866,31 +871,31 @@ windows_make_so (const char *name, LPVOID load_addr)
 	  wcscat (buf, L"\\ntdll.dll");
 	}
     }
-#endif
-  windows_solib *so = &windows_process.solibs.emplace_back ();
-  so->load_addr = load_addr;
-  so->original_name = name;
-#ifndef __CYGWIN__
-  so->name = buf;
-#else
   if (buf[0])
     {
-      char cname[SO_NAME_MAX_PATH_SIZE];
-      cygwin_conv_path (CCP_WIN_W_TO_POSIX, buf, cname,
-			SO_NAME_MAX_PATH_SIZE);
-      so->name = cname;
+      bool ok = false;
+
+      /* Check how big the output buffer has to be.  */
+      ssize_t size = cygwin_conv_path (CCP_WIN_W_TO_POSIX, buf, nullptr, 0);
+      if (size > 0)
+	{
+	  /* SIZE includes the null terminator.  */
+	  so->name.resize (size - 1);
+	  if (cygwin_conv_path (CCP_WIN_W_TO_POSIX, buf, so->name.data (),
+				size) == 0)
+	    ok = true;
+	}
+      if (!ok)
+	so->name = so->original_name;
     }
   else
     {
-      char *rname = realpath (name, NULL);
-      if (rname && strlen (rname) < SO_NAME_MAX_PATH_SIZE)
-	{
-	  so->name = rname;
-	  free (rname);
-	}
+      gdb::unique_xmalloc_ptr<char> rname = gdb_realpath (name);
+      if (rname != nullptr)
+	so->name = rname.get ();
       else
 	{
-	  warning (_("dll path for \"%s\" too long or inaccessible"), name);
+	  warning (_("dll path for \"%s\" inaccessible"), name);
 	  so->name = so->original_name;
 	}
     }
@@ -1365,8 +1370,8 @@ windows_nat_target::fake_create_process ()
       throw_winerror_with_name (_("OpenProcess call failed"), err);
       /*  We can not debug anything in that case.  */
     }
-  add_thread (ptid_t (windows_process.current_event.dwProcessId, 0,
-			      windows_process.current_event.dwThreadId),
+  add_thread (ptid_t (windows_process.current_event.dwProcessId,
+		      windows_process.current_event.dwThreadId, 0),
 		      windows_process.current_event.u.CreateThread.hThread,
 		      windows_process.current_event.u.CreateThread.lpThreadLocalBase,
 		      true /* main_thread_p */);

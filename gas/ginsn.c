@@ -507,6 +507,7 @@ ginsn_dst_print (struct ginsn_dst *dst)
       char *buf = XNEWVEC (char, 32);
       sprintf (buf, "%%r%d", ginsn_get_dst_reg (dst));
       strcat (dst_str, buf);
+      free (buf);
     }
   else if (dst->type == GINSN_DST_INDIRECT)
     {
@@ -514,6 +515,7 @@ ginsn_dst_print (struct ginsn_dst *dst)
       sprintf (buf, "[%%r%d+%lld]", ginsn_get_dst_reg (dst),
 		 (long long int) ginsn_get_dst_disp (dst));
       strcat (dst_str, buf);
+      free (buf);
     }
 
   gas_assert (strlen (dst_str) < GINSN_LISTING_OPND_LEN);
@@ -570,20 +572,26 @@ ginsn_print (ginsnS *ginsn)
 
   /* src 1.  */
   src = ginsn_get_src1 (ginsn);
+  char *src_buf = ginsn_src_print (src);
   str_size += snprintf (ginsn_str + str_size, GINSN_LISTING_LEN - str_size,
-			" %s", ginsn_src_print (src));
+			" %s", src_buf);
+  free (src_buf);
   gas_assert (str_size >= 0 && str_size < GINSN_LISTING_LEN);
 
   /* src 2.  */
   src = ginsn_get_src2 (ginsn);
+  src_buf = ginsn_src_print (src);
   str_size += snprintf (ginsn_str + str_size, GINSN_LISTING_LEN - str_size,
-			"%s", ginsn_src_print (src));
+			"%s", src_buf);
+  free (src_buf);
   gas_assert (str_size >= 0 && str_size < GINSN_LISTING_LEN);
 
   /* dst.  */
   dst = ginsn_get_dst (ginsn);
+  char *dst_buf = ginsn_dst_print (dst);
   str_size += snprintf (ginsn_str + str_size, GINSN_LISTING_LEN - str_size,
-			"%s", ginsn_dst_print (dst));
+			"%s", dst_buf);
+  free (dst_buf);
 
 end:
   gas_assert (str_size >= 0 && str_size < GINSN_LISTING_LEN);
@@ -614,6 +622,8 @@ gbb_cleanup (gbbS **bbp)
   *bbp = NULL;
 }
 
+/* Add an edge from the source bb FROM_BB to the sink bb TO_BB.  */
+
 static void
 bb_add_edge (gbbS* from_bb, gbbS *to_bb)
 {
@@ -638,7 +648,7 @@ bb_add_edge (gbbS* from_bb, gbbS *to_bb)
     }
   else
     {
-      /* Get the tail of the list.  */
+      /* Get the head of the list.  */
       tmpedge = from_bb->out_gedges;
       while (tmpedge)
 	{
@@ -689,6 +699,9 @@ static gbbS *
 add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 		 int *errp);
 
+/* Return the already existing basic block (if present), which begins with
+   GINSN, in the given GCFG.  Return NULL otherwise.  */
+
 static gbbS *
 find_bb (gcfgS *gcfg, ginsnS *ginsn)
 {
@@ -708,12 +721,17 @@ find_bb (gcfgS *gcfg, ginsnS *ginsn)
 	      break;
 	    }
 	}
-      /* Must be found if ginsn is visited.  */
+      /* Must be found because ginsn is visited.  */
       gas_assert (found_bb);
     }
 
   return found_bb;
 }
+
+/* Get the basic block starting at GINSN in the GCFG.
+
+   If not already present, the function will make one, while adding an edge
+   from the PREV_BB to it.  */
 
 static gbbS *
 find_or_make_bb (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
@@ -722,25 +740,39 @@ find_or_make_bb (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
   gbbS *found_bb = NULL;
 
   found_bb = find_bb (gcfg, ginsn);
-  if (found_bb)
-    return found_bb;
+  if (!found_bb)
+    found_bb = add_bb_at_ginsn (func, gcfg, ginsn, prev_bb, errp);
 
-  return add_bb_at_ginsn (func, gcfg, ginsn, prev_bb, errp);
+  gas_assert (found_bb);
+  gas_assert (found_bb->first_ginsn == ginsn);
+
+  return found_bb;
 }
 
-/* Add the basic block starting at GINSN to the given GCFG.
-   Also adds an edge from the PREV_BB to the newly added basic block.
+/* Add basic block(s) for all reachable, unvisited ginsns, starting from GINSN,
+   to the given GCFG.  Also add an edge from the PREV_BB to the root of the
+   newly added basic block(s).
 
-   This is a recursive function which returns the root of the added
-   basic blocks.  */
+   This is a recursive function which returns the root of the added basic
+   blocks.  */
 
 static gbbS *
 add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 		 int *errp)
 {
+  gbbS *root_bb = NULL;
   gbbS *current_bb = NULL;
   ginsnS *target_ginsn = NULL;
   const symbolS *taken_label;
+
+  /* Create a new bb.  N.B. The caller must ensure bb with this ginsn does not
+     already exist.  */
+  gas_assert (!find_bb (gcfg, ginsn));
+  root_bb = XCNEW (gbbS);
+  cfg_add_bb (gcfg, root_bb);
+  root_bb->first_ginsn = ginsn;
+
+  current_bb = root_bb;
 
   while (ginsn)
     {
@@ -749,6 +781,8 @@ add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 	 end of bb, and a logical exit from function.  */
       if (GINSN_F_FUNC_END_P (ginsn))
 	{
+	  /* Dont mark them visited yet though, leaving the option of these
+	     being visited via other control flows as applicable.  */
 	  ginsn = ginsn->next;
 	  continue;
 	}
@@ -765,26 +799,26 @@ add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 	    bb_add_edge (prev_bb, current_bb);
 	  break;
 	}
-      else if (current_bb && GINSN_F_USER_LABEL_P (ginsn))
+      else if (current_bb && current_bb->first_ginsn != ginsn
+	       && GINSN_F_USER_LABEL_P (ginsn))
 	{
-	  /* Create new bb starting at this label ginsn.  */
+	  /* Create new bb starting at ginsn for (user-defined) label.  This is
+	     likely going to be a destination of a some control flow.  */
 	  prev_bb = current_bb;
-	  find_or_make_bb (func, gcfg, ginsn, prev_bb, errp);
+	  current_bb = find_or_make_bb (func, gcfg, ginsn, prev_bb, errp);
+	  bb_add_edge (prev_bb, current_bb);
 	  break;
 	}
 
       if (current_bb == NULL)
 	{
-	  /* Create a new bb.  */
 	  current_bb = XCNEW (gbbS);
 	  cfg_add_bb (gcfg, current_bb);
+	  current_bb->first_ginsn = ginsn;
 	  /* Add edge for the Not Taken, or Fall-through path.  */
 	  if (prev_bb)
 	    bb_add_edge (prev_bb, current_bb);
 	}
-
-      if (current_bb->first_ginsn == NULL)
-	current_bb->first_ginsn = ginsn;
 
       ginsn->visited = true;
       current_bb->num_ginsns++;
@@ -809,16 +843,21 @@ add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 	      taken_label = ginsn->src[0].sym;
 	      gas_assert (taken_label);
 
-	      /* Preserve the prev_bb to be the dominator bb as we are
-		 going to follow the taken path of the conditional branch
-		 soon.  */
+	      /* Preserve the prev_bb to be the source bb as we are going to
+		 follow the taken path of the conditional branch soon.  */
 	      prev_bb = current_bb;
 
 	      /* Follow the target on the taken path.  */
 	      target_ginsn = label_ginsn_map_find (taken_label);
 	      /* Add the bb for the target of the taken branch.  */
 	      if (target_ginsn)
-		find_or_make_bb (func, gcfg, target_ginsn, prev_bb, errp);
+		{
+		  current_bb = find_or_make_bb (func, gcfg, target_ginsn,
+						prev_bb, errp);
+		  gas_assert (prev_bb);
+		  bb_add_edge (prev_bb, current_bb);
+		  current_bb = NULL;
+		}
 	      else
 		{
 		  *errp = GCFG_JLABEL_NOT_PRESENT;
@@ -826,27 +865,45 @@ add_bb_at_ginsn (const symbolS *func, gcfgS *gcfg, ginsnS *ginsn, gbbS *prev_bb,
 				 _("missing label '%s' in func '%s' may result in imprecise cfg"),
 				 S_GET_NAME (taken_label), S_GET_NAME (func));
 		}
-	      /* Add the bb for the fall through path.  */
-	      find_or_make_bb (func, gcfg, ginsn->next, prev_bb, errp);
+
+	      if (ginsn->type == GINSN_TYPE_JUMP_COND)
+		{
+		  /* Add the bb for the fall through path.  */
+		  current_bb = find_or_make_bb (func, gcfg, ginsn->next,
+						prev_bb, errp);
+		  gas_assert (prev_bb);
+		  bb_add_edge (prev_bb, current_bb);
+		  current_bb = NULL;
+		}
+	      else
+		{
+		  /* Unconditional jump.  Current BB has been processed.  */
+		  current_bb = NULL;
+		  /* We'll come back to the ginsns following these (local)
+		     unconditional jmps from another path if they are indeed
+		     reachable code.  */
+		  break;
+		}
 	    }
 	 else
 	   {
 	     gas_assert (ginsn->type == GINSN_TYPE_RETURN
 			 || (ginsn->type == GINSN_TYPE_JUMP
 			     && !ginsn_direct_local_jump_p (ginsn)));
+	     /* Current BB has been processed.  */
+	     current_bb = NULL;
+
 	     /* We'll come back to the ginsns following GINSN_TYPE_RETURN or
 		other (non-local) unconditional jmps from another path if they
 		are indeed reachable code.  */
 	     break;
 	   }
-
-	 /* Current BB has been processed.  */
-	 current_bb = NULL;
 	}
+
       ginsn = ginsn->next;
     }
 
-  return current_bb;
+  return root_bb;
 }
 
 static int

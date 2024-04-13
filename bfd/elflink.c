@@ -355,6 +355,7 @@ _bfd_elf_link_create_dynamic_sections (bfd *abfd, struct bfd_link_info *info)
   if (s == NULL
       || !bfd_set_section_alignment (s, bed->s->log_file_align))
     return false;
+  elf_hash_table (info)->dynamic = s;
 
   /* The special symbol _DYNAMIC is always set to the start of the
      .dynamic section.  We could set _DYNAMIC in a linker script, but we
@@ -3729,7 +3730,7 @@ _bfd_elf_add_dynamic_entry (struct bfd_link_info *info,
     hash_table->dynamic_relocs = true;
 
   bed = get_elf_backend_data (hash_table->dynobj);
-  s = bfd_get_linker_section (hash_table->dynobj, ".dynamic");
+  s = hash_table->dynamic;
   BFD_ASSERT (s != NULL);
 
   newsize = s->size + bed->s->sizeof_dyn;
@@ -3772,7 +3773,7 @@ _bfd_elf_strip_zero_sized_dynamic_sections (struct bfd_link_info *info)
   if (!hash_table->dynobj)
     return true;
 
-  sdynamic= bfd_get_linker_section (hash_table->dynobj, ".dynamic");
+  sdynamic= hash_table->dynamic;
   if (!sdynamic)
     return true;
 
@@ -3872,7 +3873,7 @@ bfd_elf_add_dt_needed_tag (bfd *abfd, struct bfd_link_info *info)
       bfd_byte *extdyn;
 
       bed = get_elf_backend_data (hash_table->dynobj);
-      sdyn = bfd_get_linker_section (hash_table->dynobj, ".dynamic");
+      sdyn = hash_table->dynamic;
       if (sdyn != NULL && sdyn->size != 0)
 	for (extdyn = sdyn->contents;
 	     extdyn < sdyn->contents + sdyn->size;
@@ -4017,7 +4018,7 @@ elf_finalize_dynstr (bfd *output_bfd, struct bfd_link_info *info)
     info->callbacks->examine_strtab (dynstr);
 
   bed = get_elf_backend_data (dynobj);
-  sdyn = bfd_get_linker_section (dynobj, ".dynamic");
+  sdyn = hash_table->dynamic;
   BFD_ASSERT (sdyn != NULL);
 
   /* Update all .dynamic entries referencing .dynstr strings.  */
@@ -4304,7 +4305,7 @@ elf_link_first_hash_newfunc (struct bfd_hash_entry *entry,
 
 static void
 elf_link_add_to_first_hash (bfd *abfd, struct bfd_link_info *info,
-			    const char *name)
+			    const char *name, bool copy)
 {
   struct elf_link_hash_table *htab = elf_hash_table (info);
   /* Skip if there is no first hash.  */
@@ -4313,7 +4314,7 @@ elf_link_add_to_first_hash (bfd *abfd, struct bfd_link_info *info,
 
   struct elf_link_first_hash_entry *e
     = ((struct elf_link_first_hash_entry *)
-       bfd_hash_lookup (htab->first_hash, name, true, false));
+       bfd_hash_lookup (htab->first_hash, name, true, copy));
   if (e == NULL)
     info->callbacks->einfo
       (_("%F%P: %pB: failed to add %s to first hash\n"), abfd, name);
@@ -4378,12 +4379,13 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 	{
 	  /* Initialize first_hash for an IR input.  */
 	  htab->first_hash = (struct bfd_hash_table *)
-	    xmalloc (sizeof (struct bfd_hash_table));
-	  if (!bfd_hash_table_init
-	      (htab->first_hash, elf_link_first_hash_newfunc,
-	       sizeof (struct elf_link_first_hash_entry)))
+	    bfd_malloc (sizeof (struct bfd_hash_table));
+	  if (htab->first_hash == NULL
+	      || !bfd_hash_table_init
+		   (htab->first_hash, elf_link_first_hash_newfunc,
+		    sizeof (struct elf_link_first_hash_entry)))
 	    info->callbacks->einfo
-	      (_("%F%P: first_hash failed to initialize: %E\n"));
+	      (_("%F%P: first_hash failed to create: %E\n"));
 	}
     }
   else
@@ -4920,6 +4922,7 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
       asection *sec, *new_sec;
       flagword flags;
       const char *name;
+      bool must_copy_name = false;
       struct elf_link_hash_entry *h;
       struct elf_link_hash_entry *hi;
       bool definition;
@@ -5217,6 +5220,11 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 	      memcpy (p, verstr, verlen + 1);
 
 	      name = newname;
+	      /* Since bfd_hash_alloc is used for "name", the string
+		 must be copied if added to first_hash.  The string
+		 memory can be freed when an --as-needed library is
+		 not needed.  */
+	      must_copy_name = true;
 	    }
 
 	  /* If this symbol has default visibility and the user has
@@ -5660,7 +5668,7 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 		       && h->root.u.def.section->owner == abfd)
 		/* Add this symbol to first hash if this shared
 		   object has the first definition.  */
-		elf_link_add_to_first_hash (abfd, info, name);
+		elf_link_add_to_first_hash (abfd, info, name, must_copy_name);
 	    }
 	}
     }
@@ -6108,7 +6116,8 @@ _bfd_elf_archive_symbol_lookup (bfd *abfd,
     {
       /* Add this symbol to first hash if this archive has the first
 	 definition.  */
-      elf_link_add_to_first_hash (abfd, info, name);
+      if (is_elf_hash_table (info->hash))
+	elf_link_add_to_first_hash (abfd, info, name, false);
       return h;
     }
 
@@ -6250,6 +6259,8 @@ elf_link_add_archive_symbols (bfd *abfd, struct bfd_link_info *info)
 		/* Symbol must be defined.  Don't check it again.  */
 		included[i] = true;
 
+	      if (!is_elf_hash_table (info->hash))
+		continue;
 	      /* Ignore the archive if the symbol isn't defined in a
 		 shared object.  */
 	      if (!((struct elf_link_hash_entry *) h)->def_dynamic)
@@ -8345,6 +8356,9 @@ _bfd_elf_link_hash_table_free (bfd *obfd)
   if (htab->dynstr != NULL)
     _bfd_elf_strtab_free (htab->dynstr);
   _bfd_merge_sections_free (htab->merge_info);
+  /* NB: htab->dynamic->contents is always allocated by bfd_realloc.  */
+  if (htab->dynamic != NULL)
+    free (htab->dynamic->contents);
   if (htab->first_hash != NULL)
     {
       bfd_hash_table_free (htab->first_hash);
@@ -13413,7 +13427,7 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
       bfd_byte *dyncon, *dynconend;
 
       /* Fix up .dynamic entries.  */
-      o = bfd_get_linker_section (dynobj, ".dynamic");
+      o = htab->dynamic;
       BFD_ASSERT (o != NULL);
 
       dyncon = o->contents;
@@ -13647,7 +13661,7 @@ bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
 
       /* Check for DT_TEXTREL (late, in case the backend removes it).  */
       if (bfd_link_textrel_check (info)
-	  && (o = bfd_get_linker_section (dynobj, ".dynamic")) != NULL
+	  && (o = htab->dynamic) != NULL
 	  && o->size != 0)
 	{
 	  bfd_byte *dyncon, *dynconend;

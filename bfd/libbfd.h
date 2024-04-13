@@ -1,7 +1,7 @@
 /* DO NOT EDIT!  -*- buffer-read-only: t -*-  This file is automatically
    generated from "libbfd-in.h", "libbfd.c", "bfd.c", "bfdio.c",
-   "archive.c", "archures.c", "bfdwin.c", "cache.c", "hash.c", "linker.c",
-   "opncls.c", "reloc.c", "section.c", "stabs.c" and "targets.c".
+   "archive.c", "archures.c", "cache.c", "hash.c", "linker.c", "opncls.c",
+   "reloc.c", "section.c", "stabs.c" and "targets.c".
    Run "make headers" in your build bfd/ to regenerate.  */
 
 /* libbfd.h -- Declarations used by bfd library *implementation*.
@@ -268,8 +268,6 @@ extern bool _bfd_generic_new_section_hook
   (bfd *, asection *) ATTRIBUTE_HIDDEN;
 extern bool _bfd_generic_get_section_contents
   (bfd *, asection *, void *, file_ptr, bfd_size_type) ATTRIBUTE_HIDDEN;
-extern bool _bfd_generic_get_section_contents_in_window
-  (bfd *, asection *, bfd_window *, file_ptr, bfd_size_type) ATTRIBUTE_HIDDEN;
 
 /* Generic routines to use for BFD_JUMP_TABLE_COPY.  Use
    BFD_JUMP_TABLE_COPY (_bfd_generic).  */
@@ -854,9 +852,11 @@ extern bfd_byte * _bfd_write_unsigned_leb128
 extern struct bfd_link_info *_bfd_get_link_info (bfd *)
   ATTRIBUTE_HIDDEN;
 
+#ifdef HAVE_MMAP
 extern uintptr_t _bfd_pagesize ATTRIBUTE_HIDDEN;
 extern uintptr_t _bfd_pagesize_m1 ATTRIBUTE_HIDDEN;
 extern uintptr_t _bfd_minimum_mmap_size ATTRIBUTE_HIDDEN;
+#endif
 
 #if GCC_VERSION >= 7000
 #define _bfd_mul_overflow(a, b, res) __builtin_mul_overflow (a, b, res)
@@ -1029,17 +1029,6 @@ bool bfd_default_scan
 void *bfd_arch_default_fill (bfd_size_type count,
     bool is_bigendian,
     bool code) ATTRIBUTE_HIDDEN;
-
-/* Extracted from bfdwin.c.  */
-typedef struct _bfd_window_internal
-{
-  struct _bfd_window_internal *next;
-  void *data;
-  bfd_size_type size;
-  int refcount : 31;           /* should be enough...  */
-  unsigned mapped : 1;         /* 1 = mmap, 0 = malloc */
-}
-bfd_window_internal;
 
 /* Extracted from cache.c.  */
 bool bfd_cache_init (bfd *abfd) ATTRIBUTE_HIDDEN;

@@ -1223,8 +1223,12 @@ _bfd_mmap_read_temporary (void **data_p, size_t *size_p,
       if (data == NULL)
 	return false;
       *data_p = data;
+      /* NB: _bfd_munmap_readonly_temporary will free *MMAP_BASE if
+	 *SIZE_P == 0.  */
+      *mmap_base = data;
     }
-  *mmap_base = NULL;
+  else
+    *mmap_base = NULL;
   *size_p = 0;
   return bfd_read (data, size, abfd) == size;
 }
@@ -1323,63 +1327,6 @@ _bfd_generic_get_section_contents (bfd *abfd,
     return false;
 
   return true;
-}
-
-bool
-_bfd_generic_get_section_contents_in_window
-  (bfd *abfd ATTRIBUTE_UNUSED,
-   sec_ptr section ATTRIBUTE_UNUSED,
-   bfd_window *w ATTRIBUTE_UNUSED,
-   file_ptr offset ATTRIBUTE_UNUSED,
-   bfd_size_type count ATTRIBUTE_UNUSED)
-{
-#ifdef USE_MMAP
-  bfd_size_type sz;
-
-  if (count == 0)
-    return true;
-  if (abfd->xvec->_bfd_get_section_contents
-      != _bfd_generic_get_section_contents)
-    {
-      /* We don't know what changes the bfd's get_section_contents
-	 method may have to make.  So punt trying to map the file
-	 window, and let get_section_contents do its thing.  */
-      /* @@ FIXME : If the internal window has a refcount of 1 and was
-	 allocated with malloc instead of mmap, just reuse it.  */
-      bfd_free_window (w);
-      w->i = bfd_zmalloc (sizeof (bfd_window_internal));
-      if (w->i == NULL)
-	return false;
-      w->i->data = bfd_malloc (count);
-      if (w->i->data == NULL)
-	{
-	  free (w->i);
-	  w->i = NULL;
-	  return false;
-	}
-      w->i->mapped = 0;
-      w->i->refcount = 1;
-      w->size = w->i->size = count;
-      w->data = w->i->data;
-      return bfd_get_section_contents (abfd, section, w->data, offset, count);
-    }
-  if (abfd->direction != write_direction && section->rawsize != 0)
-    sz = section->rawsize;
-  else
-    sz = section->size;
-  if (offset + count < count
-      || offset + count > sz
-      || (abfd->my_archive != NULL
-	  && !bfd_is_thin_archive (abfd->my_archive)
-	  && ((ufile_ptr) section->filepos + offset + count
-	      > arelt_size (abfd)))
-      || ! bfd_get_file_window (abfd, section->filepos + offset, count, w,
-				true))
-    return false;
-  return true;
-#else
-  abort ();
-#endif
 }
 
 /* This generic function can only be used in implementations where creating
@@ -1572,6 +1519,7 @@ _bfd_generic_init_private_section_data (bfd *ibfd ATTRIBUTE_UNUSED,
   return true;
 }
 
+#ifdef HAVE_MMAP
 uintptr_t _bfd_pagesize;
 uintptr_t _bfd_pagesize_m1;
 uintptr_t _bfd_minimum_mmap_size;
@@ -1587,3 +1535,4 @@ bfd_init_pagesize (void)
   /* The minimum section size to use mmap.  */
   _bfd_minimum_mmap_size = _bfd_pagesize * 4;
 }
+#endif

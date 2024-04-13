@@ -242,6 +242,7 @@ enum i386_error
     unsupported_with_intel_mnemonic,
     unsupported_syntax,
     unsupported_EGPR_for_addressing,
+    unsupported_nf,
     unsupported,
     unsupported_on_arch,
     unsupported_64bit,
@@ -438,6 +439,9 @@ struct _i386_insn
 
     /* Prefer the REX2 prefix in encoding.  */
     bool rex2_encoding;
+
+    /* No CSPAZO flags update.  */
+    bool has_nf;
 
     /* Disable instruction size optimization.  */
     bool no_optimize;
@@ -1352,6 +1356,25 @@ static const unsigned char *const alt_patt[] = {
   f32_1, f32_2, alt_3, alt_4, alt_5, alt_6, alt_7, alt_8,
   alt_9, alt_10, alt_11
 };
+#define alt64_9 (alt64_15 + 6)		/* nopq 0L(%rax,%rax,1)  */
+#define alt64_10 (alt64_15 + 5)		/* cs nopq 0L(%rax,%rax,1)  */
+/* data16 cs nopq 0L(%rax,%rax,1)  */
+#define alt64_11 (alt64_15 + 4)
+/* data16 data16 cs nopq 0L(%rax,%rax,1)  */
+#define alt64_12 (alt64_15 + 3)
+/* data16 data16 data16 cs nopq 0L(%rax,%rax,1)  */
+#define alt64_13 (alt64_15 + 2)
+/* data16 data16 data16 data16 cs nopq 0L(%rax,%rax,1)  */
+#define alt64_14 (alt64_15 + 1)
+/* data16 data16 data16 data16 data16 cs nopq 0L(%rax,%rax,1)  */
+static const unsigned char alt64_15[] =
+  {0x66,0x66,0x66,0x66,0x66,0x2e,0x48,
+   0x0f,0x1f,0x84,0x00,0x00,0x00,0x00,0x00};
+/* Long 64-bit NOPs patterns.  */
+static const unsigned char *const alt64_patt[] = {
+  f32_1, f32_2, alt_3, alt_4, alt_5, alt_6, alt_7, alt_8,
+  alt64_9, alt64_10, alt64_11,alt64_12, alt64_13, alt64_14, alt64_15
+};
 
 /* Genenerate COUNT bytes of NOPs to WHERE from PATT with the maximum
    size of a single NOP instruction MAX_SINGLE_NOP_SIZE.  */
@@ -1462,12 +1485,21 @@ i386_generate_nops (fragS *fragP, char *where, offsetT count, int limit)
 		patt = alt_patt;
 	      break;
 
-	    case PROCESSOR_PENTIUMPRO:
-	    case PROCESSOR_PENTIUM4:
-	    case PROCESSOR_NOCONA:
 	    case PROCESSOR_CORE:
 	    case PROCESSOR_CORE2:
 	    case PROCESSOR_COREI7:
+	      if (fragP->tc_frag_data.cpunop)
+		{
+		  if (fragP->tc_frag_data.code == CODE_64BIT)
+		    patt = alt64_patt;
+		  else
+		    patt = alt_patt;
+		}
+	      break;
+
+	    case PROCESSOR_PENTIUMPRO:
+	    case PROCESSOR_PENTIUM4:
+	    case PROCESSOR_NOCONA:
 	    case PROCESSOR_GENERIC64:
 	    case PROCESSOR_K6:
 	    case PROCESSOR_ATHLON:
@@ -1513,7 +1545,7 @@ i386_generate_nops (fragS *fragP, char *where, offsetT count, int limit)
 	    }
 	}
 
-      if (patt != alt_patt)
+      if (patt != alt_patt && patt != alt64_patt)
 	{
 	  max_single_nop_size = patt == f32_patt ? ARRAY_SIZE (f32_patt)
 						 : ARRAY_SIZE (f64_patt);
@@ -1522,7 +1554,9 @@ i386_generate_nops (fragS *fragP, char *where, offsetT count, int limit)
 	}
       else
 	{
-	  max_single_nop_size = sizeof (alt_patt) / sizeof (alt_patt[0]);
+	  max_single_nop_size = patt == alt_patt
+				? ARRAY_SIZE (alt_patt)
+				: ARRAY_SIZE (alt64_patt);
 	  /* Limit number of NOPs to 7 for newer processors.  */
 	  max_number_of_nops = 7;
 	}
@@ -3944,7 +3978,7 @@ is_any_vex_encoding (const insn_template *t)
 static INLINE bool
 is_apx_evex_encoding (void)
 {
-  return i.rex2 || i.tm.opcode_space == SPACE_EVEXMAP4
+  return i.rex2 || i.tm.opcode_space == SPACE_EVEXMAP4 || i.has_nf
     || (i.vex.register_specifier
 	&& (i.vex.register_specifier->reg_flags & RegRex2));
 }
@@ -4251,6 +4285,10 @@ build_apx_evex_prefix (void)
      space.  */
   if (i.vex.register_specifier && i.tm.opcode_space == SPACE_EVEXMAP4)
     i.vex.bytes[3] |= 0x10;
+
+  /* Encode the NF bit.  */
+  if (i.has_nf)
+    i.vex.bytes[3] |= 0x04;
 }
 
 static void establish_rex (void)
@@ -6645,6 +6683,9 @@ md_assemble (char *line)
 	case unsupported_EGPR_for_addressing:
 	  err_msg = _("extended GPR cannot be used as base/index");
 	  break;
+	case unsupported_nf:
+	  err_msg = _("{nf} unsupported");
+	  break;
 	case unsupported:
 	  as_bad (_("unsupported instruction `%s'"),
 		  pass1_mnem ? pass1_mnem : insn_name (current_templates.start));
@@ -7209,12 +7250,23 @@ parse_insn (const char *line, char *mnemonic, bool prefix_only)
 		  /* {rex2} */
 		  i.rex2_encoding = true;
 		  break;
+		case Prefix_NF:
+		  /* {nf} */
+		  i.has_nf = true;
+		  if (i.encoding == encoding_default)
+		    i.encoding = encoding_evex;
+		  break;
 		case Prefix_NoOptimize:
 		  /* {nooptimize} */
 		  i.no_optimize = true;
 		  break;
 		default:
 		  abort ();
+		}
+	      if (i.has_nf && i.encoding != encoding_evex)
+		{
+		  as_bad (_("{nf} cannot be combined with {vex}/{vex3}"));
+		  return NULL;
 		}
 	    }
 	  else
@@ -8468,8 +8520,7 @@ can_convert_NDD_to_legacy (const insn_template *t)
 {
   unsigned int match_dest_op = ~0;
 
-  if (!i.tm.opcode_modifier.nf
-      && i.reg_operands >= 2)
+  if (!i.has_nf && i.reg_operands >= 2)
     {
       unsigned int dest = i.operands - 1;
       unsigned int src1 = i.operands - 2;
@@ -8557,6 +8608,11 @@ match_template (char mnem_suffix)
       if (intel_syntax
 	   ? t->opcode_modifier.dialect >= ATT_SYNTAX
 	   : t->opcode_modifier.dialect == INTEL_SYNTAX)
+	continue;
+
+      /* Check NF support.  */
+      specific_error = progress (unsupported_nf);
+      if (i.has_nf && !t->opcode_modifier.nf)
 	continue;
 
       /* Check Intel64/AMD64 ISA.   */
@@ -8902,7 +8958,8 @@ match_template (char mnem_suffix)
 		  found_reverse_match = Opcode_VexW;
 		  goto check_operands_345;
 		}
-	      else if (is_cpu (t, CpuAPX_F) && i.operands == 3)
+	      else if (t->opcode_space == SPACE_EVEXMAP4
+		       && t->opcode_modifier.w)
 		{
 		  found_reverse_match = Opcode_D;
 		  goto check_operands_345;

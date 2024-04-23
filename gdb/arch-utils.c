@@ -19,6 +19,7 @@
 
 
 #include "arch-utils.h"
+#include "extract-store-integer.h"
 #include "gdbcmd.h"
 #include "inferior.h"
 #include "infrun.h"
@@ -102,7 +103,7 @@ default_memtag_to_string (struct gdbarch *gdbarch, struct value *tag)
 /* See arch-utils.h */
 
 bool
-default_tagged_address_p (struct gdbarch *gdbarch, struct value *address)
+default_tagged_address_p (struct gdbarch *gdbarch, CORE_ADDR address)
 {
   /* By default, assume the address is untagged.  */
   return false;

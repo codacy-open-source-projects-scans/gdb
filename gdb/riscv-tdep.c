@@ -17,6 +17,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "extract-store-integer.h"
 #include "frame.h"
 #include "inferior.h"
 #include "symtab.h"
@@ -4821,7 +4822,7 @@ initialisation process."),
   add_setshow_auto_boolean_cmd ("use-compressed-breakpoints", no_class,
 				&use_compressed_breakpoints,
 				_("\
-Set debugger's use of compressed breakpoints."), _("	\
+Set debugger's use of compressed breakpoints."), _("\
 Show debugger's use of compressed breakpoints."), _("\
 Debugging compressed code requires compressed breakpoints to be used. If\n\
 left to 'auto' then gdb will use them if the existing instruction is a\n\

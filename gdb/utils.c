@@ -164,7 +164,7 @@ void
 vwarning (const char *string, va_list args)
 {
   if (warning_hook != nullptr)
-    warning_hook (string, args);
+    warning_hook->warn (string, args);
   else
     {
       std::optional<target_terminal::scoped_restore_terminal_state> term_state;
@@ -1836,6 +1836,12 @@ void
 gdb_puts (const char *linebuffer, struct ui_file *stream)
 {
   stream->puts (linebuffer);
+}
+
+void
+gdb_puts (const std::string &s, ui_file *stream)
+{
+  gdb_puts (s.c_str (), stream);
 }
 
 /* See utils.h.  */

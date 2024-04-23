@@ -1739,6 +1739,8 @@ enum
   EVEX_W_0F3A72,
 
   EVEX_W_MAP4_8F_R_0,
+  EVEX_W_MAP4_F8_P1_M_1,
+  EVEX_W_MAP4_F8_P3_M_1,
   EVEX_W_MAP4_FF_R_6,
 
   EVEX_W_MAP5_5B_P_0,
@@ -9189,6 +9191,9 @@ get_valid_dis386 (const struct dis386 *dp, instr_info *ins)
       ins->end_codep = ins->codep;
       if (!fetch_modrm (ins))
 	return &err_opcode;
+
+      if (ins->modrm.mod == 3 && (ins->rex2 & REX_X))
+	return &bad_opcode;
 
       /* Set vector length. For EVEX-promoted instructions, evex.ll == 0b00,
 	 which has the same encoding as vex.length == 128 and they can share

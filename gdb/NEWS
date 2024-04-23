@@ -36,6 +36,10 @@ set unwindonsignal on|off
 show unwindonsignal
   These commands are now aliases for the new set/show unwind-on-signal.
 
+target record-full
+  This command now gives an error if any unexpected arguments are
+  found after the command.
+
 * New commands
 
 info missing-debug-handler
@@ -191,6 +195,16 @@ QThreadOptions in qSupported
   The qSupported packet allows GDB to inform the stub it supports the
   QThreadOptions packet, and the qSupported response can contain the
   set of thread options the remote stub supports.
+
+qIsAddressTagged
+  This new packet allows GDB to query the stub about a given address to check
+  if it is tagged or not.  Many memory tagging-related GDB commands need to
+  perform this check before they read/write the allocation tag related to an
+  address.  Currently, however, this is done through a 'vFile' request to read
+  the file /proc/<PID>/smaps and check if the address is in a region reported
+  as memory tagged.  Since not all targets have a notion of what the smaps
+  file is about, this new packet provides a more generic way to perform such
+  a check.
 
 *** Changes in GDB 14
 

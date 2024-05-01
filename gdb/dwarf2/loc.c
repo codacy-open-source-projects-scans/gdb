@@ -19,6 +19,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "event-top.h"
 #include "ui-out.h"
 #include "value.h"
 #include "frame.h"
@@ -30,7 +31,7 @@
 #include "regcache.h"
 #include "objfiles.h"
 #include "block.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "complaints.h"
 #include "dwarf2.h"
 #include "dwarf2/expr.h"

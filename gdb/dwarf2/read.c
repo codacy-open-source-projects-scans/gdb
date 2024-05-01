@@ -47,6 +47,7 @@
 #include "dwarf2/public.h"
 #include "bfd.h"
 #include "elf-bfd.h"
+#include "event-top.h"
 #include "symtab.h"
 #include "gdbtypes.h"
 #include "objfiles.h"
@@ -61,7 +62,7 @@
 #include "cp-support.h"
 #include "hashtab.h"
 #include "command.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "block.h"
 #include "addrmap.h"
 #include "typeprint.h"
@@ -4885,7 +4886,7 @@ cooked_index_debug_info::process_cus (size_t task_number, unit_iterator first,
   m_results[task_number] = result_type (thread_storage.release (),
 					complaint_handler.release (),
 					std::move (errors),
-					std::move (thread_storage.release_parent_map ()));
+					thread_storage.release_parent_map ());
 }
 
 void

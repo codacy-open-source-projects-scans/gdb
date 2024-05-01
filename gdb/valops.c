@@ -17,6 +17,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "event-top.h"
 #include "extract-store-integer.h"
 #include "symtab.h"
 #include "gdbtypes.h"
@@ -27,7 +28,7 @@
 #include "target.h"
 #include "demangle.h"
 #include "language.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "regcache.h"
 #include "cp-abi.h"
 #include "block.h"

@@ -18,7 +18,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "charset.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "gdbsupport/gdb_obstack.h"
 #include "gdbsupport/gdb_wait.h"
 #include "charset-list.h"
@@ -70,6 +70,8 @@
 
 
 #ifdef PHONY_ICONV
+
+#include "extract-store-integer.h"
 
 /* Provide a phony iconv that does as little as possible.  Also,
    arrange for there to be a single available character set.  */

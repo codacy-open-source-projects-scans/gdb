@@ -19,12 +19,13 @@
 
 
 #include <ctype.h>
+#include "event-top.h"
 #include "extract-store-integer.h"
 #include "gdbsupport/gdb_regex.h"
 #include "frame.h"
 #include "symtab.h"
 #include "gdbtypes.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "expression.h"
 #include "parser-defs.h"
 #include "language.h"

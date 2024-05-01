@@ -18,10 +18,11 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "arch-utils.h"
+#include "event-top.h"
 #include "inferior.h"
 #include "infrun.h"
 #include "regcache.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "infcall.h"
 #include "objfiles.h"
 #include "linux-fork.h"

@@ -16,11 +16,12 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "skip.h"
+#include "event-top.h"
 #include "value.h"
 #include "valprint.h"
 #include "ui-out.h"
 #include "symtab.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "command.h"
 #include "completer.h"
 #include "stack.h"

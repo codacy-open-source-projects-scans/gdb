@@ -19,11 +19,12 @@
 
 #include <signal.h>
 #include <fcntl.h>
+#include "event-top.h"
 #include "extract-store-integer.h"
 #include "inferior.h"
 #include "symtab.h"
 #include "command.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include "bfd.h"
 #include "target.h"
 #include "gdbcore.h"

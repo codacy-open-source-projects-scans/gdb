@@ -50,7 +50,7 @@
 #include "gdb_bfd.h"
 #include "gdbsupport/gdb_obstack.h"
 #include "gdbthread.h"
-#include "gdbcmd.h"
+#include "cli/cli-cmds.h"
 #include <unistd.h>
 #include "exec.h"
 #include "solist.h"
@@ -2048,18 +2048,27 @@ windows_nat_target::attach (const char *args, int from_tty)
 #ifdef __CYGWIN__
       if (!ok)
 	{
-	  /* Try fall back to Cygwin pid.  */
-	  pid = cygwin_internal (CW_CYGWIN_PID_TO_WINPID, pid);
+	  /* Maybe PID was a Cygwin PID.  Try the corresponding native
+	     Windows PID.  */
+	  DWORD winpid = cygwin_internal (CW_CYGWIN_PID_TO_WINPID, pid);
 
-	  if (pid > 0)
-	    ok = DebugActiveProcess (pid);
+	  if (winpid != 0)
+	    {
+	      /* It was indeed a Cygwin PID.  Fully switch to the
+		 Windows PID from here on.  We don't do this
+		 unconditionally to avoid ending up with PID=0 in the
+		 error message below.  */
+	      pid = winpid;
+
+	      ok = DebugActiveProcess (winpid);
+	    }
 	}
 #endif
 
       if (!ok)
 	err = (unsigned) GetLastError ();
 
-      return true;
+      return ok;
     });
 
   if (err.has_value ())
@@ -2784,12 +2793,15 @@ windows_nat_target::create_inferior (const char *exec_file,
   windows_init_thread_list ();
   do_synchronously ([&] ()
     {
-      if (!create_process (nullptr, args, flags, w32_env,
-			   inferior_cwd != nullptr ? infcwd : nullptr,
-			   disable_randomization,
-			   &si, &pi))
+      BOOL ok = create_process (nullptr, args, flags, w32_env,
+				inferior_cwd != nullptr ? infcwd : nullptr,
+				disable_randomization,
+				&si, &pi);
+
+      if (!ok)
 	ret = (unsigned) GetLastError ();
-      return true;
+
+      return ok;
     });
 
   if (w32_env)
@@ -2910,16 +2922,18 @@ windows_nat_target::create_inferior (const char *exec_file,
   windows_init_thread_list ();
   do_synchronously ([&] ()
     {
-      if (!create_process (nullptr, /* image */
-			   args,	/* command line */
-			   flags,	/* start flags */
-			   w32env,	/* environment */
-			   inferior_cwd, /* current directory */
-			   disable_randomization,
-			   &si,
-			   &pi))
+      BOOL ok = create_process (nullptr, /* image */
+				args,	/* command line */
+				flags,	/* start flags */
+				w32env,	/* environment */
+				inferior_cwd, /* current directory */
+				disable_randomization,
+				&si,
+				&pi);
+      if (!ok)
 	ret = (unsigned) GetLastError ();
-      return true;
+
+      return ok;
     });
   if (tty != INVALID_HANDLE_VALUE)
     CloseHandle (tty);

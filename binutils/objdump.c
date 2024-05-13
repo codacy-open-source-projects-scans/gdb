@@ -4286,6 +4286,7 @@ load_specific_debug_section (enum dwarf_section_display_enum debug,
       if (streq (section->filename, bfd_get_filename (abfd)))
 	return true;
       free (section->start);
+      section->start = NULL;
     }
 
   section->filename = bfd_get_filename (abfd);
@@ -4297,57 +4298,60 @@ load_specific_debug_section (enum dwarf_section_display_enum debug,
   alloced = amt = section->size + 1;
   if (alloced != amt
       || alloced == 0
-      || (bfd_get_size (abfd) != 0 && alloced >= bfd_get_size (abfd)))
+      || bfd_section_size_insane (abfd, sec))
     {
-      section->start = NULL;
-      free_debug_section (debug);
       printf (_("\nSection '%s' has an invalid size: %#" PRIx64 ".\n"),
 	      sanitize_string (section->name),
 	      section->size);
+      free_debug_section (debug);
       return false;
     }
 
-  section->start = contents = xmalloc (alloced);
-  /* Ensure any string section has a terminating NUL.  */
-  section->start[section->size] = 0;
-
-  if ((abfd->flags & (EXEC_P | DYNAMIC)) == 0
-      && debug_displays [debug].relocate)
+  ret = false;
+  if ((sec->flags & SEC_HAS_CONTENTS) != 0)
     {
-      ret = bfd_simple_get_relocated_section_contents (abfd,
-						       sec,
-						       section->start,
-						       syms) != NULL;
-      if (ret)
+      section->start = contents = xmalloc (alloced);
+      /* Ensure any string section has a terminating NUL.  */
+      section->start[section->size] = 0;
+
+      if ((abfd->flags & (EXEC_P | DYNAMIC)) == 0
+	  && debug_displays [debug].relocate)
 	{
-	  long reloc_size = bfd_get_reloc_upper_bound (abfd, sec);
-
-	  if (reloc_size > 0)
+	  ret = bfd_simple_get_relocated_section_contents (abfd,
+							   sec,
+							   section->start,
+							   syms) != NULL;
+	  if (ret)
 	    {
-	      long reloc_count;
-	      arelent **relocs;
+	      long reloc_size = bfd_get_reloc_upper_bound (abfd, sec);
 
-	      relocs = (arelent **) xmalloc (reloc_size);
-
-	      reloc_count = bfd_canonicalize_reloc (abfd, sec, relocs, syms);
-	      if (reloc_count <= 0)
-		free (relocs);
-	      else
+	      if (reloc_size > 0)
 		{
-		  section->reloc_info = relocs;
-		  section->num_relocs = reloc_count;
+		  long reloc_count;
+		  arelent **relocs;
+
+		  relocs = (arelent **) xmalloc (reloc_size);
+
+		  reloc_count = bfd_canonicalize_reloc (abfd, sec, relocs, syms);
+		  if (reloc_count <= 0)
+		    free (relocs);
+		  else
+		    {
+		      section->reloc_info = relocs;
+		      section->num_relocs = reloc_count;
+		    }
 		}
 	    }
 	}
+      else
+	ret = bfd_get_full_section_contents (abfd, sec, &contents);
     }
-  else
-    ret = bfd_get_full_section_contents (abfd, sec, &contents);
 
   if (!ret)
     {
-      free_debug_section (debug);
       printf (_("\nCan't get contents for section '%s'.\n"),
 	      sanitize_string (section->name));
+      free_debug_section (debug);
       return false;
     }
 

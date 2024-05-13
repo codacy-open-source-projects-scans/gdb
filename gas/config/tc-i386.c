@@ -4133,7 +4133,7 @@ build_evex_prefix (void)
   /* Check the REX.W bit and VEXW.  */
   if (i.tm.opcode_modifier.vexw == VEXWIG)
     w = (evexwig == evexw1 || (i.rex & REX_W)) ? 1 : 0;
-  else if (i.tm.opcode_modifier.vexw)
+  else if (i.tm.opcode_modifier.vexw && !(i.rex & REX_W))
     w = i.tm.opcode_modifier.vexw == VEXW1 ? 1 : 0;
   else
     w = (flag_code == CODE_64BIT ? i.rex & REX_W : evexwig == evexw1) ? 1 : 0;
@@ -5045,7 +5045,7 @@ optimize_encoding (void)
        */
       i.tm.opcode_space = SPACE_0F;
       i.tm.base_opcode = 0x6c;
-      i.tm.opcode_modifier.vexvvvv = 1;
+      i.tm.opcode_modifier.vexvvvv = VexVVVV_SRC1;
 
       ++i.operands;
       ++i.reg_operands;
@@ -8281,7 +8281,12 @@ check_VecOperands (const insn_template *t)
   if ((is_cpu (t, CpuXOP) && t->operands == 5)
       || (t->opcode_space == SPACE_0F3A
 	  && (t->base_opcode | 3) == 0x0b
-	  && is_cpu (t, CpuAPX_F)))
+	  && (is_cpu (t, CpuAPX_F)
+	   || (t->opcode_modifier.sse2avx && t->opcode_modifier.evex
+	       && (!t->opcode_modifier.vex
+		   || (i.encoding != encoding_default
+		       && i.encoding != encoding_vex
+		       && i.encoding != encoding_vex3))))))
     {
       if (i.op[0].imms->X_op != O_constant
 	  || !fits_in_imm4 (i.op[0].imms->X_add_number))
@@ -10360,7 +10365,7 @@ build_modrm_byte (void)
 			/* Compensate for kludge in md_assemble().  */
 			+ i.tm.operand_types[0].bitfield.imm1;
   unsigned int dest = i.operands - 1 - i.tm.opcode_modifier.immext;
-  unsigned int v, op, reg_slot = ~0;
+  unsigned int v, op, reg_slot;
 
   /* Accumulator (in particular %st), shift count (%cl), and alike need
      to be skipped just like immediate operands do.  */
@@ -10432,34 +10437,36 @@ build_modrm_byte (void)
 				     || i.encoding == encoding_evex));
     }
 
-  if (i.tm.opcode_modifier.vexvvvv == VexVVVV_DST)
+  switch (i.tm.opcode_modifier.vexvvvv)
     {
-      v = dest;
-      dest-- ;
-    }
-  else
-    {
-      for (v = source + 1; v < dest; ++v)
-	if (v != reg_slot)
+    /* VEX.vvvv encodes the last source register operand.  */
+    case VexVVVV_SRC2:
+      if (source != op)
+	{
+	  v = source++;
 	  break;
-      if (v >= dest)
-	v = ~0;
-    }
-  if (i.tm.extension_opcode != None)
-    {
-      if (dest != source)
-	v = dest;
-      dest = ~0;
-    }
-  gas_assert (source < dest);
-  if (i.tm.opcode_modifier.operandconstraint == SWAP_SOURCES
-      && source != op)
-    {
-      unsigned int tmp = source;
+	}
+      /* For vprot*, vpshl*, and vpsha*, XOP.W controls the swapping of src1
+	 and src2, and it requires fall through when the operands are swapped.
+       */
+      /* Fall through.  */
+    /* VEX.vvvv encodes the first source register operand.  */
+    case VexVVVV_SRC1:
+      v =  dest - 1;
+      break;
+    /* VEX.vvvv encodes the destination register operand.  */
+    case VexVVVV_DST:
+      v = dest--;
+      break;
+    default:
+      v = ~0;
+      break;
+     }
 
-      source = v;
-      v = tmp;
-    }
+  if (dest == source)
+    dest = ~0;
+
+  gas_assert (source < dest);
 
   if (v < MAX_OPERANDS)
     {
@@ -13155,7 +13162,7 @@ s_insn (int dummy ATTRIBUTE_UNUSED)
 	case 3:
 	  if (i.encoding != encoding_default)
 	    {
-	      i.tm.opcode_modifier.vexvvvv = 1;
+	      i.tm.opcode_modifier.vexvvvv = VexVVVV_SRC1;
 	      break;
 	    }
 	  /* Fall through.  */

@@ -3583,10 +3583,6 @@ decode_ARM_machine_flags (char *out, unsigned e_flags)
 	      out = stpcpy (out, ", VFP");
 	      break;
 
-	    case EF_ARM_MAVERICK_FLOAT:
-	      out = stpcpy (out, ", Maverick FP");
-	      break;
-
 	    default:
 	      unknown = true;
 	      break;
@@ -20518,6 +20514,8 @@ get_note_type (Filedata * filedata, unsigned e_type)
 	return _("GO BUILDID");
       case FDO_PACKAGING_METADATA:
 	return _("FDO_PACKAGING_METADATA");
+      case FDO_DLOPEN_METADATA:
+	return _("FDO_DLOPEN_METADATA");
       default:
 	break;
       }
@@ -21775,6 +21773,11 @@ print_fdo_note (Elf_Internal_Note * pnote)
   if (pnote->descsz > 0 && pnote->type == FDO_PACKAGING_METADATA)
     {
       printf (_("    Packaging Metadata: %.*s\n"), (int) pnote->descsz, pnote->descdata);
+      return true;
+    }
+  if (pnote->descsz > 0 && pnote->type == FDO_DLOPEN_METADATA)
+    {
+      printf (_("    Dlopen Metadata: %.*s\n"), (int) pnote->descsz, pnote->descdata);
       return true;
     }
   return false;

@@ -105,7 +105,7 @@ struct dummy_target : public target_ops
   void async (bool arg0) override;
   int async_wait_fd () override;
   bool has_pending_events () override;
-  void thread_events (int arg0) override;
+  void thread_events (bool arg0) override;
   bool supports_set_thread_options (gdb_thread_options arg0) override;
   bool supports_non_stop () override;
   bool always_non_stop_p () override;
@@ -282,7 +282,7 @@ struct debug_target : public target_ops
   void async (bool arg0) override;
   int async_wait_fd () override;
   bool has_pending_events () override;
-  void thread_events (int arg0) override;
+  void thread_events (bool arg0) override;
   bool supports_set_thread_options (gdb_thread_options arg0) override;
   bool supports_non_stop () override;
   bool always_non_stop_p () override;
@@ -2165,24 +2165,24 @@ debug_target::has_pending_events ()
 }
 
 void
-target_ops::thread_events (int arg0)
+target_ops::thread_events (bool arg0)
 {
   this->beneath ()->thread_events (arg0);
 }
 
 void
-dummy_target::thread_events (int arg0)
+dummy_target::thread_events (bool arg0)
 {
 }
 
 void
-debug_target::thread_events (int arg0)
+debug_target::thread_events (bool arg0)
 {
   target_debug_printf_nofunc ("-> %s->thread_events (...)", this->beneath ()->shortname ());
   this->beneath ()->thread_events (arg0);
   target_debug_printf_nofunc ("<- %s->thread_events (%s)",
 	      this->beneath ()->shortname (),
-	      target_debug_print_int (arg0).c_str ());
+	      target_debug_print_bool (arg0).c_str ());
 }
 
 bool
@@ -4377,16 +4377,14 @@ dummy_target::is_address_tagged (gdbarch *arg0, CORE_ADDR arg1)
 bool
 debug_target::is_address_tagged (gdbarch *arg0, CORE_ADDR arg1)
 {
-  gdb_printf (gdb_stdlog, "-> %s->is_address_tagged (...)\n", this->beneath ()->shortname ());
+  target_debug_printf_nofunc ("-> %s->is_address_tagged (...)", this->beneath ()->shortname ());
   bool result
     = this->beneath ()->is_address_tagged (arg0, arg1);
-  gdb_printf (gdb_stdlog, "<- %s->is_address_tagged (", this->beneath ()->shortname ());
-  target_debug_print_gdbarch_p (arg0);
-  gdb_puts (", ", gdb_stdlog);
-  target_debug_print_CORE_ADDR (arg1);
-  gdb_puts (") = ", gdb_stdlog);
-  target_debug_print_bool (result);
-  gdb_puts ("\n", gdb_stdlog);
+  target_debug_printf_nofunc ("<- %s->is_address_tagged (%s, %s) = %s",
+	      this->beneath ()->shortname (),
+	      target_debug_print_gdbarch_p (arg0).c_str (),
+	      target_debug_print_CORE_ADDR (arg1).c_str (),
+	      target_debug_print_bool (result).c_str ());
   return result;
 }
 

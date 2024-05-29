@@ -1181,7 +1181,7 @@ current script, otherwise the last, non-augmenting, @option{-T} option
 will be used.
 
 There are other ways of specifying linker scripts.  See
-@xref{--default-script}, @xref{--section-ordering-file} and
+@xref{--default-script}, @xref{--section-ordering-file}, and
 @xref{unrecognised-input-files}.
 
 @kindex -dT @var{script}
@@ -2470,7 +2470,7 @@ however that this only applies to additional libraries needed to
 satisfy already included shared libraries.  It does @emph{not}
 apply to libraries that are included via the @option{-l} command line
 option.  Searches for @option{-l} libraries are only conducted in
-directories specified by the @option{-L} option (@xref{-L}).
+directories specified by the @option{-L} option (@pxref{-L}).
 
 @enumerate
 @item
@@ -2694,7 +2694,10 @@ Same as @option{--section-start}, with @code{.bss}, @code{.data} or
 @item -Ttext-segment=@var{org}
 @cindex text segment origin, cmd line
 When creating an ELF executable, it will set the address of the first
-byte of the text segment.
+byte of the text segment.  Note that when @option{-pie} is used with
+@option{-Ttext-segment=@var{org}}, the output executable is marked
+ET_EXEC so that the address of the first byte of the text segment will
+be guaranteed to be @var{org} at run time.
 
 @kindex -Trodata-segment=@var{org}
 @item -Trodata-segment=@var{org}

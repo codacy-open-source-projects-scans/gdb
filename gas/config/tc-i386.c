@@ -5392,7 +5392,7 @@ static void init_globals (void)
 }
 
 /* Helper for md_assemble() to decide whether to prepare for a possible 2nd
-   parsing pass. Instead of introducing a rarely use new insn attribute this
+   parsing pass. Instead of introducing a rarely used new insn attribute this
    utilizes a common pattern between affected templates. It is deemed
    acceptable that this will lead to unnecessary pass 2 preparations in a
    limited set of cases.  */
@@ -5404,7 +5404,10 @@ static INLINE bool may_need_pass2 (const insn_template *t)
 	 : (t->opcode_space == SPACE_0F
 	    && (t->base_opcode | 1) == 0xbf)
 	   || (t->opcode_space == SPACE_BASE
-	       && t->base_opcode == 0x63);
+	       && t->base_opcode == 0x63)
+	   || (intel_syntax /* shld / shrd may mean suffixed shl / shr.  */
+	       && t->opcode_space == SPACE_EVEXMAP4
+	       && (t->base_opcode | 8) == 0x2c);
 }
 
 #if defined (OBJ_MAYBE_ELF) || defined (OBJ_ELF)
@@ -9206,6 +9209,19 @@ match_template (char mnem_suffix)
 	     affect assembly of the next line of code.  */
 	  as_warn (_("stand-alone `%s' prefix"), insn_name (t));
 	}
+
+      if (intel_syntax && mnem_suffix && !t->opcode_modifier.intelsuffix)
+	{
+	  static bool noticed;
+
+	  as_warn (_("mnemonic suffix used with `%s'"), insn_name (t));
+	  if (!noticed)
+	    {
+	      noticed = true;
+	      as_warn (_(
+"NOTE: Such forms are deprecated and will be rejected by a future version of the assembler"));
+	    }
+	}
     }
 
   /* Copy the template we found.  */
@@ -9834,11 +9850,13 @@ check_byte_reg (void)
       if (i.types[op].bitfield.class != Reg)
 	continue;
 
-      /* If this is an eight bit register, it's OK.  If it's the 16 or
-	 32 bit version of an eight bit register, we will just use the
-	 low portion, and that's OK too.  */
+      /* If this is an eight bit register, it's OK.  */
       if (i.types[op].bitfield.byte)
-	continue;
+	{
+	  if (i.tm.opcode_modifier.checkoperandsize)
+	    break;
+	  continue;
+	}
 
       /* I/O port address operands are OK too.  */
       if (i.tm.operand_types[op].bitfield.instance == RegD
@@ -9892,6 +9910,9 @@ check_long_reg (void)
 		i.suffix);
 	return 0;
       }
+    else if (i.tm.opcode_modifier.checkoperandsize)
+      break;
+
   return 1;
 }
 
@@ -9927,6 +9948,9 @@ check_qword_reg (void)
 		register_prefix, i.op[op].regs->reg_name, i.suffix);
 	return 0;
       }
+    else if (i.tm.opcode_modifier.checkoperandsize)
+      break;
+
   return 1;
 }
 
@@ -9962,6 +9986,9 @@ check_word_reg (void)
 		i.suffix);
 	return 0;
       }
+    else if (i.tm.opcode_modifier.checkoperandsize)
+      break;
+
   return 1;
 }
 

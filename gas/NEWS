@@ -1,5 +1,8 @@
 -*- text -*-
 
+* In x86 Intel syntax undue mnemonic suffixes are now warned about.  This is
+  a first step towards rejecting their use where unjustified.
+
 * Assembler macros as well as the bodies of .irp / .irpc can now use the
   syntax \+ to access the number of times a given macro has been executed.
   This is similar to the already existing \@ syntax, except that the count is
@@ -17,6 +20,12 @@
   recognize it in case of linking old objects.
 
 * Add support for RISC-V Zcmp extension with version 1.0.
+
+* Add support for RISC-V Zfbfmin extension with version 1.0.
+
+* Add support for RISC-V Zvfbfmin extension with version 1.0.
+
+* Add support for RISC-V Zvfbfwma extension with version 1.0.
 
 * The base register operand in D(X,B) and D(L,B) may be explicitly omitted
   in assembly on s390. It can now be coded as D(X,) or D(L,) instead of D(X,0)

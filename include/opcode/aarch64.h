@@ -183,6 +183,8 @@ enum aarch64_feature_bit {
   AARCH64_FEATURE_LSE128,
   /* ARMv8.9-A RAS Extensions.  */
   AARCH64_FEATURE_RASv2,
+  /* Delegated SError exceptions for EL3. */
+  AARCH64_FEATURE_E3DSE,
   /* System Control Register2.  */
   AARCH64_FEATURE_SCTLR2,
   /* Fine Grained Traps.  */
@@ -220,6 +222,8 @@ enum aarch64_feature_bit {
   AARCH64_FEATURE_PMUv3_ICNTR,
   /* System Performance Monitors Extension */
   AARCH64_FEATURE_SPMU,
+  /* System Performance Monitors Extension version 2 */
+  AARCH64_FEATURE_SPMU2,
   /* Performance Monitors Synchronous-Exception-Based Event Extension.  */
   AARCH64_FEATURE_SEBEP,
   /* SVE2.1 and SME2.1 non-widening BFloat16 instructions.  */
@@ -230,6 +234,8 @@ enum aarch64_feature_bit {
   AARCH64_FEATURE_SVE2p1,
   /* RCPC3 instructions.  */
   AARCH64_FEATURE_RCPC3,
+  /* Enhanced Software Step Extension. */
+  AARCH64_FEATURE_STEP2,
   /* Checked Pointer Arithmetic instructions. */
   AARCH64_FEATURE_CPA,
   /* FAMINMAX instructions.  */
@@ -366,7 +372,11 @@ enum aarch64_feature_bit {
 #define AARCH64_ARCH_V9_5A_FEATURES(X)	(AARCH64_FEATBIT (X, V9_5A)	\
 					 | AARCH64_FEATBIT (X, CPA)	\
 					 | AARCH64_FEATBIT (X, LUT)	\
-					 | AARCH64_FEATBIT (X, FAMINMAX))
+					 | AARCH64_FEATBIT (X, FAMINMAX)\
+					 | AARCH64_FEATBIT (X, E3DSE)	\
+					 | AARCH64_FEATBIT (X, SPMU2)	\
+					 | AARCH64_FEATBIT (X, STEP2)	\
+					)
 
 /* Architectures are the sum of the base and extensions.  */
 #define AARCH64_ARCH_V8A(X)	(AARCH64_FEATBIT (X, V8) \
@@ -857,6 +867,14 @@ enum aarch64_opnd
   AARCH64_OPND_SME_Zn_INDEX3_14,    /* Zn[index], bits [9:5] and [16:14].  */
   AARCH64_OPND_SME_Zn_INDEX3_15,    /* Zn[index], bits [9:5] and [17:15].  */
   AARCH64_OPND_SME_Zn_INDEX4_14,    /* Zn[index], bits [9:5] and [17:14].  */
+  AARCH64_OPND_SVE_Zn0_INDEX,	    /* Zn[index], bits [9:5].  */
+  AARCH64_OPND_SVE_Zn1_17_INDEX,    /* Zn[index], bits [9:5,17].  */
+  AARCH64_OPND_SVE_Zn2_18_INDEX,    /* Zn[index], bits [9:5,18:17].  */
+  AARCH64_OPND_SVE_Zn3_22_INDEX,    /* Zn[index], bits [9:5,18:17,22].  */
+  AARCH64_OPND_SVE_Zd0_INDEX,	    /* Zn[index], bits [4:0].  */
+  AARCH64_OPND_SVE_Zd1_17_INDEX,    /* Zn[index], bits [4:0,17].  */
+  AARCH64_OPND_SVE_Zd2_18_INDEX,    /* Zn[index], bits [4:0,18:17].  */
+  AARCH64_OPND_SVE_Zd3_22_INDEX,    /* Zn[index], bits [4:0,18:17,22].  */
   AARCH64_OPND_SME_VLxN_10,	/* VLx2 or VLx4, in bit 10.  */
   AARCH64_OPND_SME_VLxN_13,	/* VLx2 or VLx4, in bit 13.  */
   AARCH64_OPND_SME_ZT0,		/* The fixed token zt0/ZT0 (not encoded).  */

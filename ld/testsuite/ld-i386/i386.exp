@@ -544,6 +544,8 @@ run_dump_test "pr27998b"
 run_dump_test "pr31868a"
 run_dump_test "pr31868b"
 run_dump_test "pr31868c"
+run_dump_test "tlsgdesc1"
+run_dump_test "tlsgdesc2"
 
 proc undefined_weak {cflags ldflags} {
     set testname "Undefined weak symbol"
@@ -553,9 +555,9 @@ proc undefined_weak {cflags ldflags} {
 
     if { [string match "*-fPIE*" $cflags]
 	 && ![string match "*-z nodynamic-undefined-weak*" $ldflags] } {
-	set weak_symbol "Weak defined"
+	set weak_symbol "Weak defined\n"
     } else {
-	set weak_symbol "Weak undefined"
+	set weak_symbol "Weak undefined\n"
     }
 
     run_cc_link_tests [list \

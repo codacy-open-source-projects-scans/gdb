@@ -227,7 +227,7 @@ call_site_for_pc (struct gdbarch *gdbarch, CORE_ADDR pc)
 
   if (cs == nullptr)
     {
-      struct bound_minimal_symbol msym = lookup_minimal_symbol_by_pc (pc);
+      bound_minimal_symbol msym = lookup_minimal_symbol_by_pc (pc);
 
       /* DW_TAG_gnu_call_site will be missing just if GCC could not determine
 	 the call target.  */
@@ -438,7 +438,7 @@ get_block_compunit_symtab (const struct block *block)
 static void
 initialize_block_iterator (const struct block *block,
 			   struct block_iterator *iter,
-			   const lookup_name_info *name = nullptr)
+			   const lookup_name_info *name)
 {
   enum block_enum which;
   struct compunit_symtab *cu;

@@ -1423,12 +1423,11 @@ dwarf2_per_bfd::locate_sections (bfd *abfd, asection *sectp,
   if ((aflag & SEC_HAS_CONTENTS) == 0)
     {
     }
-  else if (elf_section_data (sectp)->this_hdr.sh_size
-	   > bfd_get_file_size (abfd))
+  else if (bfd_section_size_insane (abfd, sectp))
     {
-      bfd_size_type size = elf_section_data (sectp)->this_hdr.sh_size;
-      warning (_("Discarding section %s which has a section size (%s"
-		 ") larger than the file size [in module %s]"),
+      bfd_size_type size = sectp->size;
+      warning (_("Discarding section %s which has an invalid size (%s) "
+		 "[in module %s]"),
 	       bfd_section_name (sectp), phex_nz (size, sizeof (size)),
 	       bfd_get_filename (abfd));
     }
@@ -4533,28 +4532,35 @@ process_psymtab_comp_unit (dwarf2_per_cu_data *this_cu,
 			   dwarf2_per_objfile *per_objfile,
 			   cooked_index_storage *storage)
 {
-  cutu_reader reader (this_cu, per_objfile, nullptr, nullptr, false,
-		      storage->get_abbrev_cache ());
+  cutu_reader *reader = storage->get_reader (this_cu);
+  if (reader == nullptr)
+    {
+      cutu_reader new_reader (this_cu, per_objfile, nullptr, nullptr, false,
+			      storage->get_abbrev_cache ());
 
-  if (reader.comp_unit_die == nullptr)
+      if (new_reader.comp_unit_die == nullptr || new_reader.dummy_p)
+	return;
+
+      std::unique_ptr<cutu_reader> copy
+	(new cutu_reader (std::move (new_reader)));
+      reader = storage->preserve (std::move (copy));
+    }
+
+  if (reader->comp_unit_die == nullptr || reader->dummy_p)
     return;
 
-  if (reader.dummy_p)
-    {
-      /* Nothing.  */
-    }
-  else if (this_cu->is_debug_types)
-    build_type_psymtabs_reader (&reader, storage);
-  else if (reader.comp_unit_die->tag != DW_TAG_partial_unit)
+  if (this_cu->is_debug_types)
+    build_type_psymtabs_reader (reader, storage);
+  else if (reader->comp_unit_die->tag != DW_TAG_partial_unit)
     {
       bool nope = false;
       if (this_cu->scanned.compare_exchange_strong (nope, true))
 	{
-	  prepare_one_comp_unit (reader.cu, reader.comp_unit_die,
+	  prepare_one_comp_unit (reader->cu, reader->comp_unit_die,
 				 language_minimal);
 	  gdb_assert (storage != nullptr);
-	  cooked_indexer indexer (storage, this_cu, reader.cu->lang ());
-	  indexer.make_index (&reader);
+	  cooked_indexer indexer (storage, this_cu, reader->cu->lang ());
+	  indexer.make_index (reader);
 	}
     }
 }
@@ -16031,8 +16037,6 @@ cooked_indexer::ensure_cu_exists (cutu_reader *reader,
       if (!per_cu->scanned.compare_exchange_strong (nope, true))
 	return nullptr;
     }
-  if (per_cu == m_per_cu)
-    return reader;
 
   cutu_reader *result = m_index_storage->get_reader (per_cu);
   if (result == nullptr)
@@ -16257,6 +16261,13 @@ cooked_indexer::scan_attributes (dwarf2_per_cu_data *scanning_per_cu,
 	  const abbrev_info *new_abbrev = peek_die_abbrev (*new_reader,
 							   new_info_ptr,
 							   &bytes_read);
+
+	  if (new_abbrev == nullptr)
+	    error (_("Dwarf Error: Unexpected null DIE at offset %s "
+		     "[in module %s]"),
+		   sect_offset_str (origin_offset),
+		   bfd_get_filename (new_reader->abfd));
+
 	  new_info_ptr += bytes_read;
 
 	  if (new_reader->cu == reader->cu && new_info_ptr == watermark_ptr)
@@ -17905,8 +17916,8 @@ public:
      we're processing the end of a sequence.  */
   void record_line (bool end_sequence);
 
-  /* Check ADDRESS is -1, or zero and less than UNRELOCATED_LOWPC, and if true
-     nop-out rest of the lines in this sequence.  */
+  /* Check ADDRESS is -1, -2, or zero and less than UNRELOCATED_LOWPC, and if
+     true nop-out rest of the lines in this sequence.  */
   void check_line_address (struct dwarf2_cu *cu,
 			   const gdb_byte *line_ptr,
 			   unrelocated_addr unrelocated_lowpc,
@@ -18316,13 +18327,16 @@ lnp_state_machine::check_line_address (struct dwarf2_cu *cu,
 				       unrelocated_addr unrelocated_lowpc,
 				       unrelocated_addr address)
 {
-  /* Linkers resolve a symbolic relocation referencing a GC'd function to 0 or
-     -1.  If ADDRESS is 0, ignoring the opcode will err if the text section is
+  /* Linkers resolve a symbolic relocation referencing a GC'd function to 0,
+     -1 or -2 (-2 is used by certain lld versions, see
+     https://github.com/llvm/llvm-project/commit/e618ccbf431f6730edb6d1467a127c3a52fd57f7).
+     If ADDRESS is 0, ignoring the opcode will err if the text section is
      located at 0x0.  In this case, additionally check that if
      ADDRESS < UNRELOCATED_LOWPC.  */
 
   if ((address == (unrelocated_addr) 0 && address < unrelocated_lowpc)
-      || address == (unrelocated_addr) -1)
+      || address == (unrelocated_addr) -1
+      || address == (unrelocated_addr) -2)
     {
       /* This line table is for a function which has been
 	 GCd by the linker.  Ignore it.  PR gdb/12528 */

@@ -8091,10 +8091,6 @@ disable_breakpoints_in_freed_objfile (struct objfile *objfile)
 	  if (objfile->pspace () != loc.pspace)
 	    continue;
 
-	  if (loc.loc_type != bp_loc_hardware_breakpoint
-	      && loc.loc_type != bp_loc_software_breakpoint)
-	    continue;
-
 	  if (is_addr_in_objfile (loc_addr, objfile))
 	    {
 	      loc.shlib_disabled = 1;
@@ -10749,7 +10745,7 @@ static const gdb::option::option_def watch_option_defs[] = {
     "location",
     [] (watch_options *opt) { return &opt->location; },
     N_("\
-This evaluates EXPRESSION and watches the memory to which is refers.\n\
+This evaluates EXPRESSION and watches the memory to which it refers.\n\
 -l can be used as a short form of -location."),
   },
 };
@@ -11867,7 +11863,8 @@ code_breakpoint::say_where () const
 
 /* See breakpoint.h.  */
 
-bp_location_range breakpoint::locations () const
+bp_location_range
+breakpoint::locations () const
 {
   return bp_location_range (m_locations.begin (), m_locations.end ());
 }

@@ -35,6 +35,31 @@
 * Remove support (native and remote) for QNX Neutrino (triplet
   `i[3456]86-*-nto*`).
 
+* In a record session, when a forward emulation reaches the end of the reverse
+  history, the warning message has been changed to indicate that the end of the
+  history has been reached.  It also specifies that the forward execution can
+  continue, and the recording will also continue.
+
+* New commands
+
+maintenance info inline-frames [ADDRESS]
+  New command which displays GDB's inline-frame information for the
+  current address, or for ADDRESS if specified.  The output identifies
+  inlined frames which start at the specified address.
+
+maintenance info blocks [ADDRESS]
+  New command which displays information about all of the blocks at
+  ADDRESS, or at the current address if ADDRESS is not given.  Blocks
+  are listed starting at the inner global block out to the most inner
+  block.
+
+* New remote packets
+
+vFile:stat
+  Return information about files on the remote system.  Like
+  vFile:fstat but takes a filename rather than an open file
+  descriptor.
+
 *** Changes in GDB 15
 
 * The MPX commands "show/set mpx bound" have been deprecated, as Intel
@@ -245,11 +270,6 @@ qIsAddressTagged
   as memory tagged.  Since not all targets have a notion of what the smaps
   file is about, this new packet provides a more generic way to perform such
   a check.
-
-vFile:stat
-  Return information about files on the remote system.  Like
-  vFile:fstat but takes a filename rather than an open file
-  descriptor.
 
 *** Changes in GDB 14
 

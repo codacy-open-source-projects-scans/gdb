@@ -1186,6 +1186,7 @@ static const arch_entry cpu_arch[] =
   VECARCH (avx10.1, AVX10_1, ANY_AVX512F, set),
   SUBARCH (user_msr, USER_MSR, USER_MSR, false),
   SUBARCH (apx_f, APX_F, APX_F, false),
+  VECARCH (avx10.2, AVX10_2, ANY_AVX10_2, set),
 };
 
 #undef SUBARCH
@@ -1293,6 +1294,94 @@ static htab_t op_hash;
 
 /* Hash table for register lookup.  */
 static htab_t reg_hash;
+
+static const struct
+{
+  const char *str;
+  unsigned int len;
+  const enum bfd_reloc_code_real rel[2];
+  const i386_operand_type types64;
+  bool need_GOT_symbol;
+}
+gotrel[] =
+{
+#define OPERAND_TYPE_IMM32_32S_DISP32 { .bitfield = \
+      { .imm32 = 1, .imm32s = 1, .disp32 = 1 } }
+#define OPERAND_TYPE_IMM32_32S_64_DISP32 { .bitfield = \
+      { .imm32 = 1, .imm32s = 1, .imm64 = 1, .disp32 = 1 } }
+#define OPERAND_TYPE_IMM32_32S_64_DISP32_64 { .bitfield = \
+      { .imm32 = 1, .imm32s = 1, .imm64 = 1, .disp32 = 1, .disp64 = 1 } }
+#define OPERAND_TYPE_IMM64_DISP64 { .bitfield = \
+      { .imm64 = 1, .disp64 = 1 } }
+
+#ifndef TE_PE
+#if defined (OBJ_ELF) || defined (OBJ_MAYBE_ELF)
+    { STRING_COMMA_LEN ("SIZE"),      { BFD_RELOC_SIZE32,
+					BFD_RELOC_SIZE32 },
+    { .bitfield = { .imm32 = 1, .imm64 = 1 } }, false },
+#endif
+    { STRING_COMMA_LEN ("PLTOFF"),   { _dummy_first_bfd_reloc_code_real,
+				       BFD_RELOC_X86_64_PLTOFF64 },
+    { .bitfield = { .imm64 = 1 } }, true },
+    { STRING_COMMA_LEN ("PLT"),      { BFD_RELOC_386_PLT32,
+				       BFD_RELOC_X86_64_PLT32    },
+    OPERAND_TYPE_IMM32_32S_DISP32, false },
+    { STRING_COMMA_LEN ("GOTPLT"),   { _dummy_first_bfd_reloc_code_real,
+				       BFD_RELOC_X86_64_GOTPLT64 },
+    OPERAND_TYPE_IMM64_DISP64, true },
+    { STRING_COMMA_LEN ("GOTOFF"),   { BFD_RELOC_386_GOTOFF,
+				       BFD_RELOC_X86_64_GOTOFF64 },
+    OPERAND_TYPE_IMM64_DISP64, true },
+    { STRING_COMMA_LEN ("GOTPCREL"), { _dummy_first_bfd_reloc_code_real,
+				       BFD_RELOC_X86_64_GOTPCREL },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+    { STRING_COMMA_LEN ("TLSGD"),    { BFD_RELOC_386_TLS_GD,
+				       BFD_RELOC_X86_64_TLSGD    },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+    { STRING_COMMA_LEN ("TLSLDM"),   { BFD_RELOC_386_TLS_LDM,
+				       _dummy_first_bfd_reloc_code_real },
+    OPERAND_TYPE_NONE, true },
+    { STRING_COMMA_LEN ("TLSLD"),    { _dummy_first_bfd_reloc_code_real,
+				       BFD_RELOC_X86_64_TLSLD    },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+    { STRING_COMMA_LEN ("GOTTPOFF"), { BFD_RELOC_386_TLS_IE_32,
+				       BFD_RELOC_X86_64_GOTTPOFF },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+    { STRING_COMMA_LEN ("TPOFF"),    { BFD_RELOC_386_TLS_LE_32,
+				       BFD_RELOC_X86_64_TPOFF32  },
+    OPERAND_TYPE_IMM32_32S_64_DISP32_64, true },
+    { STRING_COMMA_LEN ("NTPOFF"),   { BFD_RELOC_386_TLS_LE,
+				       _dummy_first_bfd_reloc_code_real },
+    OPERAND_TYPE_NONE, true },
+    { STRING_COMMA_LEN ("DTPOFF"),   { BFD_RELOC_386_TLS_LDO_32,
+				       BFD_RELOC_X86_64_DTPOFF32 },
+    OPERAND_TYPE_IMM32_32S_64_DISP32_64, true },
+    { STRING_COMMA_LEN ("GOTNTPOFF"),{ BFD_RELOC_386_TLS_GOTIE,
+				       _dummy_first_bfd_reloc_code_real },
+    OPERAND_TYPE_NONE, true },
+    { STRING_COMMA_LEN ("INDNTPOFF"),{ BFD_RELOC_386_TLS_IE,
+				       _dummy_first_bfd_reloc_code_real },
+    OPERAND_TYPE_NONE, true },
+    { STRING_COMMA_LEN ("GOT"),      { BFD_RELOC_386_GOT32,
+				       BFD_RELOC_X86_64_GOT32    },
+    OPERAND_TYPE_IMM32_32S_64_DISP32, true },
+    { STRING_COMMA_LEN ("TLSDESC"),  { BFD_RELOC_386_TLS_GOTDESC,
+				       BFD_RELOC_X86_64_GOTPC32_TLSDESC },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+    { STRING_COMMA_LEN ("TLSCALL"),  { BFD_RELOC_386_TLS_DESC_CALL,
+				       BFD_RELOC_X86_64_TLSDESC_CALL },
+    OPERAND_TYPE_IMM32_32S_DISP32, true },
+#else /* TE_PE */
+    { STRING_COMMA_LEN ("SECREL32"), { BFD_RELOC_32_SECREL,
+				       BFD_RELOC_32_SECREL },
+    OPERAND_TYPE_IMM32_32S_64_DISP32_64, false },
+#endif
+
+#undef OPERAND_TYPE_IMM32_32S_DISP32
+#undef OPERAND_TYPE_IMM32_32S_64_DISP32
+#undef OPERAND_TYPE_IMM32_32S_64_DISP32_64
+#undef OPERAND_TYPE_IMM64_DISP64
+};
 
   /* Various efficient no-op patterns for aligning code labels.
      Note: Don't try to assemble the instructions in the comments.
@@ -3949,7 +4038,7 @@ build_vex_prefix (const insn_template *t)
 {
   unsigned int register_specifier;
   unsigned int vector_length;
-  unsigned int w;
+  bool w;
 
   /* Check register specifier.  */
   if (i.vex.register_specifier)
@@ -4048,11 +4137,11 @@ build_vex_prefix (const insn_template *t)
 
   /* Check the REX.W bit and VEXW.  */
   if (i.tm.opcode_modifier.vexw == VEXWIG)
-    w = (vexwig == vexw1 || (i.rex & REX_W)) ? 1 : 0;
+    w = vexwig == vexw1 || (i.rex & REX_W);
   else if (i.tm.opcode_modifier.vexw && !(i.rex & REX_W))
-    w = i.tm.opcode_modifier.vexw == VEXW1 ? 1 : 0;
+    w = i.tm.opcode_modifier.vexw == VEXW1;
   else
-    w = (flag_code == CODE_64BIT ? i.rex & REX_W : vexwig == vexw1) ? 1 : 0;
+    w = flag_code == CODE_64BIT ? i.rex & REX_W : vexwig == vexw1;
 
   /* Use 2-byte VEX prefix if possible.  */
   if (w == 0
@@ -4061,13 +4150,13 @@ build_vex_prefix (const insn_template *t)
       && (i.rex & (REX_W | REX_X | REX_B)) == 0)
     {
       /* 2-byte VEX prefix.  */
-      unsigned int r;
+      bool r;
 
       i.vex.length = 2;
       i.vex.bytes[0] = 0xc5;
 
       /* Check the REX.R bit.  */
-      r = (i.rex & REX_R) ? 0 : 1;
+      r = !(i.rex & REX_R);
       i.vex.bytes[1] = (r << 7
 			| register_specifier << 3
 			| vector_length << 2
@@ -4205,7 +4294,8 @@ get_broadcast_bytes (const insn_template *t, bool diag)
 static void
 build_evex_prefix (void)
 {
-  unsigned int register_specifier, w;
+  unsigned int register_specifier;
+  bool w, u;
   rex_byte vrex_used = 0;
 
   /* Check register specifier.  */
@@ -4272,16 +4362,68 @@ build_evex_prefix (void)
 
   /* Check the REX.W bit and VEXW.  */
   if (i.tm.opcode_modifier.vexw == VEXWIG)
-    w = (evexwig == evexw1 || (i.rex & REX_W)) ? 1 : 0;
+    w = evexwig == evexw1 || (i.rex & REX_W);
   else if (i.tm.opcode_modifier.vexw && !(i.rex & REX_W))
-    w = i.tm.opcode_modifier.vexw == VEXW1 ? 1 : 0;
+    w = i.tm.opcode_modifier.vexw == VEXW1;
   else
-    w = (flag_code == CODE_64BIT ? i.rex & REX_W : evexwig == evexw1) ? 1 : 0;
+    w = flag_code == CODE_64BIT ? i.rex & REX_W : evexwig == evexw1;
+
+  if (i.tm.opcode_modifier.evex == EVEXDYN)
+    {
+      unsigned int op;
+
+      /* Determine vector length from the last multi-length vector operand.  */
+      for (op = i.operands; op--;)
+	if (i.tm.operand_types[op].bitfield.xmmword
+	    + i.tm.operand_types[op].bitfield.ymmword
+	    + i.tm.operand_types[op].bitfield.zmmword > 1)
+	  {
+	    if (i.types[op].bitfield.zmmword)
+	      {
+		i.tm.opcode_modifier.evex = EVEX512;
+		break;
+	      }
+	    else if (i.types[op].bitfield.ymmword)
+	      {
+		i.tm.opcode_modifier.evex = EVEX256;
+		break;
+	      }
+	    else if (i.types[op].bitfield.xmmword)
+	      {
+		i.tm.opcode_modifier.evex = EVEX128;
+		break;
+	      }
+	    else if ((i.broadcast.type || i.broadcast.bytes)
+		      && op == i.broadcast.operand)
+	      {
+		switch (get_broadcast_bytes (&i.tm, true))
+		  {
+		    case 64:
+		      i.tm.opcode_modifier.evex = EVEX512;
+		      break;
+		    case 32:
+		      i.tm.opcode_modifier.evex = EVEX256;
+		      break;
+		    case 16:
+		      i.tm.opcode_modifier.evex = EVEX128;
+		      break;
+		    default:
+		      abort ();
+		  }
+		break;
+	      }
+	  }
+
+      if (op >= MAX_OPERANDS)
+	abort ();
+    }
+
+  u = i.rounding.type == rc_none || i.tm.opcode_modifier.evex != EVEX256;
 
   /* The third byte of the EVEX prefix.  */
   i.vex.bytes[2] = ((w << 7)
 		    | (register_specifier << 3)
-		    | 4 /* Encode the U bit.  */
+		    | (u << 2)
 		    | i.tm.opcode_modifier.opcodeprefix);
 
   /* The fourth byte of the EVEX prefix.  */
@@ -4294,57 +4436,6 @@ build_evex_prefix (void)
     {
       /* Encode the vector length.  */
       unsigned int vec_length;
-
-      if (i.tm.opcode_modifier.evex == EVEXDYN)
-	{
-	  unsigned int op;
-
-	  /* Determine vector length from the last multi-length vector
-	     operand.  */
-	  for (op = i.operands; op--;)
-	    if (i.tm.operand_types[op].bitfield.xmmword
-		+ i.tm.operand_types[op].bitfield.ymmword
-		+ i.tm.operand_types[op].bitfield.zmmword > 1)
-	      {
-		if (i.types[op].bitfield.zmmword)
-		  {
-		    i.tm.opcode_modifier.evex = EVEX512;
-		    break;
-		  }
-		else if (i.types[op].bitfield.ymmword)
-		  {
-		    i.tm.opcode_modifier.evex = EVEX256;
-		    break;
-		  }
-		else if (i.types[op].bitfield.xmmword)
-		  {
-		    i.tm.opcode_modifier.evex = EVEX128;
-		    break;
-		  }
-		else if ((i.broadcast.type || i.broadcast.bytes)
-			 && op == i.broadcast.operand)
-		  {
-		    switch (get_broadcast_bytes (&i.tm, true))
-		      {
-			case 64:
-			  i.tm.opcode_modifier.evex = EVEX512;
-			  break;
-			case 32:
-			  i.tm.opcode_modifier.evex = EVEX256;
-			  break;
-			case 16:
-			  i.tm.opcode_modifier.evex = EVEX128;
-			  break;
-			default:
-			  abort ();
-		      }
-		    break;
-		  }
-	      }
-
-	  if (op >= MAX_OPERANDS)
-	    abort ();
-	}
 
       switch (i.tm.opcode_modifier.evex)
 	{
@@ -4487,9 +4578,9 @@ static void establish_rex (void)
   i.rex |= i.prefix[REX_PREFIX] & REX_OPCODE;
 
   /* For 8 bit RegRex64 registers without a prefix, we need an empty rex prefix.  */
-  if (((i.types[first].bitfield.class == Reg && i.types[first].bitfield.byte
+  if (((i.types[first].bitfield.class == Reg
 	&& (i.op[first].regs->reg_flags & RegRex64) != 0)
-       || (i.types[last].bitfield.class == Reg && i.types[last].bitfield.byte
+       || (i.types[last].bitfield.class == Reg
 	   && (i.op[last].regs->reg_flags & RegRex64) != 0))
       && !is_apx_rex2_encoding () && !is_any_vex_encoding (&i.tm))
     i.rex |= REX_OPCODE;
@@ -4503,9 +4594,8 @@ static void establish_rex (void)
 	{
 	  /* Look for 8 bit operand that uses old registers.  */
 	  if (i.types[x].bitfield.class == Reg && i.types[x].bitfield.byte
-	      && (i.op[x].regs->reg_flags & RegRex64) == 0)
+	      && !(i.op[x].regs->reg_flags & (RegRex | RegRex2 | RegRex64)))
 	    {
-	      gas_assert (!(i.op[x].regs->reg_flags & RegRex));
 	      /* In case it is "hi" register, give up.  */
 	      if (i.op[x].regs->reg_num > 3)
 		as_bad (_("can't encode register '%s%s' in an "
@@ -4531,10 +4621,9 @@ static void establish_rex (void)
       for (x = first; x <= last; x++)
 	if (i.types[x].bitfield.class == Reg
 	    && i.types[x].bitfield.byte
-	    && (i.op[x].regs->reg_flags & RegRex64) == 0
+	    && !(i.op[x].regs->reg_flags & (RegRex | RegRex2 | RegRex64))
 	    && i.op[x].regs->reg_num > 3)
 	  {
-	    gas_assert (!(i.op[x].regs->reg_flags & RegRex));
 	    pp.rex_encoding = false;
 	    pp.rex2_encoding = false;
 	    break;
@@ -4839,7 +4928,7 @@ optimize_encoding (void)
 	  /* Squash the suffix.  */
 	  i.suffix = 0;
 	  /* Convert to byte registers. 8-bit registers are special,
-	     RegRex64 and non-RegRex64 each have 8 registers.  */
+	     RegRex64 and non-RegRex* each have 8 registers.  */
 	  if (i.types[1].bitfield.word)
 	    /* 32 (or 40) 8-bit registers.  */
 	    j = 32;
@@ -5392,7 +5481,7 @@ static bool is_index (const reg_entry *r)
 
   if (r->reg_type.bitfield.byte)
     {
-      if (!(r->reg_flags & RegRex64))
+      if (!(r->reg_flags & (RegRex | RegRex2 | RegRex64)))
 	{
 	  if (r->reg_num >= 4)
 	    return false;
@@ -6578,16 +6667,24 @@ i386_assemble (char *line)
 	  return;
 	}
 
-      /* Don't allow e.g. KMOV in TLS code sequences.  */
+      /* Don't allow e.g. KMOV in TLS code sequences which will trigger
+	 linker error later.  */
       for (j = i.imm_operands; j < i.operands; ++j)
 	switch (i.reloc[j])
 	  {
 	  case BFD_RELOC_X86_64_GOTTPOFF:
 	  case BFD_RELOC_386_TLS_GOTIE:
-	  case BFD_RELOC_386_TLS_LE_32:
 	  case BFD_RELOC_X86_64_TLSLD:
-	    as_bad (_("TLS relocation cannot be used with `%s'"), insn_name (&i.tm));
-	    return;
+	    for (unsigned int k = 0; k < ARRAY_SIZE (gotrel); k++)
+	      {
+		if (gotrel[k].rel[object_64bit] == i.reloc[j])
+		  {
+		    as_bad (_("@%s operator cannot be used with `%s'"),
+			  gotrel[k].str, insn_name (&i.tm));
+		    return;
+		  }
+	      }
+	    abort ();
 	  default:
 	    break;
 	  }
@@ -8024,13 +8121,19 @@ check_VecOperands (const insn_template *t)
 	  return 1;
 	}
 
-      /* Non-EVEX.{LIG,512} forms need to have a ZMM register as at least one
-	 operand.  There's no need to check all operands, though: Either of the
+      /* Non-EVEX.{LIG,512,256} forms need to have a ZMM or YMM register as at
+	 least one operand.  For YMM register or EVEX256, we will need AVX10.2
+	 enabled.  There's no need to check all operands, though: Either of the
 	 last two operands will be of the right size in all relevant templates.  */
       if (t->opcode_modifier.evex != EVEXLIG
 	  && t->opcode_modifier.evex != EVEX512
+	  && (t->opcode_modifier.evex != EVEX256
+	      || !cpu_arch_flags.bitfield.cpuavx10_2)
 	  && !i.types[t->operands - 1].bitfield.zmmword
-	  && !i.types[t->operands - 2].bitfield.zmmword)
+	  && !i.types[t->operands - 2].bitfield.zmmword
+	  && ((!i.types[t->operands - 1].bitfield.ymmword
+	       && !i.types[t->operands - 2].bitfield.ymmword)
+	      || !cpu_arch_flags.bitfield.cpuavx10_2))
 	{
 	  i.error = operand_size_mismatch;
 	  return 1;
@@ -12326,95 +12429,6 @@ lex_got (enum bfd_reloc_code_real *rel,
      we don't yet know the operand size (this will be set by insn
      matching).  Hence we record the word32 relocation here,
      and adjust the reloc according to the real size in reloc().  */
-  static const struct
-  {
-    const char *str;
-    int len;
-    const enum bfd_reloc_code_real rel[2];
-    const i386_operand_type types64;
-    bool need_GOT_symbol;
-  }
-    gotrel[] =
-  {
-
-#define OPERAND_TYPE_IMM32_32S_DISP32 { .bitfield = \
-  { .imm32 = 1, .imm32s = 1, .disp32 = 1 } }
-#define OPERAND_TYPE_IMM32_32S_64_DISP32 { .bitfield = \
-  { .imm32 = 1, .imm32s = 1, .imm64 = 1, .disp32 = 1 } }
-#define OPERAND_TYPE_IMM32_32S_64_DISP32_64 { .bitfield = \
-  { .imm32 = 1, .imm32s = 1, .imm64 = 1, .disp32 = 1, .disp64 = 1 } }
-#define OPERAND_TYPE_IMM64_DISP64 { .bitfield = \
-  { .imm64 = 1, .disp64 = 1 } }
-
-#ifndef TE_PE
-#if defined (OBJ_ELF) || defined (OBJ_MAYBE_ELF)
-    { STRING_COMMA_LEN ("SIZE"),      { BFD_RELOC_SIZE32,
-					BFD_RELOC_SIZE32 },
-      { .bitfield = { .imm32 = 1, .imm64 = 1 } }, false },
-#endif
-    { STRING_COMMA_LEN ("PLTOFF"),   { _dummy_first_bfd_reloc_code_real,
-				       BFD_RELOC_X86_64_PLTOFF64 },
-      { .bitfield = { .imm64 = 1 } }, true },
-    { STRING_COMMA_LEN ("PLT"),      { BFD_RELOC_386_PLT32,
-				       BFD_RELOC_X86_64_PLT32    },
-      OPERAND_TYPE_IMM32_32S_DISP32, false },
-    { STRING_COMMA_LEN ("GOTPLT"),   { _dummy_first_bfd_reloc_code_real,
-				       BFD_RELOC_X86_64_GOTPLT64 },
-      OPERAND_TYPE_IMM64_DISP64, true },
-    { STRING_COMMA_LEN ("GOTOFF"),   { BFD_RELOC_386_GOTOFF,
-				       BFD_RELOC_X86_64_GOTOFF64 },
-      OPERAND_TYPE_IMM64_DISP64, true },
-    { STRING_COMMA_LEN ("GOTPCREL"), { _dummy_first_bfd_reloc_code_real,
-				       BFD_RELOC_X86_64_GOTPCREL },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-    { STRING_COMMA_LEN ("TLSGD"),    { BFD_RELOC_386_TLS_GD,
-				       BFD_RELOC_X86_64_TLSGD    },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-    { STRING_COMMA_LEN ("TLSLDM"),   { BFD_RELOC_386_TLS_LDM,
-				       _dummy_first_bfd_reloc_code_real },
-      OPERAND_TYPE_NONE, true },
-    { STRING_COMMA_LEN ("TLSLD"),    { _dummy_first_bfd_reloc_code_real,
-				       BFD_RELOC_X86_64_TLSLD    },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-    { STRING_COMMA_LEN ("GOTTPOFF"), { BFD_RELOC_386_TLS_IE_32,
-				       BFD_RELOC_X86_64_GOTTPOFF },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-    { STRING_COMMA_LEN ("TPOFF"),    { BFD_RELOC_386_TLS_LE_32,
-				       BFD_RELOC_X86_64_TPOFF32  },
-      OPERAND_TYPE_IMM32_32S_64_DISP32_64, true },
-    { STRING_COMMA_LEN ("NTPOFF"),   { BFD_RELOC_386_TLS_LE,
-				       _dummy_first_bfd_reloc_code_real },
-      OPERAND_TYPE_NONE, true },
-    { STRING_COMMA_LEN ("DTPOFF"),   { BFD_RELOC_386_TLS_LDO_32,
-				       BFD_RELOC_X86_64_DTPOFF32 },
-      OPERAND_TYPE_IMM32_32S_64_DISP32_64, true },
-    { STRING_COMMA_LEN ("GOTNTPOFF"),{ BFD_RELOC_386_TLS_GOTIE,
-				       _dummy_first_bfd_reloc_code_real },
-      OPERAND_TYPE_NONE, true },
-    { STRING_COMMA_LEN ("INDNTPOFF"),{ BFD_RELOC_386_TLS_IE,
-				       _dummy_first_bfd_reloc_code_real },
-      OPERAND_TYPE_NONE, true },
-    { STRING_COMMA_LEN ("GOT"),      { BFD_RELOC_386_GOT32,
-				       BFD_RELOC_X86_64_GOT32    },
-      OPERAND_TYPE_IMM32_32S_64_DISP32, true },
-    { STRING_COMMA_LEN ("TLSDESC"),  { BFD_RELOC_386_TLS_GOTDESC,
-				       BFD_RELOC_X86_64_GOTPC32_TLSDESC },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-    { STRING_COMMA_LEN ("TLSCALL"),  { BFD_RELOC_386_TLS_DESC_CALL,
-				       BFD_RELOC_X86_64_TLSDESC_CALL },
-      OPERAND_TYPE_IMM32_32S_DISP32, true },
-#else /* TE_PE */
-    { STRING_COMMA_LEN ("SECREL32"), { BFD_RELOC_32_SECREL,
-				       BFD_RELOC_32_SECREL },
-      OPERAND_TYPE_IMM32_32S_64_DISP32_64, false },
-#endif
-
-#undef OPERAND_TYPE_IMM32_32S_DISP32
-#undef OPERAND_TYPE_IMM32_32S_64_DISP32
-#undef OPERAND_TYPE_IMM32_32S_64_DISP32_64
-#undef OPERAND_TYPE_IMM64_DISP64
-
-  };
   char *cp;
   unsigned int j;
 
@@ -13140,7 +13154,7 @@ s_insn (int dummy ATTRIBUTE_UNUSED)
 	      && flag_code == CODE_64BIT
 	      && i.types[j].bitfield.class == Reg
 	      && i.types[j].bitfield.byte
-	      && !(i.op[j].regs->reg_flags & RegRex64)
+	      && !(i.op[j].regs->reg_flags & (RegRex | RegRex2 | RegRex64))
 	      && i.op[j].regs->reg_num > 3)
 	    as_bad (_("can't encode register '%s%s' with VEX/XOP/EVEX"),
 		    register_prefix, i.op[j].regs->reg_name);

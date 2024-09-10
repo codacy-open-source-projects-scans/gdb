@@ -1702,6 +1702,16 @@ if { [tcl_version_at_least 8 6] == 0 } {
 
 	return $res
     }
+
+    # ::tcl_platform(pathSeparator) was added in 8.6.
+    switch $::tcl_platform(platform) {
+	windows {
+	    set ::tcl_platform(pathSeparator) ;
+	}
+	default {
+	    set ::tcl_platform(pathSeparator) :
+	}
+    }
 }
 
 if { [tcl_version_at_least 8 6 2] == 0 } {
@@ -5633,10 +5643,11 @@ proc gdb_compile {source dest type options} {
     }
 
     # If the 'build-id' option is used, then ensure that we generate a
-    # build-id.  GCC does this by default, but Clang does not, so
-    # enable it now.
-    if {[lsearch -exact $options build-id] > 0
-	&& [test_compiler_info "clang-*"]} {
+    # build-id.  It is possible that the compiler is configured to do
+    # so automatically, but at least for GCC the configure option
+    # --enable-linker-build-id is not enabled by default.
+    # So to be sure, enable it explicitly.
+    if {[lsearch -exact $options build-id] > 0} {
 	lappend new_options "ldflags=-Wl,--build-id"
     }
 
@@ -8305,14 +8316,17 @@ proc get_build_id { filename } {
 
 # Return the build-id hex string (usually 160 bits as 40 hex characters)
 # converted to the form: .build-id/ab/cdef1234...89.debug
+#
+# The '.debug' suffix can be changed by passing the SUFFIX argument.
+#
 # Return "" if no build-id found.
-proc build_id_debug_filename_get { filename } {
+proc build_id_debug_filename_get { filename {suffix ".debug"} } {
     set data [get_build_id $filename]
     if { $data == "" } {
 	return ""
     }
     regsub {^..} $data {\0/} data
-    return ".build-id/${data}.debug"
+    return ".build-id/${data}${suffix}"
 }
 
 # DEST should be a file compiled with debug information.  This proc

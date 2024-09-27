@@ -3,7 +3,7 @@
 #source: pr23658-1c.s
 #source: pr23658-1d.s
 #source: start.s
-#ld: --build-id
+#ld: --build-id --no-rosegment
 #readelf: -l --wide
 # Since generic linker targets don't place SHT_NOTE sections as orphan,
 # SHT_NOTE sections aren't grouped nor sorted.

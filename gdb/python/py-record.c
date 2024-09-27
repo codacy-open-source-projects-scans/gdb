@@ -653,11 +653,11 @@ gdbpy_initialize_record (void)
   recpy_aux_type.tp_richcompare = recpy_element_richcompare;
   recpy_aux_type.tp_hash = recpy_element_hash;
 
-  if (PyType_Ready (&recpy_record_type) < 0
-      || PyType_Ready (&recpy_insn_type) < 0
-      || PyType_Ready (&recpy_func_type) < 0
-      || PyType_Ready (&recpy_gap_type) < 0
-      || PyType_Ready (&recpy_aux_type) < 0)
+  if (gdbpy_type_ready (&recpy_record_type) < 0
+      || gdbpy_type_ready (&recpy_insn_type) < 0
+      || gdbpy_type_ready (&recpy_func_type) < 0
+      || gdbpy_type_ready (&recpy_gap_type) < 0
+      || gdbpy_type_ready (&recpy_aux_type) < 0)
     return -1;
   else
     return 0;
@@ -681,7 +681,7 @@ gdbpy_start_recording (PyObject *self, PyObject *args)
     }
   catch (const gdb_exception &except)
     {
-      GDB_PY_HANDLE_EXCEPTION (except);
+      return gdbpy_handle_gdb_exception (nullptr, except);
     }
 }
 
@@ -713,7 +713,7 @@ gdbpy_stop_recording (PyObject *self, PyObject *args)
     }
   catch (const gdb_exception &except)
     {
-      GDB_PY_HANDLE_EXCEPTION (except);
+      return gdbpy_handle_gdb_exception (nullptr, except);
     }
 
   Py_RETURN_NONE;

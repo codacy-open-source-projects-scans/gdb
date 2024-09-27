@@ -1559,7 +1559,7 @@ proc gdb_test { args } {
     global gdb_prompt
     upvar timeout timeout
 
-    parse_args {
+    parse_some_args {
 	{prompt ""}
 	{no-prompt-anchor}
 	{lbl}
@@ -1567,7 +1567,8 @@ proc gdb_test { args } {
 	{nonl}
     }
 
-    lassign $args command pattern message question response
+    set args [lassign $args command pattern message question response]
+    check_no_args_left
 
     # Can't have a question without a response.
     if { $question != "" && $response == "" || [llength $args] > 5 } {
@@ -1741,13 +1742,14 @@ if { [tcl_version_at_least 8 6 2] == 0 } {
 proc gdb_test_no_output { args } {
     global gdb_prompt
 
-    parse_args {
+    parse_some_args {
 	{prompt ""}
 	{no-prompt-anchor}
 	{nopass}
     }
 
-    lassign $args command message
+    set args [lassign $args command message]
+    check_no_args_left
 
     set prompt [fill_in_default_prompt $prompt [expr !${no-prompt-anchor}]]
 
@@ -1789,7 +1791,7 @@ proc gdb_test_no_output { args } {
 proc gdb_test_sequence { args } {
     global gdb_prompt
 
-    parse_args {{prompt ""}}
+    parse_some_args {{prompt ""}}
 
     if { $prompt == "" } {
 	set prompt "$gdb_prompt $"
@@ -4433,6 +4435,62 @@ gdb_caching_proc allow_btrace_ptw_tests {} {
 
     verbose "$me:  returning $allow_btrace_ptw_tests" 2
     return $allow_btrace_ptw_tests
+}
+
+
+# Run a test on the target to see if GDB supports event tracing on it.
+# Return 1 if so, 0 if it does not.
+
+gdb_caching_proc allow_btrace_pt_event_trace_tests {} {
+    global srcdir subdir
+    set me "allow_btrace_pt_event_trace_tests"
+    require allow_btrace_pt_tests
+
+    set src {
+	int
+	main ()
+	{
+	  return 0;
+	}
+    }
+
+    if {![gdb_simple_compile $me $src executable]} {
+	return 0
+    }
+
+    gdb_exit
+    gdb_start
+    gdb_reinitialize_dir $srcdir/$subdir
+    gdb_load "$obj"
+    if ![runto_main] {
+	return 0
+    }
+
+    set allow_event_trace_tests 0
+    gdb_test_multiple "set record btrace pt event-tracing on" "$me:  first check" {
+	-re -wrap "Event-tracing is not supported by GDB." {
+	}
+	-re -wrap "" {
+	    set allow_event_trace_tests 1
+	}
+    }
+
+    if { $allow_event_trace_tests == 1 } {
+	gdb_test_multiple "record btrace pt" "$me:  check OS support" {
+	    -re -wrap "^" {
+	    }
+	    -re -wrap "" {
+		verbose -log "$me:  Target doesn't support event tracing."
+		set allow_event_trace_tests 0
+	    }
+	}
+    }
+
+    gdb_exit
+    remote_file build delete $obj
+
+    verbose "$me:  returning $allow_event_trace_tests" 2
+    return $allow_event_trace_tests
 }
 
 
@@ -9351,11 +9409,30 @@ proc parse_list { level listname argset prefix eval } {
 # Search the caller's args variable and set variables according to the list of
 # valid options described by ARGSET.
 
-proc parse_args { argset } {
+proc parse_some_args { argset } {
     parse_list 2 args $argset "-" false
 
     # The remaining args should be checked to see that they match the
     # number of items expected to be passed into the procedure...
+}
+
+# Check that the caller's args variable is empty.
+
+proc check_no_args_left {} {
+    # Require no remaining args.
+    upvar 1 args args
+    if { [llength $args] != 0 } {
+	error "Args left unparsed: $args"
+    }
+}
+
+# As parse_some_args, but check that no args remain after parsing.
+
+proc parse_args { argset } {
+    uplevel parse_some_args [list $argset]
+
+    # Require no remaining args.
+    uplevel check_no_args_left
 }
 
 # Process the caller's options variable and set variables according
@@ -9736,18 +9813,6 @@ gdb_caching_proc supports_statement_frontiers {} {
 	    return 0;
 	}
     } executable "additional_flags=-gstatement-frontiers"]
-}
-
-# Return 1 if compiler supports -mmpx -fcheck-pointer-bounds.  Otherwise,
-# return 0.
-
-gdb_caching_proc supports_mpx_check_pointer_bounds {} {
-    set flags "additional_flags=-mmpx additional_flags=-fcheck-pointer-bounds"
-    return [gdb_can_simple_compile supports_mpx_check_pointer_bounds {
-	int main () {
-	    return 0;
-	}
-    } executable $flags]
 }
 
 # Return 1 if compiler supports -fcf-protection=.  Otherwise,
@@ -10176,83 +10241,6 @@ gdb_caching_proc supports_gnuc {} {
 	#endif
     }
     return [gdb_simple_compile $me $src object ""]
-}
-
-# Return 1 if target supports mpx, otherwise return 0.
-gdb_caching_proc have_mpx {} {
-    global srcdir
-
-    set me "have_mpx"
-    if { ![istarget "i?86-*-*"] && ![istarget "x86_64-*-*"] } {
-        verbose "$me: target does not support mpx, returning 0" 2
-        return 0
-    }
-
-    # Compile a test program.
-    set src {
-       #include "nat/x86-cpuid.h"
-
-        int main() {
-	  unsigned int eax, ebx, ecx, edx;
-
-	  if (!__get_cpuid (1, &eax, &ebx, &ecx, &edx))
-	    return 0;
-
-	  if ((ecx & bit_OSXSAVE) == bit_OSXSAVE)
-	    {
-	      if (__get_cpuid_max (0, (void *)0) < 7)
-		return 0;
-
-		__cpuid_count (7, 0, eax, ebx, ecx, edx);
-
-		if ((ebx & bit_MPX) == bit_MPX)
-		  return 1;
-
-	    }
-	  return 0;
-	}
-    }
-    set compile_flags "incdir=${srcdir}/.."
-    if {![gdb_simple_compile $me $src executable $compile_flags]} {
-        return 0
-    }
-
-    set target_obj [gdb_remote_download target $obj]
-    set result [remote_exec target $target_obj]
-    set status [lindex $result 0]
-    set output [lindex $result 1]
-    if { $output != "" } {
-	set status 0
-    }
-
-    remote_file build delete $obj
-
-    if { $status == 0 } {
-	verbose "$me:  returning $status" 2
-	return $status
-    }
-
-    # Compile program with -mmpx -fcheck-pointer-bounds, try to trigger
-    # 'No MPX support', in other words, see if kernel supports mpx.
-    set src { int main (void) { return 0; } }
-    set comp_flags {}
-    append comp_flags " additional_flags=-mmpx"
-    append comp_flags " additional_flags=-fcheck-pointer-bounds"
-    if {![gdb_simple_compile $me-2 $src executable $comp_flags]} {
-        return 0
-    }
-
-    set target_obj [gdb_remote_download target $obj]
-    set result [remote_exec target $target_obj]
-    set status [lindex $result 0]
-    set output [lindex $result 1]
-    set status [expr ($status == 0) \
-		    && ![regexp "^No MPX support\r?\n" $output]]
-
-    remote_file build delete $obj
-
-    verbose "$me:  returning $status" 2
-    return $status
 }
 
 # Return 1 if target supports avx, otherwise return 0.

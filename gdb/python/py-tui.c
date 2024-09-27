@@ -425,7 +425,7 @@ gdbpy_register_tui_window (PyObject *self, PyObject *args, PyObject *kw)
     }
   catch (const gdb_exception &except)
     {
-      GDB_PY_HANDLE_EXCEPTION (except);
+      return gdbpy_handle_gdb_exception (nullptr, except);
     }
 
   Py_RETURN_NONE;
@@ -625,7 +625,7 @@ gdbpy_initialize_tui ()
 {
 #ifdef TUI
   gdbpy_tui_window_object_type.tp_new = PyType_GenericNew;
-  if (PyType_Ready (&gdbpy_tui_window_object_type) < 0)
+  if (gdbpy_type_ready (&gdbpy_tui_window_object_type) < 0)
     return -1;
 #endif	/* TUI */
 

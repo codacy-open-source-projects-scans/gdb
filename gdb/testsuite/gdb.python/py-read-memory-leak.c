@@ -1,6 +1,6 @@
-/* Copyright (C) 2015-2024 Free Software Foundation, Inc.
+/* This testcase is part of GDB, the GNU debugger.
 
-   Contributed by Intel Corp. <walfred.tedeschi@intel.com>
+   Copyright 2014-2024 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,22 +15,13 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#define OUR_SIZE    5
-
-void
-upper (int * p, int len)
+static struct x
 {
-  int value;
-  len++;			/* b0-size-test.  */
-  value = *(p + len);
-}
+  char unsigned u[4096];
+} x, *px = &x;
 
 int
 main (void)
 {
-  int a = 0;			/* Dummy variable for debugging purposes.  */
-  int sx[OUR_SIZE];
-  a++;				/* register-eval.  */
-  upper (sx, OUR_SIZE + 2);
-  return sx[1];
+  return 0;
 }

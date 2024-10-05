@@ -1397,6 +1397,7 @@ read_a_source_file (const char *name)
 	  if (next_char && strchr (line_comment_chars, next_char))
 	    {
 	      /* Its a comment, ignore it.  Note: Not ignore_rest_of_line ()!  */
+	      s = input_line_pointer;
 	      while (s <= buffer_limit)
 		if (is_end_of_line (*s++))
 		  break;
@@ -3289,9 +3290,8 @@ assign_symbol (char *name, int mode)
 	  symbol_set_frag (symbolP, dummy_frag);
 	}
 #endif
-#if defined (OBJ_COFF) && !defined (TE_PE)
-      /* "set" symbols are local unless otherwise specified.  */
-      SF_SET_LOCAL (symbolP);
+#ifdef obj_assign_symbol
+      obj_assign_symbol (symbolP);
 #endif
     }
 

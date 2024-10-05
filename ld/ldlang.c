@@ -4895,9 +4895,6 @@ ld_is_local_symbol (asymbol * sym)
   if (name == NULL || *name == 0)
     return false;
 
-  if (strcmp (name, "(null)") == 0)
-    return false;
-
   /* Skip .Lxxx and such like.  */
   if (bfd_is_local_label (link_info.output_bfd, sym))
     return false;
@@ -9012,7 +9009,7 @@ lang_record_phdrs (void)
 		continue;
 
 	      /* Don't add orphans to PT_INTERP header.  */
-	      if (l->type == 3)
+	      if (l->type == PT_INTERP)
 		continue;
 
 	      if (last == NULL)

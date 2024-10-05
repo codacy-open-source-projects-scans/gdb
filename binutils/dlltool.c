@@ -402,11 +402,7 @@ static int dll_name_set_by_exp_name;
 static int add_indirect = 0;
 static int add_underscore = 0;
 static int add_stdcall_underscore = 0;
-/* This variable can hold three different values. The value
-   -1 (default) means that default underscoring should be used,
-   zero means that no underscoring should be done, and one
-   indicates that underscoring should be done.  */
-static int leading_underscore = -1;
+static char *leading_underscore = NULL;
 static int dontdeltemps = 0;
 
 /* TRUE if we should export all symbols.  Otherwise, we only export
@@ -505,7 +501,7 @@ static char *tmp_stub_buf;
 #define TMP_HEAD_O	dlltmp (&tmp_head_o_buf, "%sh.o")
 #define TMP_TAIL_S	dlltmp (&tmp_tail_s_buf, "%st.s")
 #define TMP_TAIL_O	dlltmp (&tmp_tail_o_buf, "%st.o")
-#define TMP_STUB	dlltmp (&tmp_stub_buf, "%ss")
+#define TMP_STUB	dlltmp (&tmp_stub_buf, "%ssnnnnn.o")
 
 /* This bit of assembly does jmp * ....  */
 static const unsigned char i386_jtab[] =
@@ -907,33 +903,12 @@ rvabefore (int mach)
 }
 
 static const char *
-asm_prefix (int mach, const char *name)
+asm_prefix (const char *name)
 {
-  switch (mach)
-    {
-    case MARM:
-    case MTHUMB:
-    case MARM_INTERWORK:
-    case MMCORE_BE:
-    case MMCORE_LE:
-    case MMCORE_ELF:
-    case MMCORE_ELF_LE:
-    case MARM_WINCE:
-    case MAARCH64:
-      break;
-    case M386:
-    case MX86:
-      /* Symbol names starting with ? do not have a leading underscore. */
-      if ((name && *name == '?') || leading_underscore == 0)
-	break;
-      else
-	return "_";
-    default:
-      /* xgettext:c-format */
-      fatal (_("Internal error: Unknown machine type: %d"), mach);
-      break;
-    }
-  return "";
+  /* Symbol names starting with ? do not have a leading underscore.  */
+  if (name && *name == '?')
+    return "";
+  return leading_underscore;
 }
 
 #define ASM_BYTE		mtable[machine].how_byte
@@ -947,7 +922,7 @@ asm_prefix (int mach, const char *name)
 #define ASM_ALIGN_SHORT		mtable[machine].how_align_short
 #define ASM_RVA_BEFORE		rvabefore (machine)
 #define ASM_RVA_AFTER		rvaafter (machine)
-#define ASM_PREFIX(NAME)	asm_prefix (machine, (NAME))
+#define ASM_PREFIX(NAME)	asm_prefix (NAME)
 #define ASM_ALIGN_LONG  	mtable[machine].how_align_long
 #define HOW_BFD_READ_TARGET	0  /* Always default.  */
 #define HOW_BFD_WRITE_TARGET	mtable[machine].how_bfd_target
@@ -1500,7 +1475,7 @@ add_excludes (const char *new_excludes)
       if (*exclude_string == '@')
 	sprintf (new_exclude->string, "%s", exclude_string);
       else
-	sprintf (new_exclude->string, "%s%s", !leading_underscore ? "" : "_",
+	sprintf (new_exclude->string, "%s%s", leading_underscore,
 		 exclude_string);
       new_exclude->next = excludes;
       excludes = new_exclude;
@@ -1564,7 +1539,7 @@ filter_symbols (bfd *abfd, void *minisyms, long symcount, unsigned int size)
 	       || bfd_is_com_section (sym->section))
 	      && ! bfd_is_und_section (sym->section));
 
-      keep = keep && ! match_exclude (sym->name);
+      keep = keep && sym->name != NULL && !match_exclude (sym->name);
 
       if (keep)
 	{
@@ -2150,11 +2125,10 @@ gen_exp_file (void)
 	    if (create_compat_implib)
 	      fprintf (f, "\t%s\t__imp_%s\n", ASM_GLOBAL, exp->name);
 	    fprintf (f, "\t%s\t_imp_%s%s\n", ASM_GLOBAL,
-		     !leading_underscore ? "" : "_", exp->name);
+		     leading_underscore, exp->name);
 	    if (create_compat_implib)
 	      fprintf (f, "__imp_%s:\n", exp->name);
-	    fprintf (f, "_imp_%s%s:\n",
-		     !leading_underscore ? "" : "_", exp->name);
+	    fprintf (f, "_imp_%s%s:\n", leading_underscore, exp->name);
 	    fprintf (f, "\t%s\t%s\n", ASM_LONG, exp->name);
 	  }
     }
@@ -2365,26 +2339,11 @@ make_imp_label (const char *prefix, const char *name)
 static bfd *
 make_one_lib_file (export_type *exp, int i, int delay)
 {
-  bfd *      abfd;
-  asymbol *  exp_label;
-  asymbol *  iname = 0;
-  asymbol *  iname2;
-  asymbol *  iname_lab;
-  asymbol ** iname_lab_pp;
-  asymbol ** iname_pp;
-#ifndef EXTRA
-#define EXTRA    0
-#endif
-  asymbol *  ptrs[NSECS + 4 + EXTRA + 1];
-  flagword   applicable;
-  char *     outname = xmalloc (strlen (TMP_STUB) + 10);
-  int        oidx = 0;
+  char *outname = TMP_STUB;
+  size_t name_len = strlen (outname);
+  sprintf (outname + name_len - 7, "%05d.o", i);
 
-
-  sprintf (outname, "%s%05d.o", TMP_STUB, i);
-
-  abfd = bfd_openw (outname, HOW_BFD_WRITE_TARGET);
-
+  bfd *abfd = bfd_openw (outname, HOW_BFD_WRITE_TARGET);
   if (!abfd)
     /* xgettext:c-format */
     fatal (_("bfd_open failed open stub file: %s: %s"),
@@ -2401,9 +2360,13 @@ make_one_lib_file (export_type *exp, int i, int delay)
     bfd_set_private_flags (abfd, F_INTERWORK);
 #endif
 
-  applicable = bfd_applicable_section_flags (abfd);
-
   /* First make symbols for the sections.  */
+  flagword applicable = bfd_applicable_section_flags (abfd);
+#ifndef EXTRA
+#define EXTRA    0
+#endif
+  asymbol *ptrs[NSECS + 4 + EXTRA + 1];
+  int oidx = 0;
   for (i = 0; i < NSECS; i++)
     {
       sinfo *si = secdata + i;
@@ -2430,7 +2393,7 @@ make_one_lib_file (export_type *exp, int i, int delay)
 
   if (! exp->data)
     {
-      exp_label = bfd_make_empty_symbol (abfd);
+      asymbol *exp_label = bfd_make_empty_symbol (abfd);
       exp_label->name = make_imp_label ("", exp->name);
       exp_label->section = secdata[TEXT].sec;
       exp_label->flags = BSF_GLOBAL;
@@ -2446,6 +2409,7 @@ make_one_lib_file (export_type *exp, int i, int delay)
   /* Generate imp symbols with one underscore for Microsoft
      compatibility, and with two underscores for backward
      compatibility with old versions of cygwin.  */
+  asymbol *iname = NULL;
   if (create_compat_implib)
     {
       iname = bfd_make_empty_symbol (abfd);
@@ -2455,25 +2419,24 @@ make_one_lib_file (export_type *exp, int i, int delay)
       iname->value = 0;
     }
 
-  iname2 = bfd_make_empty_symbol (abfd);
+  asymbol *iname2 = bfd_make_empty_symbol (abfd);
   iname2->name = make_imp_label ("__imp_", exp->name);
   iname2->section = secdata[IDATA5].sec;
   iname2->flags = BSF_GLOBAL;
   iname2->value = 0;
 
-  iname_lab = bfd_make_empty_symbol (abfd);
-
+  asymbol *iname_lab = bfd_make_empty_symbol (abfd);
   iname_lab->name = head_label;
   iname_lab->section = bfd_und_section_ptr;
   iname_lab->flags = 0;
   iname_lab->value = 0;
 
-  iname_pp = ptrs + oidx;
+  asymbol **iname_pp = ptrs + oidx;
   if (create_compat_implib)
     ptrs[oidx++] = iname;
   ptrs[oidx++] = iname2;
 
-  iname_lab_pp = ptrs + oidx;
+  asymbol **iname_lab_pp = ptrs + oidx;
   ptrs[oidx++] = iname_lab;
 
   ptrs[oidx] = 0;
@@ -3056,29 +3019,26 @@ gen_lib_file (int delay)
 
   if (dontdeltemps < 2)
     {
-      char *name;
-      size_t stub_len = strlen (TMP_STUB);
+      char *name = TMP_STUB;
+      size_t name_len = strlen (name);
 
-      name = xmalloc (stub_len + 10);
-      memcpy (name, TMP_STUB, stub_len);
       for (i = 0; (exp = d_exports_lexically[i]); i++)
 	{
 	  /* Don't delete non-existent stubs for PRIVATE entries.  */
 	  if (exp->private)
 	    continue;
-	  sprintf (name + stub_len, "%05d.o", i);
+	  sprintf (name + name_len - 7, "%05d.o", i);
 	  if (unlink (name) < 0)
 	    /* xgettext:c-format */
 	    non_fatal (_("cannot delete %s: %s"), name, strerror (errno));
 	  if (ext_prefix_alias)
 	    {
-	      sprintf (name + stub_len, "%05d.o", i + PREFIX_ALIAS_BASE);
+	      sprintf (name + name_len - 7, "%05d.o", i + PREFIX_ALIAS_BASE);
 	      if (unlink (name) < 0)
 		/* xgettext:c-format */
 		non_fatal (_("cannot delete %s: %s"), name, strerror (errno));
 	    }
 	}
-      free (name);
     }
 
   inform (_("Created lib file"));
@@ -3237,9 +3197,10 @@ identify_member_contains_symname (bfd  * abfd,
 
   for (i = 0; i < number_of_symbols; i++)
     {
-      if (strncmp (symbol_table[i]->name,
-		   search_data->symname,
-		   strlen (search_data->symname)) == 0)
+      if (symbol_table[i]->name != NULL
+	  && strncmp (symbol_table[i]->name,
+		      search_data->symname,
+		      strlen (search_data->symname)) == 0)
 	{
 	  search_data->found = true;
 	  break;
@@ -3888,10 +3849,10 @@ main (int ac, char **av)
 	  add_stdcall_underscore = 1;
 	  break;
 	case OPTION_NO_LEADING_UNDERSCORE:
-	  leading_underscore = 0;
+	  leading_underscore = "";
 	  break;
 	case OPTION_LEADING_UNDERSCORE:
-	  leading_underscore = 1;
+	  leading_underscore = "_";
 	  break;
 	case OPTION_IDENTIFY_STRICT:
 	  identify_strict = 1;
@@ -4022,12 +3983,18 @@ main (int ac, char **av)
 		    || strcmp (mname, "arm64") == 0);
 
   /* Check the default underscore */
-  int u = leading_underscore; /* Underscoring mode. -1 for use default.  */
-  if (u == -1)
-    bfd_get_target_info (mtable[machine].how_bfd_target, NULL,
-			 NULL, &u, NULL);
-  if (u != -1)
-    leading_underscore = u != 0;
+  if (leading_underscore == NULL)
+    {
+      int u;
+      static char underscore[2];
+      bfd_get_target_info (mtable[machine].how_bfd_target, NULL,
+			   NULL, &u, NULL);
+      if (u == -1)
+	u = 0;
+      underscore[0] = u;
+      underscore[1] = 0;
+      leading_underscore = underscore;
+    }
 
   if (!dll_name && exp_name)
     {
@@ -4069,7 +4036,7 @@ main (int ac, char **av)
     {
       /* If possible use a deterministic prefix.  */
       const char *input = imp_name ? imp_name : delayimp_name;
-      if (input && strlen (input) + 2 <= NAME_MAX)
+      if (input && strlen (input) + sizeof ("_snnnnn.o") - 1 <= NAME_MAX)
 	{
 	  tmp_prefix = xmalloc (strlen (input) + 2);
 	  sprintf (tmp_prefix, "%s_", input);

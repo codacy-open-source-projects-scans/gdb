@@ -722,7 +722,7 @@ iterate_over_symtabs (program_space *pspace, const char *name,
 				   callback))
 	return;
 
-  /* Same search rules as above apply here, but now we look thru the
+  /* Same search rules as above apply here, but now we look through the
      psymtabs.  */
   for (objfile *objfile : pspace->objfiles ())
     if (objfile->map_symtabs_matching_filename (name, real_path.get (),
@@ -2992,7 +2992,7 @@ find_pc_sect_compunit_symtab (CORE_ADDR pc, struct obj_section *section)
 					   section.  */
 	    }
 
-	  /* Cust is best found sofar, save it.  */
+	  /* Cust is best found so far, save it.  */
 	  best_cust = cust;
 	  best_cust_range = range;
 	}

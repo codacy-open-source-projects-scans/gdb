@@ -2277,8 +2277,6 @@ extern Elf_Internal_Sym *bfd_elf_get_elf_syms
   (bfd *, Elf_Internal_Shdr *, size_t, size_t, Elf_Internal_Sym *, void *,
    Elf_External_Sym_Shndx *);
 extern char * bfd_elf_get_str_section (bfd *, unsigned int);
-extern const char *bfd_elf_sym_name_raw
-  (bfd *, Elf_Internal_Shdr *, Elf_Internal_Sym *);
 extern const char *bfd_elf_sym_name
   (bfd *, Elf_Internal_Shdr *, Elf_Internal_Sym *, asection *);
 
@@ -2542,7 +2540,7 @@ extern long _bfd_elf_link_lookup_local_dynindx
 extern bool _bfd_elf_compute_section_file_positions
   (bfd *, struct bfd_link_info *);
 extern file_ptr _bfd_elf_assign_file_position_for_section
-  (Elf_Internal_Shdr *, file_ptr, bool);
+  (Elf_Internal_Shdr *, file_ptr, bool, unsigned char);
 extern bool _bfd_elf_modify_headers
   (bfd *, struct bfd_link_info *);
 

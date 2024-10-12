@@ -1578,10 +1578,20 @@ breakpoint_set_thread (struct breakpoint *b, int thread)
       /* If the program space has changed for this breakpoint, then
 	 re-evaluate it's locations.  */
       if (old_pspace != new_pspace)
-	breakpoint_re_set_one (b, new_pspace);
+	{
+	  /* The breakpoint is now associated with a completely different
+	     program space.  Discard all of the current locations and then
+	     re-set the breakpoint in the new program space, this will
+	     create the new locations.  */
+	  b->clear_locations ();
+	  breakpoint_re_set_one (b, new_pspace);
+	}
 
-      /* Let others know the breakpoint has changed.  */
-      notify_breakpoint_modified (b);
+      /* If the program space didn't change, or the breakpoint didn't
+	 acquire any new locations after the clear_locations call, then we
+	 need to notify of the breakpoint modification now.  */
+      if (old_pspace == new_pspace || !b->has_locations ())
+	notify_breakpoint_modified (b);
     }
 }
 
@@ -1625,9 +1635,20 @@ breakpoint_set_inferior (struct breakpoint *b, int inferior)
 	}
 
       if (old_pspace != new_pspace)
-	breakpoint_re_set_one (b, new_pspace);
+	{
+	  /* The breakpoint is now associated with a completely different
+	     program space.  Discard all of the current locations and then
+	     re-set the breakpoint in the new program space, this will
+	     create the new locations.  */
+	  b->clear_locations ();
+	  breakpoint_re_set_one (b, new_pspace);
+	}
 
-      notify_breakpoint_modified (b);
+      /* If the program space didn't change, or the breakpoint didn't
+	 acquire any new locations after the clear_locations call, then we
+	 need to notify of the breakpoint modification now.  */
+      if (old_pspace == new_pspace || !b->has_locations ())
+	notify_breakpoint_modified (b);
     }
 }
 
@@ -10459,45 +10480,6 @@ watch_command_1 (const char *arg, int accessflag, int from_tty,
      'wp_frame'.  */
   frame_id watchpoint_frame = get_frame_id (wp_frame);
 
-  /* If the expression is "local", then set up a "watchpoint scope"
-     breakpoint at the point where we've left the scope of the watchpoint
-     expression.  Create the scope breakpoint before the watchpoint, so
-     that we will encounter it first in bpstat_stop_status.  */
-  if (exp_valid_block != NULL && wp_frame != NULL)
-    {
-      frame_id caller_frame_id = frame_unwind_caller_id (wp_frame);
-
-      if (frame_id_p (caller_frame_id))
-	{
-	  gdbarch *caller_arch = frame_unwind_caller_arch (wp_frame);
-	  CORE_ADDR caller_pc = frame_unwind_caller_pc (wp_frame);
-
-	  scope_breakpoint
-	    = create_internal_breakpoint (caller_arch, caller_pc,
-					  bp_watchpoint_scope);
-
-	  /* create_internal_breakpoint could invalidate WP_FRAME.  */
-	  wp_frame = NULL;
-
-	  scope_breakpoint->enable_state = bp_enabled;
-
-	  /* Automatically delete the breakpoint when it hits.  */
-	  scope_breakpoint->disposition = disp_del;
-
-	  /* Only break in the proper frame (help with recursion).  */
-	  scope_breakpoint->frame_id = caller_frame_id;
-
-	  /* Set the address at which we will stop.  */
-	  bp_location &loc = scope_breakpoint->first_loc ();
-	  loc.gdbarch = caller_arch;
-	  loc.requested_address = caller_pc;
-	  loc.address
-	    = adjust_breakpoint_address (loc.gdbarch, loc.requested_address,
-					 scope_breakpoint->type,
-					 current_program_space);
-	}
-    }
-
   /* Now set up the breakpoint.  We create all watchpoints as hardware
      watchpoints here even if hardware watchpoints are turned off, a call
      to update_watchpoint later in this function will cause the type to
@@ -10568,14 +10550,6 @@ watch_command_1 (const char *arg, int accessflag, int from_tty,
       w->watchpoint_thread = null_ptid;
     }
 
-  if (scope_breakpoint != NULL)
-    {
-      /* The scope breakpoint is related to the watchpoint.  We will
-	 need to act on them together.  */
-      w->related_breakpoint = scope_breakpoint;
-      scope_breakpoint->related_breakpoint = w.get ();
-    }
-
   if (!just_location)
     value_free_to_mark (mark);
 
@@ -10583,7 +10557,60 @@ watch_command_1 (const char *arg, int accessflag, int from_tty,
      that should be inserted.  */
   update_watchpoint (w.get (), true /* reparse */);
 
+  /* If the expression is "local", then set up a "watchpoint scope"
+     breakpoint at the point where we've left the scope of the watchpoint
+     expression.  Create the scope breakpoint before the watchpoint, so
+     that we will encounter it first in bpstat_stop_status.  */
+  if (exp_valid_block != nullptr && wp_frame != nullptr)
+    {
+      frame_id caller_frame_id = frame_unwind_caller_id (wp_frame);
+
+      if (frame_id_p (caller_frame_id))
+	{
+	  gdbarch *caller_arch = frame_unwind_caller_arch (wp_frame);
+	  CORE_ADDR caller_pc = frame_unwind_caller_pc (wp_frame);
+
+	  scope_breakpoint
+	    = create_internal_breakpoint (caller_arch, caller_pc,
+					  bp_watchpoint_scope);
+
+	  /* create_internal_breakpoint could invalidate WP_FRAME.  */
+	  wp_frame = nullptr;
+
+	  scope_breakpoint->enable_state = bp_enabled;
+
+	  /* Automatically delete the breakpoint when it hits.  */
+	  scope_breakpoint->disposition = disp_del;
+
+	  /* Only break in the proper frame (help with recursion).  */
+	  scope_breakpoint->frame_id = caller_frame_id;
+
+	  /* Set the address at which we will stop.  */
+	  bp_location &loc = scope_breakpoint->first_loc ();
+	  loc.gdbarch = caller_arch;
+	  loc.requested_address = caller_pc;
+	  loc.address
+	    = adjust_breakpoint_address (loc.gdbarch, loc.requested_address,
+					 scope_breakpoint->type,
+					 current_program_space);
+	}
+  }
+
+  if (scope_breakpoint != nullptr)
+    {
+      /* The scope breakpoint is related to the watchpoint.  We will
+	 need to act on them together.  */
+      w->related_breakpoint = scope_breakpoint;
+      scope_breakpoint->related_breakpoint = w.get ();
+    }
+
+  /* Verify that the scope breakpoint comes before the watchpoint in the
+     breakpoint chain.  */
+  gdb_assert (scope_breakpoint == nullptr
+	      || &breakpoint_chain.back () == scope_breakpoint);
+  watchpoint *watchpoint_ptr = w.get ();
   install_breakpoint (internal, std::move (w), 1);
+  gdb_assert (&breakpoint_chain.back () == watchpoint_ptr);
 }
 
 /* Return count of debug registers needed to watch the given expression.
@@ -11077,7 +11104,7 @@ clear_command (const char *arg, int from_tty)
 	}
     }
 
-  /* Now go thru the 'found' chain and delete them.  */
+  /* Now go through the 'found' chain and delete them.  */
   if (found.empty ())
     {
       if (arg)
@@ -12943,31 +12970,11 @@ update_breakpoint_locations (code_breakpoint *b,
      all locations are in the same shared library, that was unloaded.
      We'd like to retain the location, so that when the library is
      loaded again, we don't loose the enabled/disabled status of the
-     individual locations.
-
-     Thread specific breakpoints will also trigger this case if the thread
-     is changed to a different program space, and all of the old locations
-     go out of scope.  In this case we do (currently) discard the old
-     locations -- we assume the change in thread is permanent and the old
-     locations will never come back into scope.  */
+     individual locations.  */
   if (all_locations_are_pending (b, filter_pspace) && sals.empty ())
-    {
-      if (b->thread != -1)
-	b->clear_locations ();
-      return;
-    }
+    return;
 
   bp_location_list existing_locations = b->steal_locations (filter_pspace);
-
-  /* If this is a thread-specific breakpoint then any locations left on the
-     breakpoint are for a program space in which the thread of interest
-     does not operate.  This can happen when the user changes the thread of
-     a thread-specific breakpoint.
-
-     We assume that the change in thread is permanent, and that the old
-     locations will never be used again, so discard them now.  */
-  if (b->thread != -1)
-    b->clear_locations ();
 
   for (const auto &sal : sals)
     {

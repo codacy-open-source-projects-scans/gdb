@@ -1219,6 +1219,7 @@ static const arch_entry cpu_arch[] =
   SUBARCH (user_msr, USER_MSR, USER_MSR, false),
   SUBARCH (apx_f, APX_F, APX_F, false),
   VECARCH (avx10.2, AVX10_2, ANY_AVX10_2, set),
+  SUBARCH (gmi, GMI, GMI, false),
 };
 
 #undef SUBARCH
@@ -6747,9 +6748,10 @@ x86_check_tls_relocation (enum bfd_reloc_code_real r_type)
 	  && i.tm.mnem_off != MN_add
 	  && i.tm.mnem_off != MN_mov)
 	return x86_tls_error_insn;
-      if (i.op[1].regs->reg_type.bitfield.class != Reg
-	  || i.op[0].regs->reg_type.bitfield.class
-	  || i.imm_operands)
+      if (i.imm_operands
+	  || i.disp_operands != 1
+	  || i.reg_operands != 1
+	  || i.types[1].bitfield.class != Reg)
 	return x86_tls_error_opcode;
       if (!i.base_reg)
 	return x86_tls_error_no_base_reg;
@@ -6769,9 +6771,10 @@ x86_check_tls_relocation (enum bfd_reloc_code_real r_type)
        */
       if (i.tm.mnem_off != MN_add && i.tm.mnem_off != MN_mov)
 	return x86_tls_error_insn;
-      if (i.op[1].regs->reg_type.bitfield.class != Reg
-	  || i.op[0].regs->reg_type.bitfield.class
-	  || i.imm_operands)
+      if (i.imm_operands
+	  || i.disp_operands != 1
+	  || i.reg_operands != 1
+	  || i.types[1].bitfield.class != Reg)
 	return x86_tls_error_opcode;
       if (i.base_reg || i.index_reg)
 	return x86_tls_error_require_no_base_index_reg;
@@ -6789,10 +6792,9 @@ x86_check_tls_relocation (enum bfd_reloc_code_real r_type)
        */
       if (i.tm.mnem_off != MN_add && i.tm.mnem_off != MN_mov)
 	return x86_tls_error_insn;
-      if (i.op[i.operands - 1].regs->reg_type.bitfield.class != Reg
-	  || (i.op[0].regs->reg_type.bitfield.class
-	      && i.tm.opcode_modifier.vexvvvv != VexVVVV_DST)
-	  || i.imm_operands)
+      if (i.imm_operands
+	  || i.disp_operands != 1
+	  || i.types[i.operands - 1].bitfield.class != Reg)
 	return x86_tls_error_opcode;
       if (!i.base_reg)
 	return x86_tls_error_no_base_reg;

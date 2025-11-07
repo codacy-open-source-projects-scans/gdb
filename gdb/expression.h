@@ -1,6 +1,6 @@
 /* Definitions for expressions stored in reversed prefix form, for GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (EXPRESSION_H)
-#define EXPRESSION_H 1
+#ifndef GDB_EXPRESSION_H
+#define GDB_EXPRESSION_H
 
 #include "gdbtypes.h"
 #include "symtab.h"
@@ -397,4 +397,4 @@ enum range_flag : unsigned
 
 DEF_ENUM_FLAGS_TYPE (enum range_flag, range_flags);
 
-#endif /* !defined (EXPRESSION_H) */
+#endif /* GDB_EXPRESSION_H */

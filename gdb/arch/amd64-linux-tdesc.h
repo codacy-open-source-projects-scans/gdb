@@ -1,6 +1,6 @@
 /*  Target description related code for GNU/Linux x86-64.
 
-   Copyright (C) 2024 Free Software Foundation, Inc.
+   Copyright (C) 2024-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,14 +17,15 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ARCH_AMD64_LINUX_TDESC_H
-#define ARCH_AMD64_LINUX_TDESC_H
+#ifndef GDB_ARCH_AMD64_LINUX_TDESC_H
+#define GDB_ARCH_AMD64_LINUX_TDESC_H
 
 struct target_desc;
 
-/* Return the AMD64 target descriptions corresponding to XCR0 and IS_X32.  */
+/* Return the AMD64 target descriptions corresponding to XSTATE_BV and
+   IS_X32.  */
 
-extern const target_desc *amd64_linux_read_description (uint64_t xcr0,
-							bool is_x32);
+extern const target_desc *amd64_linux_read_description
+  (uint64_t xstate_bv, bool is_x32);
 
-#endif /* ARCH_AMD64_LINUX_TDESC_H */
+#endif /* GDB_ARCH_AMD64_LINUX_TDESC_H */

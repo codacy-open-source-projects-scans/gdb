@@ -1,4 +1,4 @@
-/* Copyright 1992-2024 Free Software Foundation, Inc.
+/* Copyright 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -15,7 +15,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-/*  This test has two large memory areas buf_rw and buf_ro. 
+/*  This test has two large memory areas buf_rw and buf_ro.
 
     buf_rw is written to by the program while buf_ro is initialized at
     compile / load time.  Thus, when a core file is created, buf_rw's

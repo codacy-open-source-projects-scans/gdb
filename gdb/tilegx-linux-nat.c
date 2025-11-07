@@ -1,6 +1,6 @@
 /* Native-dependent code for GNU/Linux TILE-Gx.
 
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -72,7 +72,7 @@ static const int regmap[] =
   56, 58
 };
 
-/* Transfering the general-purpose registers between GDB, inferiors
+/* Transferring the general-purpose registers between GDB, inferiors
    and core files.  */
 
 /* Fill GDB's register array with the general-purpose register values
@@ -105,7 +105,7 @@ fill_gregset (const struct regcache* regcache,
       regcache->raw_collect (i, regp + regmap[i]);
 }
 
-/* Transfering floating-point registers between GDB, inferiors and cores.  */
+/* Transferring floating-point registers between GDB, inferiors and cores.  */
 
 /* Fill GDB's register array with the floating-point register values in
    *FPREGSETP.  */
@@ -163,9 +163,7 @@ tilegx_linux_nat_target::store_registers (struct regcache *regcache,
     perror_with_name (_("Couldn't write registers"));
 }
 
-void _initialize_tile_linux_nat ();
-void
-_initialize_tile_linux_nat ()
+INIT_GDB_FILE (tile_linux_nat)
 {
   linux_target = &the_tilegx_linux_nat_target;
   add_inf_child_target (&the_tilegx_linux_nat_target);

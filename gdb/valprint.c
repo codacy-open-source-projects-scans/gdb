@@ -1,6 +1,6 @@
 /* Print values for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -34,7 +34,6 @@
 #include "gdbsupport/gdb_obstack.h"
 #include "charset.h"
 #include "typeprint.h"
-#include <ctype.h>
 #include <algorithm>
 #include "gdbsupport/byte-vector.h"
 #include "cli/cli-option.h"
@@ -142,7 +141,7 @@ get_user_print_options (struct value_print_options *opts)
    pretty-formatting disabled.  */
 void
 get_no_prettyformat_print_options (struct value_print_options *opts)
-{  
+{
   *opts = user_print_options;
   opts->prettyformat = Val_no_prettyformat;
 }
@@ -490,6 +489,76 @@ generic_val_print_array (struct value *val,
       gdb_puts (decorations->array_start, stream);
       value_print_array_elements (val, stream, recurse, options, 0);
       gdb_puts (decorations->array_end, stream);
+    }
+  else
+    {
+      /* Array of unspecified length: treat like pointer to first elt.  */
+      print_unpacked_pointer (type, elttype, val->address (),
+			      stream, options);
+    }
+
+}
+
+/* generic_val_print helper for TYPE_CODE_STRING.  */
+
+static void
+generic_val_print_string (struct value *val,
+			  struct ui_file *stream, int recurse,
+			  const struct value_print_options *options,
+			  const struct generic_val_print_decorations
+			    *decorations)
+{
+  struct type *type = check_typedef (val->type ());
+  struct type *unresolved_elttype = type->target_type ();
+  struct type *elttype = check_typedef (unresolved_elttype);
+
+  if (type->length () > 0 && unresolved_elttype->length () > 0)
+    {
+      LONGEST low_bound, high_bound;
+
+      if (!get_array_bounds (type, &low_bound, &high_bound))
+	error (_("Could not determine the array high bound"));
+
+      const gdb_byte *valaddr = val->contents_for_printing ().data ();
+      int force_ellipses = 0;
+      enum bfd_endian byte_order = type_byte_order (type);
+      int eltlen, len;
+
+      eltlen = elttype->length ();
+      len = high_bound - low_bound + 1;
+
+      /* If requested, look for the first null char and only
+	 print elements up to it.  */
+      if (options->stop_print_at_null)
+	{
+	  unsigned int print_max_chars = get_print_max_chars (options);
+	  unsigned int temp_len;
+
+	  for (temp_len = 0;
+	      (temp_len < len
+	       && temp_len < print_max_chars
+	       && extract_unsigned_integer (valaddr + temp_len * eltlen,
+					    eltlen, byte_order) != 0);
+	      ++temp_len)
+	      ;
+
+	    /* Force printstr to print ellipses if
+	       we've printed the maximum characters and
+	       the next character is not \000.  */
+	    if (temp_len == print_max_chars && temp_len < len)
+	      {
+		ULONGEST ival
+		  = extract_unsigned_integer (valaddr + temp_len * eltlen,
+					      eltlen, byte_order);
+		if (ival != 0)
+		  force_ellipses = 1;
+	      }
+
+	    len = temp_len;
+	}
+
+	current_language->printstr (stream, unresolved_elttype, valaddr, len,
+				    nullptr, force_ellipses, options);
     }
   else
     {
@@ -930,6 +999,10 @@ generic_value_print (struct value *val, struct ui_file *stream, int recurse,
       generic_val_print_array (val, stream, recurse, options, decorations);
       break;
 
+    case TYPE_CODE_STRING:
+      generic_val_print_string (val, stream, recurse, options, decorations);
+      break;
+
     case TYPE_CODE_MEMBERPTR:
       generic_value_print_memberptr (val, stream, recurse, options,
 				     decorations);
@@ -1308,15 +1381,15 @@ value_print_scalar_formatted (struct value *val,
 }
 
 /* Print a number according to FORMAT which is one of d,u,x,o,b,h,w,g.
-   The raison d'etre of this function is to consolidate printing of 
-   LONG_LONG's into this one function.  The format chars b,h,w,g are 
+   The raison d'etre of this function is to consolidate printing of
+   LONG_LONG's into this one function.  The format chars b,h,w,g are
    from print_scalar_formatted().  Numbers are printed using C
    format.
 
-   USE_C_FORMAT means to use C format in all cases.  Without it, 
+   USE_C_FORMAT means to use C format in all cases.  Without it,
    'o' and 'x' format do not include the standard C radix prefix
-   (leading 0 or 0x). 
-   
+   (leading 0 or 0x).
+
    Hilfinger/2004-09-09: USE_C_FORMAT was originally called USE_LOCAL
    and was intended to request formatting according to the current
    language and would be used for most integers that GDB prints.  The
@@ -1353,7 +1426,7 @@ print_longest (struct ui_file *stream, int format, int use_c_format,
       val = int_string (val_long, 8, 0, 0, use_c_format); break;
     default:
       internal_error (_("failed internal consistency check"));
-    } 
+    }
   gdb_puts (val, stream);
 }
 
@@ -1918,14 +1991,14 @@ print_function_pointer_address (const struct value_print_options *options,
 
 /* Print on STREAM using the given OPTIONS the index for the element
    at INDEX of an array whose index type is INDEX_TYPE.  */
-    
-void  
+
+void
 maybe_print_array_index (struct type *index_type, LONGEST index,
 			 struct ui_file *stream,
 			 const struct value_print_options *options)
 {
   if (!options->print_array_indexes)
-    return; 
+    return;
 
   current_language->print_array_index (index_type, index, stream, options);
 }
@@ -2528,8 +2601,8 @@ print_converted_chars_to_obstack (struct obstack *obstack,
    omitted.  */
 
 void
-generic_printstr (struct ui_file *stream, struct type *type, 
-		  const gdb_byte *string, unsigned int length, 
+generic_printstr (struct ui_file *stream, struct type *type,
+		  const gdb_byte *string, unsigned int length,
 		  const char *encoding, int force_ellipses,
 		  int quote_char, int c_style_terminator,
 		  const struct value_print_options *options)
@@ -3120,9 +3193,7 @@ test_print_flags (gdbarch *arch)
 
 #endif
 
-void _initialize_valprint ();
-void
-_initialize_valprint ()
+INIT_GDB_FILE (valprint)
 {
 #if GDB_SELF_TEST
   selftests::register_test_foreach_arch ("print-flags", test_print_flags);

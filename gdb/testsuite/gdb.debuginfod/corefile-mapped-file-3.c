@@ -1,4 +1,4 @@
-/* Copyright 2024 Free Software Foundation, Inc.
+/* Copyright 2024-2025 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ main ()
   library_base_address
     = mmap (NULL, buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-  res = *ptr;	/* Undefined behaviour here.  */
+  res = *ptr;	/* Undefined behavior here.  */
 
   return 0;
 }

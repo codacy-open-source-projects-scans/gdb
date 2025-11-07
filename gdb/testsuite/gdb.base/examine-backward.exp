@@ -1,4 +1,4 @@
-# Copyright 2015-2024 Free Software Foundation, Inc.
+# Copyright 2015-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ if { [prepare_for_testing "failed to prepare for examine-backward" \
     return -1
 }
 
-if ![runto_main] {
+if {![runto_main]} {
     return -1
 }
 
@@ -357,7 +357,7 @@ with_test_prefix "backward disassemble general" {
         lappend disassmbly $instructions
     }
     for {set i 0} {$i < [llength $length_to_examine]} {incr i} {
-        set idx [expr [llength $length_to_examine] - $i - 1]
+        set idx [expr {[llength $length_to_examine] - $i - 1}]
         set len [lindex $length_to_examine $idx]
         set actual [capture_command_output "x/-${len}i" ""]
         set expected [lindex $disassmbly $idx]

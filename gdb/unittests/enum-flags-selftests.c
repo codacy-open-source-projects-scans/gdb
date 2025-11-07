@@ -1,6 +1,6 @@
 /* Self tests for enum-flags for GDB, the GNU debugger.
 
-   Copyright (C) 2016-2024 Free Software Foundation, Inc.
+   Copyright (C) 2016-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -234,33 +234,6 @@ CHECK_VALID (true,  UnsignedEnumFlag, ~UnsignedEnumFlag ())
 
 CHECK_VALID (true, EnumFlag, true ? EnumFlag () : RawEnum ())
 CHECK_VALID (true, EnumFlag, true ? RawEnum ()  : EnumFlag ())
-
-/* These are valid, but it's not a big deal since you won't be able to
-   assign the resulting integer to an enum or an enum_flags without a
-   cast.
-
-   The latter two tests are disabled on older GCCs because they
-   incorrectly fail with gcc 4.8 and 4.9 at least.  Running the test
-   outside a SFINAE context shows:
-
-    invalid user-defined conversion from ‘EF’ to ‘RE2’
-
-   They've been confirmed to compile/pass with gcc 5.3, gcc 7.1 and
-   clang 3.7.  */
-
-CHECK_VALID (true, int, true ? EnumFlag ()  : EnumFlag2 ())
-CHECK_VALID (true, int, true ? EnumFlag2 () : EnumFlag ())
-CHECK_VALID (true, int, true ? EnumFlag ()  : RawEnum2 ())
-CHECK_VALID (true, int, true ? RawEnum2 ()  : EnumFlag ())
-
-/* Same, but with an unsigned enum.  */
-
-using uns = unsigned int;
-
-CHECK_VALID (true, uns, true ? EnumFlag ()         : UnsignedEnumFlag ())
-CHECK_VALID (true, uns, true ? UnsignedEnumFlag () : EnumFlag ())
-CHECK_VALID (true, uns, true ? EnumFlag ()         : UnsignedRawEnum ())
-CHECK_VALID (true, uns, true ? UnsignedRawEnum ()  : EnumFlag ())
 
 /* Unfortunately this can't work due to the way C++ computes the
    return type of the ternary conditional operator.  int isn't
@@ -634,10 +607,7 @@ self_test ()
 } /* namespace enum_flags_tests */
 } /* namespace selftests */
 
-void _initialize_enum_flags_selftests ();
-
-void
-_initialize_enum_flags_selftests ()
+INIT_GDB_FILE (enum_flags_selftests)
 {
   selftests::register_test ("enum-flags",
 			    selftests::enum_flags_tests::self_test);

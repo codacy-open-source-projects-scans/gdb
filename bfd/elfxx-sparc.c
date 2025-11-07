@@ -1,5 +1,5 @@
 /* SPARC-specific support for ELF
-   Copyright (C) 2005-2024 Free Software Foundation, Inc.
+   Copyright (C) 2005-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -36,9 +36,6 @@
 
 /* In case we're on a 32-bit machine, construct a 64-bit "-1" value.  */
 #define MINUS_ONE (~ (bfd_vma) 0)
-
-#define ABI_64_P(abfd) \
-  (get_elf_backend_data (abfd)->s->elfclass == ELFCLASS64)
 
 /* The relocation "howto" table.  */
 
@@ -679,7 +676,7 @@ _bfd_sparc_elf_info_to_howto (bfd *abfd, arelent *cache_ptr,
 #define UNDEFINED_WEAK_RESOLVED_TO_ZERO(INFO, EH)		\
   ((EH)->elf.root.type == bfd_link_hash_undefweak		\
    && bfd_link_executable (INFO)				\
-   && (_bfd_sparc_elf_hash_table (INFO)->interp == NULL		\
+   && (_bfd_sparc_elf_hash_table (INFO)->elf.interp == NULL	\
        || !(INFO)->dynamic_undefined_weak			\
        || (EH)->has_non_got_reloc				\
        || !(EH)->has_got_reloc))
@@ -734,8 +731,8 @@ struct _bfd_sparc_elf_obj_tdata
 bool
 _bfd_sparc_elf_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd, sizeof (struct _bfd_sparc_elf_obj_tdata),
-				  SPARC_ELF_DATA);
+  return bfd_elf_allocate_object (abfd,
+				  sizeof (struct _bfd_sparc_elf_obj_tdata));
 }
 
 static void
@@ -1178,8 +1175,7 @@ _bfd_sparc_elf_link_hash_table_create (bfd *abfd)
     }
 
   if (!_bfd_elf_link_hash_table_init (&ret->elf, abfd, link_hash_newfunc,
-				      sizeof (struct _bfd_sparc_elf_link_hash_entry),
-				      SPARC_ELF_DATA))
+				      sizeof (struct _bfd_sparc_elf_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -1427,6 +1423,16 @@ _bfd_sparc_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	  h->plt.refcount += 1;
 	}
 
+      /* If a relocation refers to _GLOBAL_OFFSET_TABLE_, create the .got.  */
+      if (h != NULL
+	  && htab->elf.sgot == NULL
+	  && strcmp (h->root.root.string, "_GLOBAL_OFFSET_TABLE_") == 0)
+	{
+	  if (!_bfd_elf_create_got_section (htab->elf.dynobj, info))
+	    return false;
+	  BFD_ASSERT (h == htab->elf.hgot);
+	}
+
       /* Compatibility with old R_SPARC_REV32 reloc conflicting
 	 with R_SPARC_TLS_GD_HI22.  */
       if (! ABI_64_P (abfd) && ! checked_tlsgd)
@@ -1646,8 +1652,7 @@ _bfd_sparc_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	  if (h != NULL)
 	    h->non_got_ref = 1;
 
-	  if (h != NULL
-	      && strcmp (h->root.root.string, "_GLOBAL_OFFSET_TABLE_") == 0)
+	  if (h != NULL && h == htab->elf.hgot)
 	    break;
 	  /* Fall through.  */
 
@@ -1821,12 +1826,12 @@ _bfd_sparc_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 asection *
 _bfd_sparc_elf_gc_mark_hook (asection *sec,
 			     struct bfd_link_info *info,
-			     Elf_Internal_Rela *rel,
+			     struct elf_reloc_cookie *cookie,
 			     struct elf_link_hash_entry *h,
-			     Elf_Internal_Sym *sym)
+			     unsigned int symndx)
 {
   if (h != NULL)
-    switch (SPARC_ELF_R_TYPE (rel->r_info))
+    switch (SPARC_ELF_R_TYPE (cookie->rel->r_info))
       {
       case R_SPARC_GNU_VTINHERIT:
       case R_SPARC_GNU_VTENTRY:
@@ -1835,7 +1840,7 @@ _bfd_sparc_elf_gc_mark_hook (asection *sec,
 
   if (!bfd_link_executable (info))
     {
-      switch (SPARC_ELF_R_TYPE (rel->r_info))
+      switch (SPARC_ELF_R_TYPE (cookie->rel->r_info))
 	{
 	case R_SPARC_TLS_GD_CALL:
 	case R_SPARC_TLS_LDM_CALL:
@@ -1850,11 +1855,11 @@ _bfd_sparc_elf_gc_mark_hook (asection *sec,
 	  h->mark = 1;
 	  if (h->is_weakalias)
 	    weakdef (h)->mark = 1;
-	  sym = NULL;
+	  symndx = 0;
 	}
     }
 
-  return _bfd_elf_gc_mark_hook (sec, info, rel, h, sym);
+  return _bfd_elf_gc_mark_hook (sec, info, cookie, h, symndx);
 }
 
 static Elf_Internal_Rela *
@@ -2400,11 +2405,11 @@ _bfd_sparc_elf_late_size_sections (bfd *output_bfd,
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  s = bfd_get_linker_section (dynobj, ".interp");
+	  s = elf_hash_table (info)->interp;
 	  BFD_ASSERT (s != NULL);
 	  s->size = htab->dynamic_interpreter_size;
 	  s->contents = (unsigned char *) htab->dynamic_interpreter;
-	  htab->interp = s;
+	  s->alloced = 1;
 	}
     }
 
@@ -2580,6 +2585,7 @@ _bfd_sparc_elf_late_size_sections (bfd *output_bfd,
       s->contents = (bfd_byte *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   if (elf_hash_table (info)->dynamic_sections_created)
@@ -2660,16 +2666,12 @@ _bfd_sparc_elf_late_size_sections (bfd *output_bfd,
 bool
 _bfd_sparc_elf_new_section_hook (bfd *abfd, asection *sec)
 {
-  if (!sec->used_by_bfd)
-    {
-      struct _bfd_sparc_elf_section_data *sdata;
-      size_t amt = sizeof (*sdata);
+  struct _bfd_sparc_elf_section_data *sdata;
 
-      sdata = bfd_zalloc (abfd, amt);
-      if (sdata == NULL)
-	return false;
-      sec->used_by_bfd = sdata;
-    }
+  sdata = bfd_zalloc (abfd, sizeof (*sdata));
+  if (sdata == NULL)
+    return false;
+  sec->used_by_bfd = sdata;
 
   return _bfd_elf_new_section_hook (abfd, sec);
 }
@@ -2681,8 +2683,8 @@ _bfd_sparc_elf_relax_section (bfd *abfd ATTRIBUTE_UNUSED,
 			      bool *again)
 {
   if (bfd_link_relocatable (link_info))
-    (*link_info->callbacks->einfo)
-      (_("%P%F: --relax and -r may not be used together\n"));
+    link_info->callbacks->fatal
+      (_("%P: --relax and -r may not be used together\n"));
 
   *again = false;
   sec_do_relax (section) = 1;
@@ -2886,7 +2888,8 @@ _bfd_sparc_elf_relocate_section (bfd *output_bfd,
 
       if (sec != NULL && discarded_section (sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_SPARC_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;
@@ -3255,8 +3258,7 @@ _bfd_sparc_elf_relocate_section (bfd *output_bfd,
 	case R_SPARC_PC_HH22:
 	case R_SPARC_PC_HM10:
 	case R_SPARC_PC_LM22:
-	  if (h != NULL
-	      && strcmp (h->root.root.string, "_GLOBAL_OFFSET_TABLE_") == 0)
+	  if (h != NULL && h == htab->elf.hgot)
 	    break;
 	  /* Fall through.  */
 	case R_SPARC_DISP8:

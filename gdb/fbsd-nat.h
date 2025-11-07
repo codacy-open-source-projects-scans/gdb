@@ -1,6 +1,6 @@
 /* Native-dependent code for FreeBSD.
 
-   Copyright (C) 2004-2024 Free Software Foundation, Inc.
+   Copyright (C) 2004-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef FBSD_NAT_H
-#define FBSD_NAT_H
+#ifndef GDB_FBSD_NAT_H
+#define GDB_FBSD_NAT_H
 
 #include <optional>
 #include "inf-ptrace.h"
@@ -121,6 +121,10 @@ public:
   bool supports_multi_process () override;
 
   bool supports_disable_randomization () override;
+
+  /* FreeBSD ptrace targets are shareable.  */
+  bool is_shareable () override final
+  { return true; }
 
   /* Methods meant to be overridden by arch-specific target
      classes.  */
@@ -285,4 +289,4 @@ private:
    Return true if successful.  */
 bool fbsd_nat_get_siginfo (ptid_t ptid, siginfo_t *siginfo);
 
-#endif /* fbsd-nat.h */
+#endif /* GDB_FBSD_NAT_H */

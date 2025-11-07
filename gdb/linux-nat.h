@@ -1,6 +1,6 @@
 /* Native debugging support for GNU/Linux (LWP layer).
 
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef LINUX_NAT_H
-#define LINUX_NAT_H
+#ifndef GDB_LINUX_NAT_H
+#define GDB_LINUX_NAT_H
 
 #include "nat/linux-nat.h"
 #include "inf-ptrace.h"
@@ -108,6 +108,9 @@ public:
 		     const char *filename,
 		     fileio_error *target_errno) override;
 
+  int fileio_lstat (struct inferior *inf, const char *filename,
+		   struct stat *sb, fileio_error *target_errno) override;
+
   int fileio_unlink (struct inferior *inf,
 		     const char *filename,
 		     fileio_error *target_errno) override;
@@ -133,6 +136,10 @@ public:
 
   std::vector<static_tracepoint_marker>
     static_tracepoint_markers_by_strid (const char *id) override;
+
+  /* Linux ptrace targets are shareable.  */
+  bool is_shareable () override final
+  { return true; }
 
   /* Methods that are meant to overridden by the concrete
      arch-specific target instance.  */
@@ -276,12 +283,12 @@ struct lwp_info : intrusive_list_node<lwp_info>
      will be recorded here, while 'status == 0' is ambiguous.  */
   struct target_waitstatus waitstatus;
 
-  /* Signal whether we are in a SYSCALL_ENTRY or
-     in a SYSCALL_RETURN event.
-     Values:
-     - TARGET_WAITKIND_SYSCALL_ENTRY
-     - TARGET_WAITKIND_SYSCALL_RETURN */
-  enum target_waitkind syscall_state;
+  /* Signal whether we are in a SYSCALL_ENTRY or SYSCALL_RETURN event.
+
+     Valid values are TARGET_WAITKIND_SYSCALL_ENTRY,
+     TARGET_WAITKIND_SYSCALL_RETURN, or TARGET_WAITKIND_SYSCALL_IGNORE, when
+     not stopped at a syscall.  */
+  target_waitkind syscall_state = TARGET_WAITKIND_IGNORE;
 
   /* The processor core this LWP was last seen on.  */
   int core = -1;
@@ -292,8 +299,7 @@ struct lwp_info : intrusive_list_node<lwp_info>
 
 /* lwp_info iterator and range types.  */
 
-using lwp_info_iterator
-  = reference_to_pointer_iterator<intrusive_list<lwp_info>::iterator>;
+using lwp_info_iterator = intrusive_list<lwp_info>::iterator;
 using lwp_info_range = iterator_range<lwp_info_iterator>;
 using lwp_info_safe_range = basic_safe_range<lwp_info_range>;
 
@@ -342,4 +348,4 @@ void linux_nat_switch_fork (ptid_t new_ptid);
    uninitialized in such case).  */
 bool linux_nat_get_siginfo (ptid_t ptid, siginfo_t *siginfo);
 
-#endif /* LINUX_NAT_H */
+#endif /* GDB_LINUX_NAT_H */

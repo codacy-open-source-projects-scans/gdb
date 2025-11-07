@@ -1,6 +1,6 @@
 /* Motorola m68k native support for GNU/Linux.
 
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -129,7 +129,7 @@ fetch_register (struct regcache *regcache, int regno)
       memcpy (&buf[i], &val, sizeof (long));
       regaddr += sizeof (long);
       if (errno != 0)
-	error (_("Couldn't read register %s (#%d): %s."), 
+	error (_("Couldn't read register %s (#%d): %s."),
 	       gdbarch_register_name (gdbarch, regno),
 	       regno, safe_strerror (errno));
     }
@@ -300,7 +300,7 @@ static void store_regs (const struct regcache *regcache, int tid, int regno)
 #endif
 
 
-/* Transfering floating-point registers between GDB, inferiors and cores.  */
+/* Transferring floating-point registers between GDB, inferiors and cores.  */
 
 /* What is the address of fpN within the floating-point register set F?  */
 #define FPREG_ADDR(f, n) (&(f)->fpregs[(n) * 3])
@@ -494,7 +494,7 @@ m68k_linux_nat_target::store_registers (struct regcache *regcache, int regno)
 /* Fetch the thread-local storage pointer for libthread_db.  */
 
 ps_err_e
-ps_get_thread_area (struct ps_prochandle *ph, 
+ps_get_thread_area (struct ps_prochandle *ph,
 		    lwpid_t lwpid, int idx, void **base)
 {
   if (ptrace (PTRACE_GET_THREAD_AREA, lwpid, NULL, base) < 0)
@@ -508,9 +508,7 @@ ps_get_thread_area (struct ps_prochandle *ph,
   return PS_OK;
 }
 
-void _initialize_m68k_linux_nat ();
-void
-_initialize_m68k_linux_nat ()
+INIT_GDB_FILE (m68k_linux_nat)
 {
   /* Register the target.  */
   linux_target = &the_m68k_linux_nat_target;

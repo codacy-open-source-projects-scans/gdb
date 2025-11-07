@@ -1,4 +1,4 @@
-# Copyright 2008-2024 Free Software Foundation, Inc.
+# Copyright 2008-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ if { [prepare_for_testing "failed to prepare" $testfile $srcfile] } {
 
 runto_main
 
-if [supports_process_record] {
+if {[supports_process_record]} {
     # Activate process record/replay
     gdb_test_no_output "record" "turn on process record"
 }
@@ -191,7 +191,7 @@ gdb_test_multiple "stepi" "$test_message" {
 	}
     }
     -re "ENTER CALLEE.*$gdb_prompt $" {
-	send_gdb "stepi\n" 
+	send_gdb "stepi\n"
 	exp_continue
     }
     -re "$pic_thunk_re.*$gdb_prompt $" {
@@ -230,12 +230,12 @@ gdb_test_multiple "stepi" "$test_message" {
     }
 }
 
-# step backward into function (thru return)
+# step backward into function (through return)
 
 gdb_test "step" "(RETURN FROM CALLEE|ARRIVED IN CALLEE).*" \
     "reverse step into fn call"
 
-# step backward out of called function (thru call)
+# step backward out of called function (through call)
 
 set test_message "reverse step out of called fn"
 gdb_test_multiple "step" "$test_message" {

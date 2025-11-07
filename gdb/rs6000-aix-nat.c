@@ -1,6 +1,6 @@
 /* IBM RS/6000 native-dependent code for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -23,7 +23,6 @@
 #include "symfile.h"
 #include "objfiles.h"
 #include "bfd.h"
-#include "gdb-stabs.h"
 #include "regcache.h"
 #include "arch-utils.h"
 #include "inf-child.h"
@@ -42,6 +41,7 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
+#include "gdbsupport/eintr.h"
 
 #include <a.out.h>
 #include <sys/file.h>
@@ -865,12 +865,8 @@ rs6000_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
     {
       set_sigint_trap ();
 
-      do
-	{
-	  pid = waitpid (ptid.pid (), &status, 0);
-	  save_errno = errno;
-	}
-      while (pid == -1 && errno == EINTR);
+      pid = gdb::waitpid (ptid.pid (), &status, 0);
+      save_errno = errno;
 
       clear_sigint_trap ();
 
@@ -1065,9 +1061,7 @@ rs6000_nat_target::xfer_shared_libraries
     }
 }
 
-void _initialize_rs6000_nat ();
-void
-_initialize_rs6000_nat ()
+INIT_GDB_FILE (rs6000_nat)
 {
   add_inf_child_target (&the_rs6000_nat_target);
 }

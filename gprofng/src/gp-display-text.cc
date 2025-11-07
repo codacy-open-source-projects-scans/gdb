@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -253,7 +253,9 @@ er_print::usage ()
     "\n"
     "See also:\n"
     "\n"
-    "gprofng(1), gp-archive(1), gp-collect-app(1), gp-display-html(1), gp-display-src(1)\n"));
+    "gprofng(1), gprofng-archive(1), gprofng-collect-app(1), "
+    "gprofng-display-html(1), gprofng-display-src(1)\n"
+    "\nReport bugs to <https://sourceware.org/bugzilla/>\n"));
 }
 
 int // returns count of experiments read

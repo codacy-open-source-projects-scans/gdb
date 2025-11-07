@@ -1,6 +1,6 @@
 /* C language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,7 +33,6 @@
 #include "cp-abi.h"
 #include "cp-support.h"
 #include "gdbsupport/gdb_obstack.h"
-#include <ctype.h>
 #include "gdbcore.h"
 #include "gdbarch.h"
 #include "c-exp.h"
@@ -312,7 +311,7 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
 	  if (extract_unsigned_integer (contents + i * width,
 					width, byte_order) == 0)
 	    break;
-  
+
       /* I is now either a user-defined length, the number of non-null
 	 characters, or FETCHLIMIT.  */
       *length = i * width;
@@ -337,17 +336,17 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
 	addr = value_as_address (value);
 
       /* Prior to the fix for PR 16196 read_string would ignore fetchlimit
-	 if length > 0.  The old "broken" behaviour is the behaviour we want:
+	 if length > 0.  The old "broken" behavior is the behavior we want:
 	 The caller may want to fetch 100 bytes from a variable length array
 	 implemented using the common idiom of having an array of length 1 at
 	 the end of a struct.  In this case we want to ignore the declared
 	 size of the array.  However, it's counterintuitive to implement that
-	 behaviour in read_string: what does fetchlimit otherwise mean if
-	 length > 0.  Therefore we implement the behaviour we want here:
+	 behavior in read_string: what does fetchlimit otherwise mean if
+	 length > 0.  Therefore we implement the behavior we want here:
 	 If *length > 0, don't specify a fetchlimit.  This preserves the
-	 previous behaviour.  We could move this check above where we know
+	 previous behavior.  We could move this check above where we know
 	 whether the array is declared with a fixed size, but we only want
-	 to apply this behaviour when calling read_string.  PR 16286.  */
+	 to apply this behavior when calling read_string.  PR 16286.  */
       if (*length > 0)
 	fetchlimit = UINT_MAX;
 
@@ -367,7 +366,7 @@ c_get_string (struct value *value, gdb::unique_xmalloc_ptr<gdb_byte> *buffer,
 	&& extract_unsigned_integer (buffer->get () + *length - width,
 				     width, byte_order) == 0)
       *length -= width;
-  
+
   /* The read_string function will return the number of bytes read.
      If length returned from read_string was > 0, return the number of
      characters read by dividing the number of bytes by width.  */
@@ -408,7 +407,7 @@ convert_ucn (const char *p, const char *limit, const char *dest_charset,
   gdb_byte data[4];
   int i;
 
-  for (i = 0; i < length && p < limit && ISXDIGIT (*p); ++i, ++p)
+  for (i = 0; i < length && p < limit && c_isxdigit (*p); ++i, ++p)
     result = (result << 4) + fromhex (*p);
 
   for (i = 3; i >= 0; --i)
@@ -450,7 +449,7 @@ convert_octal (struct type *type, const char *p,
   unsigned long value = 0;
 
   for (i = 0;
-       i < 3 && p < limit && ISDIGIT (*p) && *p != '8' && *p != '9';
+       i < 3 && p < limit && c_isdigit (*p) && *p != '8' && *p != '9';
        ++i)
     {
       value = 8 * value + fromhex (*p);
@@ -473,7 +472,7 @@ convert_hex (struct type *type, const char *p,
 {
   unsigned long value = 0;
 
-  while (p < limit && ISXDIGIT (*p))
+  while (p < limit && c_isxdigit (*p))
     {
       value = 16 * value + fromhex (*p);
       ++p;
@@ -483,13 +482,6 @@ convert_hex (struct type *type, const char *p,
 
   return p;
 }
-
-#define ADVANCE					\
-  do {						\
-    ++p;					\
-    if (p == limit)				\
-      error (_("Malformed escape sequence"));	\
-  } while (0)
 
 /* Convert an escape sequence to a target format.  TYPE is the target
    character type to use, and DEST_CHARSET is the name of the target
@@ -502,19 +494,30 @@ static const char *
 convert_escape (struct type *type, const char *dest_charset,
 		const char *p, const char *limit, struct obstack *output)
 {
+  auto advance = [&] ()
+    {
+      ++p;
+      if (p == limit)
+	error (_("Malformed escape sequence"));
+    };
+
   /* Skip the backslash.  */
-  ADVANCE;
+  advance ();
 
   switch (*p)
     {
     case '\\':
-      obstack_1grow (output, '\\');
+      /* Convert the backslash itself.  This is probably overkill but
+	 it doesn't hurt to do the full conversion.  */
+      convert_between_encodings (host_charset (), dest_charset,
+				 (const gdb_byte *) p, 1, 1,
+				 output, translit_none);
       ++p;
       break;
 
     case 'x':
-      ADVANCE;
-      if (!ISXDIGIT (*p))
+      advance ();
+      if (!c_isxdigit (*p))
 	error (_("\\x used with no following hex digits."));
       p = convert_hex (type, p, limit, output);
       break;
@@ -535,8 +538,8 @@ convert_escape (struct type *type, const char *dest_charset,
       {
 	int length = *p == 'u' ? 4 : 8;
 
-	ADVANCE;
-	if (!ISXDIGIT (*p))
+	advance ();
+	if (!c_isxdigit (*p))
 	  error (_("\\u used with no following hex digits"));
 	p = convert_ucn (p, limit, dest_charset, output, length);
       }
@@ -807,22 +810,6 @@ public:
   }
 
   /* See language.h.  */
-  std::unique_ptr<compile_instance> get_compile_instance () const override
-  {
-    return c_get_compile_context ();
-  }
-
-  /* See language.h.  */
-  std::string compute_program (compile_instance *inst,
-			       const char *input,
-			       struct gdbarch *gdbarch,
-			       const struct block *expr_block,
-			       CORE_ADDR expr_pc) const override
-  {
-    return c_compute_program (inst, input, gdbarch, expr_block, expr_pc);
-  }
-
-  /* See language.h.  */
 
   bool can_print_type_offsets () const override
   {
@@ -940,22 +927,6 @@ public:
     const override
   {
     return cp_lookup_transparent_type (name, flags);
-  }
-
-  /* See language.h.  */
-  std::unique_ptr<compile_instance> get_compile_instance () const override
-  {
-    return cplus_get_compile_context ();
-  }
-
-  /* See language.h.  */
-  std::string compute_program (compile_instance *inst,
-			       const char *input,
-			       struct gdbarch *gdbarch,
-			       const struct block *expr_block,
-			       CORE_ADDR expr_pc) const override
-  {
-    return cplus_compute_program (inst, input, gdbarch, expr_block, expr_pc);
   }
 
   /* See language.h.  */

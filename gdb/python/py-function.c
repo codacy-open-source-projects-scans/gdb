@@ -1,6 +1,6 @@
 /* Convenience functions implemented in Python.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -27,8 +27,7 @@
 #include "expression.h"
 #include "language.h"
 
-extern PyTypeObject fnpy_object_type
-    CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("PyObject");
+extern PyTypeObject fnpy_object_type;
 
 
 
@@ -120,6 +119,8 @@ fnpy_init (PyObject *self, PyObject *args, PyObject *kwds)
 	      docstring = python_string_to_host_string (ds_obj.get ());
 	      if (docstring == NULL)
 		return -1;
+	      docstring
+		= gdbpy_fix_doc_string_indentation (std::move (docstring));
 	    }
 	}
     }
@@ -133,8 +134,8 @@ fnpy_init (PyObject *self, PyObject *args, PyObject *kwds)
 
 /* Initialize internal function support.  */
 
-static int CPYCHECKER_NEGATIVE_RESULT_SETS_EXCEPTION
-gdbpy_initialize_functions (void)
+static int
+gdbpy_initialize_functions ()
 {
   fnpy_object_type.tp_new = PyType_GenericNew;
   return gdbpy_type_ready (&fnpy_object_type);

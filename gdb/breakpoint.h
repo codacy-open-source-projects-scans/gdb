@@ -1,5 +1,5 @@
 /* Data structures associated with breakpoints in GDB.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (BREAKPOINT_H)
-#define BREAKPOINT_H 1
+#ifndef GDB_BREAKPOINT_H
+#define GDB_BREAKPOINT_H
 
 #include "frame.h"
 #include "value.h"
@@ -154,7 +154,7 @@ enum bptype
        dynamic libraries.  */
     bp_shlib_event,
 
-    /* Some multi-threaded systems can arrange for a location in the 
+    /* Some multi-threaded systems can arrange for a location in the
        inferior to be executed when certain thread-related events occur
        (such as thread creation or thread death).
 
@@ -167,10 +167,10 @@ enum bptype
     /* On the same principal, an overlay manager can arrange to call a
        magic location in the inferior whenever there is an interesting
        change in overlay status.  GDB can update its overlay tables
-       and fiddle with breakpoints in overlays when this breakpoint 
+       and fiddle with breakpoints in overlays when this breakpoint
        is hit.  */
 
-    bp_overlay_event, 
+    bp_overlay_event,
 
     /* Master copies of longjmp breakpoints.  These are always installed
        as soon as an objfile containing longjmp is loaded, but they are
@@ -241,7 +241,7 @@ enum enable_state
 enum bpdisp
   {
     disp_del,			/* Delete it */
-    disp_del_at_next_stop,	/* Delete at next stop, 
+    disp_del_at_next_stop,	/* Delete at next stop,
 				   whether hit or not */
     disp_disable,		/* Disable it */
     disp_donttouch		/* Leave it alone */
@@ -393,7 +393,7 @@ public:
 
   /* Is this particular location enabled.  */
   bool enabled = false;
-  
+
   /* Is this particular location disabled because the condition
      expression is invalid at this location.  For a location to be
      reported as enabled, the ENABLED field above has to be true *and*
@@ -425,7 +425,9 @@ public:
      simplicity is more important than memory usage for breakpoints.  */
 
   /* Architecture associated with this location's address.  May be
-     different from the breakpoint architecture.  */
+     different from the breakpoint architecture.  Not every location has
+     an address (e.g. see add_dummy_location), so not every location has
+     an associated gdbarch -- this can be NULL for a valid location.  */
   struct gdbarch *gdbarch = NULL;
 
   /* The program space associated with this breakpoint location
@@ -512,9 +514,6 @@ public:
      any.  This may be used to ascertain if the location was
      originally set on a GNU ifunc symbol.  */
   const minimal_symbol *msymbol = NULL;
-
-  /* The objfile the symbol or minimal symbol were found in.  */
-  const struct objfile *objfile = NULL;
 
   /* Return a string representation of the bp_location.
      This is only meant to be used in debug messages.  */
@@ -603,7 +602,7 @@ enum watchpoint_triggered
   watch_triggered_unknown,
 
   /* This hardware watchpoint definitely did trigger.  */
-  watch_triggered_yes  
+  watch_triggered_yes
 };
 
 /* Some targets (e.g., embedded PowerPC) need two debug registers to set
@@ -1743,7 +1742,7 @@ extern void disable_overlay_breakpoints (void);
 extern void set_std_terminate_breakpoint (void);
 extern void delete_std_terminate_breakpoint (void);
 
-/* These functions respectively disable or reenable all currently
+/* These functions respectively disable or re-enable all currently
    enabled watchpoints.  When disabled, the watchpoints are marked
    call_disabled.  When re-enabled, they are marked enabled.
 
@@ -1806,7 +1805,7 @@ extern void disable_breakpoint (struct breakpoint *);
 
 extern void enable_breakpoint (struct breakpoint *);
 
-extern void breakpoint_set_commands (struct breakpoint *b, 
+extern void breakpoint_set_commands (struct breakpoint *b,
 				     counted_command_line &&commands);
 
 extern void breakpoint_set_silent (struct breakpoint *b, int silent);
@@ -1973,6 +1972,14 @@ public:
   scoped_rbreak_breakpoints ();
   ~scoped_rbreak_breakpoints ();
 
+  /* Return the number of first breakpoint made while this object is
+     in scope.  */
+  int first_breakpoint () const;
+
+  /* Return the number of the most recent breakpoint made while this
+     object is in scope, or -1 if no breakpoints were made.  */
+  int last_breakpoint () const;
+
   DISABLE_COPY_AND_ASSIGN (scoped_rbreak_breakpoints);
 };
 
@@ -2032,10 +2039,10 @@ extern int pc_at_non_inline_function (const address_space *aspace,
 				      CORE_ADDR pc,
 				      const target_waitstatus &ws);
 
-extern int user_breakpoint_p (struct breakpoint *);
+extern int user_breakpoint_p (const breakpoint *);
 
 /* Return true if this breakpoint is pending, false if not.  */
-extern int pending_breakpoint_p (struct breakpoint *);
+extern int pending_breakpoint_p (const breakpoint *);
 
 /* Attempt to determine architecture of location identified by SAL.  */
 extern struct gdbarch *get_sal_arch (struct symtab_and_line sal);
@@ -2098,4 +2105,4 @@ extern void enable_disable_bp_location (bp_location *loc, bool enable);
 
 extern void notify_breakpoint_modified (breakpoint *b);
 
-#endif /* !defined (BREAKPOINT_H) */
+#endif /* GDB_BREAKPOINT_H */

@@ -1,4 +1,4 @@
-# Copyright (C) 2014-2024 Free Software Foundation, Inc.
+# Copyright (C) 2014-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@ if {[prepare_for_testing "failed to prepare" $testfile $srcfile debug]} {
     return -1
 }
 
-if ![runto_main] {
+if {![runto_main]} {
     return 0
 }
 
@@ -64,7 +64,7 @@ delete_breakpoints
 gdb_test_no_output "set debug target 1"
 set hardware_step 0
 set test "probe target hardware step"
-gdb_test_multiple "si" $test {
+gdb_test_multiple "pipe si | grep resume" $test {
     -re "resume \\(\[^\r\n\]+, step, .*$gdb_prompt $" {
 	set hardware_step 1
 	pass $test
@@ -140,7 +140,7 @@ gdb_test_multiple "" $test {
 set disasm_after [disassemble "after"]
 
 set test "before/after disassembly matches"
-if ![string compare $disasm_before $disasm_after]  {
+if {![string compare $disasm_before $disasm_after]} {
     pass $test
 } else {
     fail $test

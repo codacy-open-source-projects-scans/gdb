@@ -1,5 +1,5 @@
 /* Renesas / SuperH SH specific support for 32-bit ELF
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
    Contributed by Ian Lance Taylor, Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -1429,9 +1429,9 @@ sh_elf_swap_insns (bfd *abfd, asection *sec, void *relocs,
 
 	  off = irel->r_offset + 4 + irel->r_addend;
 	  if (off == addr)
-	    irel->r_offset += 2;
+	    irel->r_addend += 2;
 	  else if (off == addr + 2)
-	    irel->r_offset -= 2;
+	    irel->r_addend -= 2;
 	}
 
       if (irel->r_offset == addr)
@@ -2149,8 +2149,7 @@ struct sh_elf_obj_tdata
 static bool
 sh_elf_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd, sizeof (struct sh_elf_obj_tdata),
-				  SH_ELF_DATA);
+  return bfd_elf_allocate_object (abfd, sizeof (struct sh_elf_obj_tdata));
 }
 
 /* sh ELF linker hash table.  */
@@ -2244,8 +2243,7 @@ sh_elf_link_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (&ret->root, abfd,
 				      sh_elf_link_hash_newfunc,
-				      sizeof (struct elf_sh_link_hash_entry),
-				      SH_ELF_DATA))
+				      sizeof (struct elf_sh_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -2964,10 +2962,11 @@ sh_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  s = bfd_get_linker_section (dynobj, ".interp");
+	  s = htab->root.interp;
 	  BFD_ASSERT (s != NULL);
 	  s->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  s->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
 
@@ -3195,6 +3194,7 @@ sh_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       s->contents = (bfd_byte *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   return _bfd_elf_maybe_vxworks_add_dynamic_tags (output_bfd, info,
@@ -3697,7 +3697,8 @@ sh_elf_relocate_section (bfd *output_bfd, struct bfd_link_info *info,
 
       if (sec != NULL && discarded_section (sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_SH_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;
@@ -5201,19 +5202,19 @@ tpoff (struct bfd_link_info *info, bfd_vma address)
 static asection *
 sh_elf_gc_mark_hook (asection *sec,
 		     struct bfd_link_info *info,
-		     Elf_Internal_Rela *rel,
+		     struct elf_reloc_cookie *cookie,
 		     struct elf_link_hash_entry *h,
-		     Elf_Internal_Sym *sym)
+		     unsigned int symndx)
 {
   if (h != NULL)
-    switch (ELF32_R_TYPE (rel->r_info))
+    switch (ELF32_R_TYPE (cookie->rel->r_info))
       {
       case R_SH_GNU_VTINHERIT:
       case R_SH_GNU_VTENTRY:
 	return NULL;
       }
 
-  return _bfd_elf_gc_mark_hook (sec, info, rel, h, sym);
+  return _bfd_elf_gc_mark_hook (sec, info, cookie, h, symndx);
 }
 
 /* Copy the extra info we tack onto an elf_link_hash_entry.  */

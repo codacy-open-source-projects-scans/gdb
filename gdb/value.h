@@ -1,6 +1,6 @@
 /* Definitions for values of C expressions, for GDB.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,19 +17,19 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (VALUE_H)
-#define VALUE_H 1
+#ifndef GDB_VALUE_H
+#define GDB_VALUE_H
 
 #include "frame.h"
 #include "extension.h"
 #include "gdbsupport/gdb_ref_ptr.h"
 #include "gmp-utils.h"
+#include "gdbtypes.h"
 
 struct block;
 struct expression;
 struct regcache;
 struct symbol;
-struct type;
 struct ui_file;
 struct language_defn;
 struct value_print_options;
@@ -167,7 +167,7 @@ public:
 					       type *type = nullptr);
 
   /* Same as `allocate_register_lazy`, but make the value non-lazy.
-  
+
      The caller is responsible for filling the value's contents.  */
   static struct value *allocate_register (const frame_info_ptr &next_frame,
 					  int regnum, type *type = nullptr);
@@ -593,7 +593,7 @@ public:
 
   /* Update this value before discarding OBJFILE.  COPIED_TYPES is
      used to prevent cycles / duplicates.  */
-  void preserve (struct objfile *objfile, htab_t copied_types);
+  void preserve (struct objfile *objfile, copied_types_hash_t &copied_types);
 
   /* Unpack a bitfield of BITSIZE bits found at BITPOS in the object
      at VALADDR + EMBEDDEDOFFSET that has the type of DEST_VAL and
@@ -961,7 +961,7 @@ struct lval_funcs
      This may simply return the same closure, if VALUE's is
      reference-counted or statically allocated.
 
-     This may be NULL, in which case VALUE's closure is re-used in the
+     This may be NULL, in which case VALUE's closure is reused in the
      new value.  */
   void *(*copy_closure) (const struct value *v);
 
@@ -1058,9 +1058,18 @@ extern gdb_mpz value_as_mpz (struct value *val);
 extern LONGEST unpack_long (struct type *type, const gdb_byte *valaddr);
 extern CORE_ADDR unpack_pointer (struct type *type, const gdb_byte *valaddr);
 
+/* Unpack a field FIELDNO of the specified TYPE, from the anonymous
+   object at VALADDR.  See unpack_bits_as_long for more details.  */
+
 extern LONGEST unpack_field_as_long (struct type *type,
 				     const gdb_byte *valaddr,
 				     int fieldno);
+
+/* Unpack a field, FIELD, from the anonymous object at VALADDR.  See
+   unpack_bits_as_long for more details.  */
+
+extern LONGEST unpack_field_as_long (const gdb_byte *valaddr,
+				     struct field *field);
 
 /* Unpack a bitfield of the specified FIELD_TYPE, from the object at
    VALADDR, and store the result in *RESULT.
@@ -1128,6 +1137,8 @@ extern value *default_value_from_register (gdbarch *gdbarch, type *type,
 					   int regnum,
 					   const frame_info_ptr &this_frame);
 
+extern ULONGEST default_dwarf2_reg_piece_offset (gdbarch *gdbarch, int regnum, ULONGEST size);
+
 extern struct value *value_from_register (struct type *type, int regnum,
 					  const frame_info_ptr &frame);
 
@@ -1145,9 +1156,12 @@ extern struct value *address_of_variable (struct symbol *var,
 
 extern value *value_of_register (int regnum, const frame_info_ptr &next_frame);
 
-/* Same as the above, but the value is not fetched.  */
+/* Same as the above, but the value is not fetched.  If TYPE is
+   non-nullptr, use it as the value type.  Otherwise, 'register_type'
+   will be used to obtain the type.  */
 
-extern value *value_of_register_lazy (const frame_info_ptr &next_frame, int regnum);
+extern value *value_of_register_lazy (const frame_info_ptr &next_frame,
+				      int regnum, struct type *type = nullptr);
 
 /* Return the symbol's reading requirement.  */
 
@@ -1295,10 +1309,9 @@ extern struct value *value_struct_elt (struct value **argp,
 				       const char *name, int *static_memfuncp,
 				       const char *err);
 
-extern struct value *value_struct_elt_bitpos (struct value **argp,
+extern struct value *value_struct_elt_bitpos (struct value *val,
 					      int bitpos,
-					      struct type *field_type,
-					      const char *err);
+					      struct type *field_type);
 
 extern struct value *value_aggregate_elt (struct type *curtype,
 					  const char *name,
@@ -1576,7 +1589,7 @@ extern struct value *make_cv_value (int, int, struct value *);
 
 extern struct value *varying_to_slice (struct value *);
 
-extern struct value *value_slice (struct value *, int, int);
+extern struct value *value_slice (struct value *, LONGEST, LONGEST);
 
 /* Create a complex number.  The type is the complex type; the values
    are cast to the underlying scalar type before the complex number is
@@ -1723,4 +1736,4 @@ void pseudo_to_concat_raw (const frame_info_ptr &next_frame,
 			   int raw_reg_1_num, int raw_reg_2_num,
 			   int raw_reg_3_num);
 
-#endif /* !defined (VALUE_H) */
+#endif /* GDB_VALUE_H */

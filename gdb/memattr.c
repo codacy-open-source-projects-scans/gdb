@@ -1,6 +1,6 @@
 /* Memory attributes support, for GDB.
 
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -19,6 +19,7 @@
 
 #include "command.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "memattr.h"
 #include "target.h"
 #include "target-dcache.h"
@@ -65,7 +66,7 @@ show_inaccessible_by_default (struct ui_file *file, int from_tty,
 			"be treated as inaccessible.\n"));
   else
     gdb_printf (file, _("Unknown memory addresses "
-			"will be treated as RAM.\n"));          
+			"will be treated as RAM.\n"));
 }
 
 /* This function should be called before any command which would
@@ -91,7 +92,8 @@ require_user_regions (int from_tty)
   /* Otherwise, let the user know how to get back.  */
   if (from_tty)
     warning (_("Switching to manual control of memory regions; use "
-	       "\"mem auto\" to fetch regions from the target again."));
+	       "\"%ps\" to fetch regions from the target again."),
+	     styled_string (command_style.style (), "mem auto"));
 
   /* And create a new list (copy of the target-supplied regions) for the user
      to modify.  */
@@ -182,7 +184,7 @@ lookup_mem_region (CORE_ADDR addr)
 
   /* Either find memory range containing ADDR, or set LO and HI
      to the nearest boundaries of an existing memory range.
-     
+
      If we ever want to support a huge list of memory regions, this
      check should be replaced with a binary search (probably using
      VEC_lower_bound).  */
@@ -214,8 +216,8 @@ lookup_mem_region (CORE_ADDR addr)
   region.lo = lo;
   region.hi = hi;
 
-  /* When no memory map is defined at all, we always return 
-     'default_mem_attrib', so that we do not make all memory 
+  /* When no memory map is defined at all, we always return
+     'default_mem_attrib', so that we do not make all memory
      inaccessible for targets that don't provide a memory map.  */
   if (inaccessible_by_default && !mem_region_list->empty ())
     region.attrib = mem_attrib::unknown ();
@@ -374,7 +376,7 @@ info_mem_command (const char *args, int from_tty)
 	tmp = hex_string_custom (m.lo, 8);
       else
 	tmp = hex_string_custom (m.lo, 16);
-      
+
       gdb_printf ("%s ", tmp);
 
       if (gdbarch_addr_bit (current_inferior ()->arch ()) <= 32)
@@ -590,13 +592,10 @@ delete_mem_command (const char *args, int from_tty)
 static struct cmd_list_element *mem_set_cmdlist;
 static struct cmd_list_element *mem_show_cmdlist;
 
-void _initialize_mem ();
-void
-_initialize_mem ()
+INIT_GDB_FILE (mem)
 {
   add_com ("mem", class_vars, mem_command, _("\
-Define attributes for memory region or reset memory region handling to "
-"target-based.\n\
+Define or reset attributes for memory regions.\n\
 Usage: mem auto\n\
        mem LOW HIGH [MODE WIDTH CACHE],\n\
 where MODE  may be rw (read/write), ro (read-only) or wo (write-only),\n\

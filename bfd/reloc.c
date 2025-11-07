@@ -1,5 +1,5 @@
 /* BFD support for handling relocation entries.
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
    Written by Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -6187,113 +6187,6 @@ ENUMDOC
   msp430 specific relocation codes.
 
 ENUM
-  BFD_RELOC_NIOS2_S16
-ENUMX
-  BFD_RELOC_NIOS2_U16
-ENUMX
-  BFD_RELOC_NIOS2_CALL26
-ENUMX
-  BFD_RELOC_NIOS2_IMM5
-ENUMX
-  BFD_RELOC_NIOS2_CACHE_OPX
-ENUMX
-  BFD_RELOC_NIOS2_IMM6
-ENUMX
-  BFD_RELOC_NIOS2_IMM8
-ENUMX
-  BFD_RELOC_NIOS2_HI16
-ENUMX
-  BFD_RELOC_NIOS2_LO16
-ENUMX
-  BFD_RELOC_NIOS2_HIADJ16
-ENUMX
-  BFD_RELOC_NIOS2_GPREL
-ENUMX
-  BFD_RELOC_NIOS2_UJMP
-ENUMX
-  BFD_RELOC_NIOS2_CJMP
-ENUMX
-  BFD_RELOC_NIOS2_CALLR
-ENUMX
-  BFD_RELOC_NIOS2_ALIGN
-ENUMX
-  BFD_RELOC_NIOS2_GOT16
-ENUMX
-  BFD_RELOC_NIOS2_CALL16
-ENUMX
-  BFD_RELOC_NIOS2_GOTOFF_LO
-ENUMX
-  BFD_RELOC_NIOS2_GOTOFF_HA
-ENUMX
-  BFD_RELOC_NIOS2_PCREL_LO
-ENUMX
-  BFD_RELOC_NIOS2_PCREL_HA
-ENUMX
-  BFD_RELOC_NIOS2_TLS_GD16
-ENUMX
-  BFD_RELOC_NIOS2_TLS_LDM16
-ENUMX
-  BFD_RELOC_NIOS2_TLS_LDO16
-ENUMX
-  BFD_RELOC_NIOS2_TLS_IE16
-ENUMX
-  BFD_RELOC_NIOS2_TLS_LE16
-ENUMX
-  BFD_RELOC_NIOS2_TLS_DTPMOD
-ENUMX
-  BFD_RELOC_NIOS2_TLS_DTPREL
-ENUMX
-  BFD_RELOC_NIOS2_TLS_TPREL
-ENUMX
-  BFD_RELOC_NIOS2_COPY
-ENUMX
-  BFD_RELOC_NIOS2_GLOB_DAT
-ENUMX
-  BFD_RELOC_NIOS2_JUMP_SLOT
-ENUMX
-  BFD_RELOC_NIOS2_RELATIVE
-ENUMX
-  BFD_RELOC_NIOS2_GOTOFF
-ENUMX
-  BFD_RELOC_NIOS2_CALL26_NOAT
-ENUMX
-  BFD_RELOC_NIOS2_GOT_LO
-ENUMX
-  BFD_RELOC_NIOS2_GOT_HA
-ENUMX
-  BFD_RELOC_NIOS2_CALL_LO
-ENUMX
-  BFD_RELOC_NIOS2_CALL_HA
-ENUMX
-  BFD_RELOC_NIOS2_R2_S12
-ENUMX
-  BFD_RELOC_NIOS2_R2_I10_1_PCREL
-ENUMX
-  BFD_RELOC_NIOS2_R2_T1I7_1_PCREL
-ENUMX
-  BFD_RELOC_NIOS2_R2_T1I7_2
-ENUMX
-  BFD_RELOC_NIOS2_R2_T2I4
-ENUMX
-  BFD_RELOC_NIOS2_R2_T2I4_1
-ENUMX
-  BFD_RELOC_NIOS2_R2_T2I4_2
-ENUMX
-  BFD_RELOC_NIOS2_R2_X1I7_2
-ENUMX
-  BFD_RELOC_NIOS2_R2_X2L5
-ENUMX
-  BFD_RELOC_NIOS2_R2_F1I5_2
-ENUMX
-  BFD_RELOC_NIOS2_R2_L5I4X1
-ENUMX
-  BFD_RELOC_NIOS2_R2_T1X1I6
-ENUMX
-  BFD_RELOC_NIOS2_R2_T1X1I6_2
-ENUMDOC
-  Relocations used by the Altera Nios II core.
-
-ENUM
   BFD_RELOC_PRU_U16
 ENUMDOC
   PRU LDI 16-bit unsigned data-memory relocation.
@@ -7526,6 +7419,12 @@ ENUMDOC
   AArch64 pseudo relocation code to be used internally by the AArch64
   assembler and not (currently) written to any object files.
 ENUM
+  BFD_RELOC_AARCH64_BRANCH9
+ENUMDOC
+  AArch64 9 bit pc-relative conditional branch and compare & branch.
+  The lowest two bits must be zero and are not stored in the
+  instruction, giving an 11 bit signed byte offset.
+ENUM
   BFD_RELOC_TILEPRO_COPY
 ENUMX
   BFD_RELOC_TILEPRO_GLOB_DAT
@@ -8473,8 +8372,8 @@ bfd_generic_relax_section (bfd *abfd ATTRIBUTE_UNUSED,
 			   bool *again)
 {
   if (bfd_link_relocatable (link_info))
-    (*link_info->callbacks->einfo)
-      (_("%P%F: --relax and -r may not be used together\n"));
+    link_info->callbacks->fatal
+      (_("%P: --relax and -r may not be used together\n"));
 
   *again = false;
   return true;
@@ -8524,26 +8423,6 @@ bfd_generic_lookup_section_flags (struct bfd_link_info *info ATTRIBUTE_UNUSED,
       _bfd_error_handler (_("INPUT_SECTION_FLAGS are not supported"));
       return false;
     }
-  return true;
-}
-
-/*
-INTERNAL_FUNCTION
-	bfd_generic_merge_sections
-
-SYNOPSIS
-	bool bfd_generic_merge_sections
-	  (bfd *, struct bfd_link_info *);
-
-DESCRIPTION
-	Provides default handling for SEC_MERGE section merging for back ends
-	which don't have SEC_MERGE support -- i.e., does nothing.
-*/
-
-bool
-bfd_generic_merge_sections (bfd *abfd ATTRIBUTE_UNUSED,
-			    struct bfd_link_info *link_info ATTRIBUTE_UNUSED)
-{
   return true;
 }
 
@@ -8649,18 +8528,36 @@ bfd_generic_get_relocated_section_contents (bfd *abfd,
 		     * bfd_octets_per_byte (input_bfd, input_section));
 	      _bfd_clear_contents ((*parent)->howto, input_bfd,
 				   input_section, data, off);
-	      (*parent)->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
+	      (*parent)->sym_ptr_ptr = &bfd_abs_section_ptr->symbol;
 	      (*parent)->addend = 0;
 	      (*parent)->howto = &none_howto;
 	      r = bfd_reloc_ok;
 	    }
 	  else
-	    r = bfd_perform_relocation (input_bfd,
-					*parent,
-					data,
-					input_section,
-					relocatable ? abfd : NULL,
-					&error_message);
+	    {
+	      if ((symbol->flags & BSF_SECTION_SYM)
+		  && symbol->section->sec_info_type == SEC_INFO_TYPE_MERGE
+		  /* This, while apparently necessary, feels bogus.  */
+		  && !(symbol->section->flags & SEC_DEBUGGING))
+		{
+		  asection *sec = symbol->section;
+
+		  (*parent)->addend =
+		    _bfd_merged_section_offset (abfd, &sec, (*parent)->addend);
+		  /* We may not change symbol->section, so the output_offset
+		     adjustment done in bfd_perform_relocation() needs taking
+		     care of (and compensating) here.  */
+		  (*parent)->addend +=
+		    sec->output_offset - symbol->section->output_offset;
+		}
+
+	      r = bfd_perform_relocation (input_bfd,
+					  *parent,
+					  data,
+					  input_section,
+					  relocatable ? abfd : NULL,
+					  &error_message);
+	    }
 
 	  if (relocatable)
 	    {

@@ -1,5 +1,5 @@
 /* Common target dependent code for GDB on Alpha systems.
-   Copyright (C) 1993-2024 Free Software Foundation, Inc.
+   Copyright (C) 1993-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ALPHA_TDEP_H
-#define ALPHA_TDEP_H
+#ifndef GDB_ALPHA_TDEP_H
+#define GDB_ALPHA_TDEP_H
 
 #include "gdbarch.h"
 
@@ -56,7 +56,7 @@ struct regcache;
 #define ALPHA_INSN_SIZE	4
 
 /* The alpha has two different virtual pointers for arguments and locals.
-   
+
    The virtual argument pointer is pointing to the bottom of the argument
    transfer area, which is located immediately below the virtual frame
    pointer.  Its size is fixed for the native compiler, it is either zero
@@ -64,7 +64,7 @@ struct regcache;
    gcc uses a variable sized argument transfer area.  As it has
    to stay compatible with the native debugging tools it has to use the same
    virtual argument pointer and adjust the argument offsets accordingly.
-   
+
    The virtual local pointer is localoff bytes below the virtual frame
    pointer, the value of localoff is obtained from the PDR.  */
 #define ALPHA_NUM_ARG_REGS   6
@@ -121,4 +121,4 @@ extern void alpha_supply_fp_regs (struct regcache *, int,
 extern void alpha_fill_fp_regs (const struct regcache *,
 				int, void *, void *);
 
-#endif /* ALPHA_TDEP_H */
+#endif /* GDB_ALPHA_TDEP_H */

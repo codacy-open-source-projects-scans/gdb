@@ -1,6 +1,6 @@
 /* Target-dependent code for the HP PA-RISC architecture.
 
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef HPPA_TDEP_H
-#define HPPA_TDEP_H
+#ifndef GDB_HPPA_TDEP_H
+#define GDB_HPPA_TDEP_H
 
 #include "gdbarch.h"
 
@@ -94,7 +94,7 @@ struct hppa_gdbarch_tdep : gdbarch_tdep_base
      system.  */
   int is_elf = 0;
 
-  /* Given a function address, try to find the global pointer for the 
+  /* Given a function address, try to find the global pointer for the
      corresponding shared object.  */
   CORE_ADDR (*find_global_pointer) (struct gdbarch *, struct value *) = nullptr;
 
@@ -174,7 +174,7 @@ struct unwind_table_entry
   };
 
 /* HP linkers also generate unwinds for various linker-generated stubs.
-   GDB reads in the stubs from the $UNWIND_END$ subspace, then 
+   GDB reads in the stubs from the $UNWIND_END$ subspace, then
    "converts" them into normal unwind entries using some of the reserved
    fields to store the stub type.  */
 
@@ -214,4 +214,4 @@ extern int hppa_in_solib_call_trampoline (struct gdbarch *gdbarch,
 					  CORE_ADDR pc);
 extern CORE_ADDR hppa_skip_trampoline_code (const frame_info_ptr &, CORE_ADDR pc);
 
-#endif  /* hppa-tdep.h */
+#endif /* GDB_HPPA_TDEP_H */

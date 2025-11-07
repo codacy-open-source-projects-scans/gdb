@@ -1,4 +1,4 @@
-/* Copyright (C) 2006-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef COMMON_TDESC_H
-#define COMMON_TDESC_H
+#ifndef GDBSUPPORT_TDESC_H
+#define GDBSUPPORT_TDESC_H
 
 #include "gdbsupport/osabi.h"
 
@@ -464,4 +464,4 @@ private:
   int m_depth;
 };
 
-#endif /* COMMON_TDESC_H */
+#endif /* GDBSUPPORT_TDESC_H */

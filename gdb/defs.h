@@ -1,5 +1,5 @@
 /* Basic, host-specific, and target-specific definitions for GDB.
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef DEFS_H
-#define DEFS_H
+#ifndef GDB_DEFS_H
+#define GDB_DEFS_H
 
 #ifdef GDBSERVER
 #  error gdbserver should not include gdb/defs.h
@@ -74,7 +74,7 @@
 /* The O_BINARY flag is defined in fcntl.h on some non-Posix platforms.
    It is used as an access modifier in calls to open(), where it acts
    similarly to the "b" character in fopen()'s MODE argument.  On Posix
-   platforms it should be a no-op, so it is defined as 0 here.  This 
+   platforms it should be a no-op, so it is defined as 0 here.  This
    ensures that the symbol may be used freely elsewhere in gdb.  */
 
 #ifndef O_BINARY
@@ -190,8 +190,6 @@ extern std::string relocate_gdb_directory (const char *initial, bool relocatable
 
 /* From top.c */
 
-typedef void initialize_file_ftype (void);
-
 extern char *gdb_readline_wrapper (const char *);
 
 extern const char *command_line_input (std::string &cmd_line_buffer,
@@ -227,8 +225,8 @@ extern const char *pc_prefix (CORE_ADDR);
    DATA is passed without changes from a caller.  */
 
 typedef int (*find_memory_region_ftype) (CORE_ADDR addr, unsigned long size,
-					 int read, int write, int exec,
-					 int modified, bool memory_tagged,
+					 bool read, bool write, bool exec,
+					 bool modified, bool memory_tagged,
 					 void *data);
 
 /* * Possible lvalue types.  Like enum language, this should be in
@@ -345,9 +343,9 @@ extern void (*deprecated_post_add_symbol_hook) (void);
 extern void (*selected_frame_level_changed_hook) (int);
 extern int (*deprecated_ui_loop_hook) (int signo);
 extern void (*deprecated_show_load_progress) (const char *section,
-					      unsigned long section_sent, 
-					      unsigned long section_size, 
-					      unsigned long total_sent, 
+					      unsigned long section_sent,
+					      unsigned long section_size,
+					      unsigned long total_sent,
 					      unsigned long total_size);
 extern void (*deprecated_print_frame_info_listing_hook) (struct symtab * s,
 							 int line,
@@ -407,4 +405,10 @@ DEF_ENUM_FLAGS_TYPE (enum user_selected_what_flag, user_selected_what);
 
 #include "utils.h"
 
-#endif /* #ifndef DEFS_H */
+/* File initialization macro.  This is found by make-init-c and used
+   to construct the gdb initialization function.  */
+#define INIT_GDB_FILE(NAME) \
+  extern void _initialize_ ## NAME (); \
+  void _initialize_ ## NAME ()
+
+#endif /* GDB_DEFS_H */

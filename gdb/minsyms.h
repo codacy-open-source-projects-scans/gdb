@@ -1,6 +1,6 @@
 /* Minimal symbol table definitions for GDB.
 
-   Copyright (C) 2011-2024 Free Software Foundation, Inc.
+   Copyright (C) 2011-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef MINSYMS_H
-#define MINSYMS_H
+#ifndef GDB_MINSYMS_H
+#define GDB_MINSYMS_H
 
 struct program_space;
 struct type;
@@ -101,13 +101,13 @@ class minimal_symbol_reader
 
   /* Record a new minimal symbol.  This is the "full" entry point;
      simpler convenience entry points are also provided below.
-   
+
      This returns a new minimal symbol.  It is ok to modify the returned
      minimal symbol (though generally not necessary).  It is not ok,
      though, to stash the pointer anywhere; as minimal symbols may be
      moved after creation.  The memory for the returned minimal symbol
      is still owned by the minsyms.c code, and should not be freed.
-   
+
      Arguments are:
 
      NAME - the symbol's name
@@ -195,7 +195,7 @@ unsigned int msymbol_hash_iw (const char *);
    requirements.  */
 
 #define SYMBOL_HASH_NEXT(hash, c)			\
-  ((hash) * 67 + TOLOWER ((unsigned char) (c)) - 113)
+  ((hash) * 67 + c_tolower (c) - 113)
 
 
 
@@ -227,11 +227,12 @@ bound_minimal_symbol lookup_minimal_symbol_text (program_space *pspace,
    objfiles) for a global (not file-local) minsym whose linkage name
    is NAME.  This is somewhat similar to lookup_minimal_symbol_text,
    only data symbols (not text symbols) are considered, and a non-NULL
-   objfile is not accepted.  Returns a bound minimal symbol that
-   matches, or an "empty" bound minimal symbol otherwise.  */
+   objfile is not accepted.  The boolean argument allows matching the
+   static types of data symbols also.  Returns a bound minimal symbol
+   that matches, or an "empty" bound minimal symbol otherwise.  */
 
-extern bound_minimal_symbol lookup_minimal_symbol_linkage (const char *name,
-							   struct objfile *objf)
+extern bound_minimal_symbol lookup_minimal_symbol_linkage
+  (const char *name, struct objfile *objf, bool match_static_type)
   ATTRIBUTE_NONNULL (1) ATTRIBUTE_NONNULL (2);
 
 /* A variant of lookup_minimal_symbol_linkage that iterates over all
@@ -239,8 +240,8 @@ extern bound_minimal_symbol lookup_minimal_symbol_linkage (const char *name,
    OBJF_MAINLINE will be considered.  */
 
 extern bound_minimal_symbol lookup_minimal_symbol_linkage
-  (program_space *pspace, const char *name, bool only_main)
-  ATTRIBUTE_NONNULL (1);
+  (program_space *pspace, const char *name, bool match_static_type,
+   bool only_main) ATTRIBUTE_NONNULL (1);
 
 /* Look through all the current minimal symbol tables and find the
    first minimal symbol that matches NAME and PC.  If OBJF is non-NULL,
@@ -291,9 +292,9 @@ bound_minimal_symbol lookup_minimal_symbol_by_pc_section
    lookup_msym_prefer prefer = lookup_msym_prefer::TEXT,
    bound_minimal_symbol *previous = nullptr);
 
-/* Backward compatibility: search through the minimal symbol table 
+/* Backward compatibility: search through the minimal symbol table
    for a matching PC (no section given).
-   
+
    This is a wrapper that calls lookup_minimal_symbol_by_pc_section
    with a NULL section argument.  */
 
@@ -325,4 +326,4 @@ CORE_ADDR minimal_symbol_upper_bound (bound_minimal_symbol minsym);
 type *find_minsym_type_and_address (minimal_symbol *msymbol, objfile *objf,
 				    CORE_ADDR *address_p);
 
-#endif /* MINSYMS_H */
+#endif /* GDB_MINSYMS_H */

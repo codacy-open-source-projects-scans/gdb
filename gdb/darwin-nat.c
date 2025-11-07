@@ -1,5 +1,5 @@
 /* Darwin support for GDB, the GNU debugger.
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    Contributed by AdaCore.
 
@@ -26,6 +26,7 @@
 #include "symtab.h"
 #include "objfiles.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "gdbcore.h"
 #include "gdbthread.h"
 #include "regcache.h"
@@ -46,7 +47,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
-#include <ctype.h>
 #include <sys/sysctl.h>
 #include <sys/proc.h>
 #include <libproc.h>
@@ -70,6 +70,7 @@
 #include "gdbsupport/scoped_fd.h"
 #include "gdbsupport/scoped_restore.h"
 #include "nat/fork-inferior.h"
+#include "gdbsupport/eintr.h"
 
 /* Quick overview.
    Darwin kernel is Mach + BSD derived kernel.  Note that they share the
@@ -1604,7 +1605,7 @@ darwin_attach_pid (struct inferior *inf)
 	  if (!inf->attach_flag)
 	    {
 	      kill (inf->pid, 9);
-	      waitpid (inf->pid, &status, 0);
+	      gdb::waitpid (inf->pid, &status, 0);
 	    }
 
 	  error
@@ -1689,12 +1690,12 @@ darwin_attach_pid (struct inferior *inf)
 static struct thread_info *
 thread_info_from_private_thread_info (darwin_thread_info *pti)
 {
-  for (struct thread_info *it : all_threads ())
+  for (struct thread_info &it : all_threads ())
     {
-      darwin_thread_info *iter_pti = get_darwin_thread_info (it);
+      darwin_thread_info *iter_pti = get_darwin_thread_info (&it);
 
       if (iter_pti->gdb_port == pti->gdb_port)
-	return it;
+	return &it;
     }
 
   gdb_assert_not_reached ("did not find gdb thread for darwin thread");
@@ -1851,7 +1852,7 @@ copy_shell_to_cache (const char *shell, const std::string &new_name)
     error (_("Could not open shell (%s) for reading: %s"),
 	   shell, safe_strerror (errno));
 
-  std::string new_dir = ldirname (new_name.c_str ());
+  std::string new_dir = gdb_ldirname (new_name.c_str ());
   if (!mkdir_recursive (new_dir.c_str ()))
     error (_("Could not make cache directory \"%s\": %s"),
 	   new_dir.c_str (), safe_strerror (errno));
@@ -1942,16 +1943,20 @@ Because `startup-with-shell' is enabled, gdb tried to work around SIP by\n\
 caching a copy of your shell.  However, this failed:\n\
 %s\n\
 If you correct the problem, gdb will automatically try again the next time\n\
-you \"run\".  To prevent these attempts, you can use:\n\
-    set startup-with-shell off"),
-		   ex.what ());
+you \"%ps\".  To prevent these attempts, you can use:\n\
+    %ps"),
+		   ex.what (),
+		   styled_string (command_style.style (), "run"),
+		   styled_string (command_style.style (),
+				  "set startup-with-shell off"));
 	  return false;
 	}
 
       gdb_printf (_("Note: this version of macOS has System Integrity Protection.\n\
 Because `startup-with-shell' is enabled, gdb has worked around this by\n\
-caching a copy of your shell.  The shell used by \"run\" is now:\n\
+caching a copy of your shell.  The shell used by \"%ps\" is now:\n\
     %s\n"),
+		  styled_string (command_style.style (), "run"),
 		  new_name.c_str ());
     }
 
@@ -2032,7 +2037,7 @@ darwin_nat_target::attach (const char *args, int from_tty)
 
   pid = parse_pid_to_attach (args);
 
-  if (pid == getpid ())		/* Trying to masturbate?  */
+  if (pid == getpid ())
     error (_("I refuse to debug myself!"));
 
   target_announce_attach (from_tty, pid);
@@ -2463,9 +2468,7 @@ darwin_nat_target::supports_multi_process ()
   return true;
 }
 
-void _initialize_darwin_nat ();
-void
-_initialize_darwin_nat ()
+INIT_GDB_FILE (darwin_nat)
 {
   kern_return_t kret;
 

@@ -1,5 +1,5 @@
 /* Support for HPPA 64-bit ELF
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -61,12 +61,6 @@ struct elf64_hppa_link_hash_entry
   bfd_vma plt_offset;
   bfd_vma opd_offset;
   bfd_vma stub_offset;
-
-  /* The index of the (possibly local) symbol in the input bfd and its
-     associated BFD.  Needed so that we can have relocs against local
-     symbols in shared libraries.  */
-  long sym_indx;
-  bfd *owner;
 
   /* Dynamic symbols may need to have two different values.  One for
      the dynamic symbol table, one for the normal symbol table.
@@ -136,6 +130,10 @@ struct elf64_hppa_link_hash_table
 
   bfd_vma text_segment_base;
   bfd_vma data_segment_base;
+
+  /* Hash entries for __text_seg and __data_seg symbols.  */
+  struct elf_link_hash_entry *text_hash_entry;
+  struct elf_link_hash_entry *data_hash_entry;
 
   /* We build tables to map from an input section back to its
      symbol index.  This is the BFD for which we currently have
@@ -296,8 +294,7 @@ elf64_hppa_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (&htab->root, abfd,
 				      hppa64_link_hash_newfunc,
-				      sizeof (struct elf64_hppa_link_hash_entry),
-				      HPPA64_ELF_DATA))
+				      sizeof (struct elf64_hppa_link_hash_entry)))
     {
       free (htab);
       return NULL;
@@ -480,6 +477,7 @@ hppa64_elf_local_refcounts (bfd *abfd)
 	 counts.  Done this way to save polluting elf_obj_tdata
 	 with another target specific pointer.  */
       size = symtab_hdr->sh_info;
+      BFD_ASSERT (size);
       size *= 3 * sizeof (bfd_signed_vma);
       local_refcounts = bfd_zalloc (abfd, size);
       elf_local_got_refcounts (abfd) = local_refcounts;
@@ -509,7 +507,7 @@ elf64_hppa_check_relocs (bfd *abfd,
      the special sections required for dynamic linking.  */
   if (! elf_hash_table (info)->dynamic_sections_created)
     {
-      if (! _bfd_elf_link_create_dynamic_sections (abfd, info))
+      if (! bfd_elf_link_create_dynamic_sections (abfd, info))
 	return false;
     }
 
@@ -642,7 +640,8 @@ elf64_hppa_check_relocs (bfd *abfd,
 
 	  /* PR15323, ref flags aren't set for references in the same
 	     object.  */
-	  hh->eh.ref_regular = 1;
+	  if (!hh->eh.root.linker_def && !hh->eh.root.ldscript_def)
+	    hh->eh.ref_regular = 1;
 	}
       else
 	hh = NULL;
@@ -745,7 +744,7 @@ elf64_hppa_check_relocs (bfd *abfd,
 	case R_PARISC_LTOFF_FPTR16WF:
 	case R_PARISC_LTOFF_FPTR16DF:
 	  if (bfd_link_pic (info) || maybe_dynamic)
-	    need_entry = (NEED_DLT | NEED_OPD | NEED_PLT);
+	    need_entry = (NEED_DLT | NEED_OPD | NEED_PLT | NEED_DYNREL);
 	  else
 	    need_entry = (NEED_DLT | NEED_OPD | NEED_PLT);
 	  dynrel_type = R_PARISC_FPTR64;
@@ -754,9 +753,9 @@ elf64_hppa_check_relocs (bfd *abfd,
 	/* This is a simple OPD entry.  */
 	case R_PARISC_FPTR64:
 	  if (bfd_link_pic (info) || maybe_dynamic)
-	    need_entry = (NEED_OPD | NEED_PLT | NEED_DYNREL);
+	    need_entry = (NEED_OPD | NEED_DYNREL);
 	  else
-	    need_entry = (NEED_OPD | NEED_PLT);
+	    need_entry = (NEED_OPD);
 	  dynrel_type = R_PARISC_FPTR64;
 	  break;
 
@@ -765,14 +764,6 @@ elf64_hppa_check_relocs (bfd *abfd,
 
       if (!need_entry)
 	continue;
-
-      if (hh)
-	{
-	  /* Stash away enough information to be able to find this symbol
-	     regardless of whether or not it is local or global.  */
-	  hh->owner = abfd;
-	  hh->sym_indx = r_symndx;
-	}
 
       /* Create what's needed.  */
       if (need_entry & NEED_DLT)
@@ -875,14 +866,12 @@ elf64_hppa_check_relocs (bfd *abfd,
 				   sec_symndx, rel->r_offset, rel->r_addend))
 	    goto err_out;
 
-	  /* If we are building a shared library and we just recorded
-	     a dynamic R_PARISC_FPTR64 relocation, then make sure the
-	     section symbol for this section ends up in the dynamic
-	     symbol table.  */
-	  if (bfd_link_pic (info) && dynrel_type == R_PARISC_FPTR64
-	      && ! (bfd_elf_link_record_local_dynamic_symbol
-		    (info, abfd, sec_symndx)))
-	    return false;
+	  /* Add symbol to dynamic symbol table.  */
+	  if (hh != NULL
+	      && hh->eh.dynindx == -1
+	      && bfd_link_pic (info)
+	      && ! (bfd_elf_link_record_dynamic_symbol (info, &hh->eh)))
+	    goto err_out;
 	}
     }
 
@@ -963,28 +952,13 @@ allocate_global_data_dlt (struct elf_link_hash_entry *eh, void *data)
 
   if (hh->want_dlt)
     {
-      if (bfd_link_pic (x->info))
-	{
-	  /* Possibly add the symbol to the local dynamic symbol
-	     table since we might need to create a dynamic relocation
-	     against it.  */
-	  if (eh->dynindx == -1 && eh->type != STT_PARISC_MILLI)
-	    {
-	      bfd *owner = eh->root.u.def.section->owner;
-
-	      if (! (bfd_elf_link_record_local_dynamic_symbol
-		     (x->info, owner, hh->sym_indx)))
-		return false;
-	    }
-	}
-
       hh->dlt_offset = x->ofs;
       x->ofs += DLT_ENTRY_SIZE;
     }
   return true;
 }
 
-/* Allocate space for a DLT.PLT entry.  */
+/* Allocate space for a PLT entry.  */
 
 static bool
 allocate_global_data_plt (struct elf_link_hash_entry *eh, void *data)
@@ -1046,64 +1020,32 @@ allocate_global_data_opd (struct elf_link_hash_entry *eh, void *data)
 {
   struct elf64_hppa_link_hash_entry *hh = hppa_elf_hash_entry (eh);
   struct elf64_hppa_allocate_data *x = (struct elf64_hppa_allocate_data *)data;
+  struct elf64_hppa_link_hash_table *hppa_info;
 
-  if (hh && hh->want_opd)
+  hppa_info = hppa_link_hash_table (x->info);
+  if (hppa_info == NULL)
+    return false;
+
+  if (hh->want_opd)
     {
       /* We never need an opd entry for a symbol which is not
 	 defined by this output file.  */
-      if (hh && (hh->eh.root.type == bfd_link_hash_undefined
-		 || hh->eh.root.type == bfd_link_hash_undefweak
-		 || hh->eh.root.u.def.section->output_section == NULL))
-	hh->want_opd = 0;
+      if (hh->eh.root.type == bfd_link_hash_undefined
+	  || hh->eh.root.type == bfd_link_hash_undefweak
+	  || hh->eh.root.u.def.section->output_section == NULL)
+	{
+	  hh->want_opd = 0;
+	  return true;
+	}
 
       /* If we are creating a shared library, took the address of a local
 	 function or might export this function from this object file, then
 	 we have to create an opd descriptor.  */
-      else if (bfd_link_pic (x->info)
-	       || hh == NULL
-	       || (hh->eh.dynindx == -1 && hh->eh.type != STT_PARISC_MILLI)
-	       || (hh->eh.root.type == bfd_link_hash_defined
-		   || hh->eh.root.type == bfd_link_hash_defweak))
+      if (bfd_link_pic (x->info)
+	  || (hh->eh.dynindx == -1 && hh->eh.type != STT_PARISC_MILLI)
+	  || hh->eh.root.type == bfd_link_hash_defined
+	  || hh->eh.root.type == bfd_link_hash_defweak)
 	{
-	  /* If we are creating a shared library, then we will have to
-	     create a runtime relocation for the symbol to properly
-	     initialize the .opd entry.  Make sure the symbol gets
-	     added to the dynamic symbol table.  */
-	  if (bfd_link_pic (x->info)
-	      && (hh == NULL || (hh->eh.dynindx == -1)))
-	    {
-	      bfd *owner;
-	      /* PR 6511: Default to using the dynamic symbol table.  */
-	      owner = (hh->owner ? hh->owner: eh->root.u.def.section->owner);
-
-	      if (!bfd_elf_link_record_local_dynamic_symbol
-		    (x->info, owner, hh->sym_indx))
-		return false;
-	    }
-
-	  /* This may not be necessary or desirable anymore now that
-	     we have some support for dealing with section symbols
-	     in dynamic relocs.  But name munging does make the result
-	     much easier to debug.  ie, the EPLT reloc will reference
-	     a symbol like .foobar, instead of .text + offset.  */
-	  if (bfd_link_pic (x->info) && eh)
-	    {
-	      char *new_name;
-	      struct elf_link_hash_entry *nh;
-
-	      new_name = concat (".", eh->root.root.string, NULL);
-
-	      nh = elf_link_hash_lookup (elf_hash_table (x->info),
-					 new_name, true, true, true);
-
-	      free (new_name);
-	      nh->root.type = eh->root.type;
-	      nh->root.u.def.value = eh->root.u.def.value;
-	      nh->root.u.def.section = eh->root.u.def.section;
-
-	      if (! bfd_elf_link_record_dynamic_symbol (x->info, nh))
-		return false;
-	     }
 	  hh->opd_offset = x->ofs;
 	  x->ofs += OPD_ENTRY_SIZE;
 	}
@@ -1416,19 +1358,12 @@ allocate_dynrel_entries (struct elf_link_hash_entry *eh, void *data)
   for (rent = hh->reloc_entries; rent; rent = rent->next)
     {
       /* Allocate one iff we are building a shared library, the relocation
-	 isn't a R_PARISC_FPTR64, or we don't want an opd entry.  */
-      if (!shared && rent->type == R_PARISC_FPTR64 && hh->want_opd)
+	 isn't a R_PARISC_FPTR64, and we want an opd entry.  */
+      if (!shared && rent->type == R_PARISC_FPTR64 && !hh->want_opd)
 	continue;
 
-      hppa_info->other_rel_sec->size += sizeof (Elf64_External_Rela);
-
-      /* Make sure this symbol gets into the dynamic symbol table if it is
-	 not already recorded.  ?!? This should not be in the loop since
-	 the symbol need only be added once.  */
-      if (eh->dynindx == -1 && eh->type != STT_PARISC_MILLI)
-	if (!bfd_elf_link_record_local_dynamic_symbol
-	    (x->info, rent->sec->owner, hh->sym_indx))
-	  return false;
+      if (!discarded_section (hppa_info->other_rel_sec))
+	hppa_info->other_rel_sec->size += sizeof (Elf64_External_Rela);
     }
 
   /* Take care of the GOT and PLT relocations.  */
@@ -1556,10 +1491,11 @@ elf64_hppa_late_size_sections (bfd *output_bfd, struct bfd_link_info *info)
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  sec = bfd_get_linker_section (dynobj, ".interp");
+	  sec = hppa_info->root.interp;
 	  BFD_ASSERT (sec != NULL);
 	  sec->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  sec->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  sec->alloced = 1;
 	}
     }
   else
@@ -1695,6 +1631,62 @@ elf64_hppa_late_size_sections (bfd *output_bfd, struct bfd_link_info *info)
 	}
     }
 
+  /* Add __text_seg section symbol to dynamic table.  */
+  if (bfd_link_pic (info) && !hppa_info->text_hash_entry)
+    {
+      asection *s;
+
+      s = bfd_get_section_by_name (info->output_bfd, ".dynamic");
+      if (s != NULL)
+	{
+	  struct elf_link_hash_entry *nh;
+
+	  nh = elf_link_hash_lookup (elf_hash_table (info),
+				     "__text_seg", true, false, false);
+	  if (nh != NULL)
+	    {
+	      nh->type = STT_SECTION;
+	      nh->root.type = bfd_link_hash_defined;
+	      nh->root.u.def.value = 0;
+	      nh->root.u.def.section = s;
+	      nh->forced_local = 1;
+	      nh->other = STV_DEFAULT;
+	      bfd_elf_link_record_dynamic_symbol (info, nh);
+	      hppa_info->text_hash_entry = nh;
+	    }
+	}
+    }
+
+  /* Add __data_seg section symbol to dynamic table.  */
+  if (bfd_link_pic (info) && !hppa_info->data_hash_entry)
+    {
+      asection *s;
+
+      /* The .data section isn't always present nor is it always the
+	 first section in the data segment.  It's too early to call
+	 bfd_map_over_sections, so we assume we don't need any data
+	 segment relocations when .data is missing.  */
+      s = bfd_get_section_by_name (info->output_bfd, ".data");
+      if (s != NULL)
+	{
+	  struct elf_link_hash_entry *nh;
+
+	  nh = elf_link_hash_lookup (elf_hash_table (info),
+				     "__data_seg", true, false, false);
+	  if (nh != NULL)
+	    {
+	      nh->type = STT_SECTION;
+	      nh->root.type = bfd_link_hash_defined;
+	      nh->root.u.def.value = 0;
+	      nh->root.u.def.section = s;
+	      nh->forced_local = 1;
+	      nh->other = STV_DEFAULT;
+	      bfd_elf_link_record_dynamic_symbol (info, nh);
+	      hppa_info->data_hash_entry = nh;
+	    }
+	}
+    }
+
   /* Allocate the GOT entries.  */
 
   data.info = info;
@@ -1810,6 +1802,7 @@ elf64_hppa_late_size_sections (bfd *output_bfd, struct bfd_link_info *info)
 	  sec->contents = (bfd_byte *) bfd_zalloc (dynobj, sec->size);
 	  if (sec->contents == NULL)
 	    return false;
+	  sec->alloced = 1;
 	}
     }
 
@@ -2102,29 +2095,22 @@ elf64_hppa_finalize_opd (struct elf_link_hash_entry *eh, void *data)
       bfd_put_64 (sopd->owner, value, sopd->contents + hh->opd_offset + 24);
     }
 
-  /* If we are generating a shared library, we must generate EPLT relocations
-     for each entry in the .opd, even for static functions (they may have
-     had their address taken).  */
-  if (bfd_link_pic (info) && hh->want_opd)
+  /* If we are generating a shared library, we must generate EPLT
+     relocations for each entry in the .opd.  Here we handle EPLT
+     relocations for global symbols.  */
+  if (bfd_link_pic (info) && hh && hh->want_opd)
     {
+      bfd_vma value, value2;
       Elf_Internal_Rela rel;
       bfd_byte *loc;
       int dynindx;
-
-      /* We may need to do a relocation against a local symbol, in
-	 which case we have to look up it's dynamic symbol index off
-	 the local symbol hash table.  */
-      if (eh->dynindx != -1)
-	dynindx = eh->dynindx;
-      else
-	dynindx
-	  = _bfd_elf_link_lookup_local_dynindx (info, hh->owner,
-						hh->sym_indx);
+      asection *sec;
 
       /* The offset of this relocation is the absolute address of the
 	 .opd entry for this symbol.  */
       rel.r_offset = (hh->opd_offset + sopd->output_offset
 		      + sopd->output_section->vma);
+      rel.r_addend = 0;
 
       /* If H is non-null, then we have an external symbol.
 
@@ -2136,41 +2122,27 @@ elf64_hppa_finalize_opd (struct elf_link_hash_entry *eh, void *data)
 
 	 Thus, we can not use that dynamic symbol for the EPLT relocation
 	 (if we did, the data in the .opd would reference itself rather
-	 than the actual address of the function).  Instead we have to use
-	 a new dynamic symbol which has the same value as the original global
-	 function symbol.
+	 than the actual address of the function).  To resolve this issue,
+	 we use offsets relative to the local section symbol __text_seg.  */
 
-	 We prefix the original symbol with a "." and use the new symbol in
-	 the EPLT relocation.  This new symbol has already been recorded in
-	 the symbol table, we just have to look it up and use it.
+      /* First compute the address of this symbol.  */
+      value = (eh->root.u.def.value
+	       + eh->root.u.def.section->output_section->vma
+	       + eh->root.u.def.section->output_offset);
 
-	 We do not have such problems with static functions because we do
-	 not make their addresses in the dynamic symbol table point to
-	 the .opd entry.  Ultimately this should be safe since a static
-	 function can not be directly referenced outside of its shared
-	 library.
+      /* Compute the base address of the segment with this symbol.  */
+      sec = hppa_info->text_hash_entry->root.u.def.section;
+      value2 = sec->output_offset + sec->output_section->vma;
 
-	 We do have to play similar games for FPTR relocations in shared
-	 libraries, including those for static symbols.  See the FPTR
-	 handling in elf64_hppa_finalize_dynreloc.  */
-      if (eh)
-	{
-	  char *new_name;
-	  struct elf_link_hash_entry *nh;
+      /* Compute the difference between the symbol and the text segment
+	 base address.  */
+      value -= value2;
 
-	  new_name = concat (".", eh->root.root.string, NULL);
+      /* The result becomes the addend of the relocation.  */
+      rel.r_addend += value;
 
-	  nh = elf_link_hash_lookup (elf_hash_table (info),
-				     new_name, true, true, false);
-
-	  /* All we really want from the new symbol is its dynamic
-	     symbol index.  */
-	  if (nh)
-	    dynindx = nh->dynindx;
-	  free (new_name);
-	}
-
-      rel.r_addend = 0;
+      dynindx = hppa_info->text_hash_entry->dynindx;
+      BFD_ASSERT (dynindx != -1);
       rel.r_info = ELF64_R_INFO (dynindx, R_PARISC_EPLT);
 
       loc = sopdrel->contents;
@@ -2199,11 +2171,7 @@ elf64_hppa_finalize_dlt (struct elf_link_hash_entry *eh, void *data)
   sdlt = hppa_info->dlt_sec;
   sdltrel = hppa_info->dlt_rel_sec;
 
-  /* H/DYN_H may refer to a local variable and we know it's
-     address, so there is no need to create a relocation.  Just install
-     the proper value into the DLT, note this shortcut can not be
-     skipped when building a shared library.  */
-  if (! bfd_link_pic (info) && hh && hh->want_dlt)
+  if (! bfd_link_pic (info) && hh->want_dlt)
     {
       bfd_vma value;
 
@@ -2246,16 +2214,34 @@ elf64_hppa_finalize_dlt (struct elf_link_hash_entry *eh, void *data)
       Elf_Internal_Rela rel;
       bfd_byte *loc;
       int dynindx;
+      asection *sec;
+      bfd_vma value, value2;
 
-      /* We may need to do a relocation against a local symbol, in
-	 which case we have to look up it's dynamic symbol index off
-	 the local symbol hash table.  */
-      if (eh && eh->dynindx != -1)
-	dynindx = eh->dynindx;
+      if (eh->dynindx == -1)
+	{
+	  value = (eh->root.u.def.value
+		   + eh->root.u.def.section->output_section->vma
+		   + eh->root.u.def.section->output_offset);
+
+	  if (eh->root.u.def.section->flags & SEC_READONLY)
+	    {
+	      sec = hppa_info->text_hash_entry->root.u.def.section;
+	      value2 = sec->output_offset + sec->output_section->vma;
+	      dynindx = hppa_info->text_hash_entry->dynindx;
+	    }
+	  else
+	    {
+	      sec = hppa_info->data_hash_entry->root.u.def.section;
+	      value2 = sec->output_offset + sec->output_section->vma;
+	      dynindx = hppa_info->data_hash_entry->dynindx;
+	    }
+	  rel.r_addend = value - value2;
+	}
       else
-	dynindx
-	  = _bfd_elf_link_lookup_local_dynindx (info, hh->owner,
-						hh->sym_indx);
+	{
+	  dynindx = eh->dynindx;
+	  rel.r_addend = 0;
+	}
 
       /* Create a dynamic relocation for this entry.  Do include the output
 	 offset of the DLT entry since we need an absolute address in the
@@ -2266,7 +2252,6 @@ elf64_hppa_finalize_dlt (struct elf_link_hash_entry *eh, void *data)
 	  rel.r_info = ELF64_R_INFO (dynindx, R_PARISC_FPTR64);
       else
 	  rel.r_info = ELF64_R_INFO (dynindx, R_PARISC_DIR64);
-      rel.r_addend = 0;
 
       loc = sdltrel->contents;
       loc += sdltrel->reloc_count++ * sizeof (Elf64_External_Rela);
@@ -2292,24 +2277,17 @@ elf64_hppa_finalize_dynreloc (struct elf_link_hash_entry *eh,
   if (!dynamic_symbol && !bfd_link_pic (info))
     return true;
 
+  hppa_info = hppa_link_hash_table (info);
+  if (hppa_info == NULL)
+    return false;
+
+  if (discarded_section (hppa_info->other_rel_sec))
+    return true;
+
   if (hh->reloc_entries)
     {
       struct elf64_hppa_dyn_reloc_entry *rent;
       int dynindx;
-
-      hppa_info = hppa_link_hash_table (info);
-      if (hppa_info == NULL)
-	return false;
-
-      /* We may need to do a relocation against a local symbol, in
-	 which case we have to look up it's dynamic symbol index off
-	 the local symbol hash table.  */
-      if (eh->dynindx != -1)
-	dynindx = eh->dynindx;
-      else
-	dynindx
-	  = _bfd_elf_link_lookup_local_dynindx (info, hh->owner,
-						hh->sym_indx);
 
       for (rent = hh->reloc_entries; rent; rent = rent->next)
 	{
@@ -2317,9 +2295,9 @@ elf64_hppa_finalize_dynreloc (struct elf_link_hash_entry *eh,
 	  bfd_byte *loc;
 
 	  /* Allocate one iff we are building a shared library, the relocation
-	     isn't a R_PARISC_FPTR64, or we don't want an opd entry.  */
+	     isn't a R_PARISC_FPTR64, or we want an opd entry.  */
 	  if (!bfd_link_pic (info)
-	      && rent->type == R_PARISC_FPTR64 && hh->want_opd)
+	      && rent->type == R_PARISC_FPTR64 && !hh->want_opd)
 	    continue;
 
 	  /* Create a dynamic relocation for this entry.
@@ -2352,35 +2330,69 @@ elf64_hppa_finalize_dynreloc (struct elf_link_hash_entry *eh,
 	  if (bfd_link_pic (info)
 	      && rent->type == R_PARISC_FPTR64 && hh->want_opd)
 	    {
+	      asection *sec;
 	      bfd_vma value, value2;
 
-	      /* First compute the address of the opd entry for this symbol.  */
-	      value = (hh->opd_offset
-		       + hppa_info->opd_sec->output_section->vma
-		       + hppa_info->opd_sec->output_offset);
+	      /* Compute the address of the symbol.  */
+	      value = (eh->root.u.def.value
+		       + eh->root.u.def.section->output_section->vma
+		       + eh->root.u.def.section->output_offset);
 
-	      /* Compute the value of the start of the section with
-		 the relocation.  */
-	      value2 = (rent->sec->output_section->vma
-			+ rent->sec->output_offset);
+	      if (hh->eh.dynindx != -1)
+		{
+		  value2 = value;
+		  dynindx = hh->eh.dynindx;
+		}
+	      else if (rent->sec->flags & SEC_READONLY)
+		{
+		  sec = hppa_info->text_hash_entry->root.u.def.section;
+		  value2 = sec->output_offset + sec->output_section->vma;
+		  dynindx = hppa_info->text_hash_entry->dynindx;
+		}
+	      else
+		{
+		  sec = hppa_info->data_hash_entry->root.u.def.section;
+		  value2 = sec->output_offset + sec->output_section->vma;
+		  dynindx = hppa_info->data_hash_entry->dynindx;
+		}
 
 	      /* Compute the difference between the start of the section
 		 with the relocation and the opd entry.  */
 	      value -= value2;
 
 	      /* The result becomes the addend of the relocation.  */
-	      rel.r_addend = value;
+	      rel.r_addend = value + rent->addend;
+	    }
+	  else if (eh->dynindx == -1)
+	    {
+	      asection *sec;
+	      bfd_vma value, value2;
 
-	      /* The section symbol becomes the symbol for the dynamic
-		 relocation.  */
-	      dynindx
-		= _bfd_elf_link_lookup_local_dynindx (info,
-						      rent->sec->owner,
-						      rent->sec_symndx);
+	      value = (eh->root.u.def.value
+		       + eh->root.u.def.section->output_section->vma
+		       + eh->root.u.def.section->output_offset);
+
+	      if (eh->root.u.def.section->flags & SEC_READONLY)
+		{
+		  sec = hppa_info->text_hash_entry->root.u.def.section;
+		  value2 = sec->output_offset + sec->output_section->vma;
+		  dynindx = hppa_info->text_hash_entry->dynindx;
+		}
+	      else
+		{
+		  sec = hppa_info->data_hash_entry->root.u.def.section;
+		  value2 = sec->output_offset + sec->output_section->vma;
+		  dynindx = hppa_info->data_hash_entry->dynindx;
+		}
+	      rel.r_addend = value - value2 + rent->addend;
 	    }
 	  else
-	    rel.r_addend = rent->addend;
+	    {
+	      dynindx = eh->dynindx;
+	      rel.r_addend = rent->addend;
+	    }
 
+	  BFD_ASSERT (dynindx != -1);
 	  rel.r_info = ELF64_R_INFO (dynindx, rent->type);
 
 	  loc = hppa_info->other_rel_sec->contents;
@@ -2438,8 +2450,8 @@ elf64_hppa_finish_dynamic_sections (bfd *output_bfd,
 			  elf64_hppa_finalize_dynreloc,
 			  info);
 
-  /* Finalize the contents of the .dlt section.  */
   dynobj = elf_hash_table (info)->dynobj;
+
   /* Finalize the contents of the .dlt section.  */
   elf_link_hash_traverse (elf_hash_table (info),
 			  elf64_hppa_finalize_dlt,
@@ -3151,6 +3163,13 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
   unsigned int r_type = howto->type;
   bfd_byte *hit_data = contents + offset;
 
+  /* Dynamic relocs are not propagated for SEC_DEBUGGING
+     sections because such sections are not SEC_ALLOC and
+     thus ld.so will not process them.  */
+  if (bfd_link_pic (info)
+      && (input_section->flags & SEC_DEBUGGING) != 0)
+    return bfd_reloc_ok;
+
   if (hppa_info == NULL)
     return bfd_reloc_notsupported;
 
@@ -3161,7 +3180,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
   switch (r_type)
     {
     case R_PARISC_NONE:
-      break;
+      return bfd_reloc_ok;
 
     /* Basic function call support.
 
@@ -3286,6 +3305,13 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
     case R_PARISC_LTOFF16DF:
       {
 	bfd_vma off;
+	bfd_vma relocation = value;
+	asection *sopd, *sopdrel;
+	bool need_dlt_reloc = false;
+	bool need_opd_reloc = false;
+
+	sopd = hppa_info->opd_sec;
+	sopdrel = hppa_info->opd_rel_sec;
 
 	/* If this relocation was against a local symbol, then we still
 	   have not set up the DLT entry (it's not convenient to do so
@@ -3327,24 +3353,72 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 		  {
 		    local_opd_offsets[r_symndx] |= 1;
 
+		    /* If we are generating a shared library, we need
+		       a relocation for the local symbol.  */
+		    if (bfd_link_pic (info))
+		      need_opd_reloc = true;
+
 		    /* The first two words of an .opd entry are zero.  */
-		    memset (hppa_info->opd_sec->contents + off, 0, 16);
+		    memset (sopd->contents + off, 0, 16);
 
 		    /* The next word is the address of the function.  */
-		    bfd_put_64 (hppa_info->opd_sec->owner, value + addend,
-				(hppa_info->opd_sec->contents + off + 16));
+		    bfd_put_64 (sopd->owner, value + addend,
+				sopd->contents + off + 16);
 
 		    /* The last word is our local __gp value.  */
 		    value = _bfd_get_gp_value (info->output_bfd);
-		    bfd_put_64 (hppa_info->opd_sec->owner, value,
-				(hppa_info->opd_sec->contents + off + 24));
+		    bfd_put_64 (sopd->owner, value,
+				sopd->contents + off + 24);
 		  }
 
-		/* The DLT value is the address of the .opd entry.  */
+		/* The OPD value is the address of the .opd entry.  */
 		value = (off
-			 + hppa_info->opd_sec->output_offset
-			 + hppa_info->opd_sec->output_section->vma);
+			 + sopd->output_offset
+			 + sopd->output_section->vma);
 		addend = 0;
+	      }
+
+	    if (need_opd_reloc)
+	      {
+		Elf_Internal_Rela rela;
+		bfd_byte *loc;
+		int dynindx;
+		asection *sec;
+
+		/* The offset of this relocation is the absolute address
+		   of the .opd entry for this symbol.  */
+		rela.r_offset = (off
+				 + sopd->output_offset
+				 + sopd->output_section->vma);
+
+		/* Select base segment.  */
+		if (sym_sec->flags & SEC_READONLY)
+		  {
+		    sec = hppa_info->text_hash_entry->root.u.def.section;
+		    dynindx = hppa_info->text_hash_entry->dynindx;
+		  }
+		else
+		  {
+		    sec = hppa_info->data_hash_entry->root.u.def.section;
+		    dynindx = hppa_info->data_hash_entry->dynindx;
+		  }
+
+		/* Adjust the addend with the difference between the
+		   symbol's address and the base segment's address.  */
+		value = (relocation + addend
+			 - sec->output_offset
+			 - sec->output_section->vma);
+
+		/* The result becomes the addend of the relocation.  */
+		rela.r_addend = value;
+
+		dynindx = hppa_info->text_hash_entry->dynindx;
+		BFD_ASSERT (dynindx != -1);
+		rela.r_info = ELF64_R_INFO (dynindx, R_PARISC_EPLT);
+
+		loc = sopdrel->contents;
+		loc += sopdrel->reloc_count++ * sizeof (Elf64_External_Rela);
+		bfd_elf64_swap_reloca_out (info->output_bfd, &rela, loc);
 	      }
 
 	    local_dlt_offsets = local_offsets;
@@ -3358,6 +3432,12 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	    else
 	      {
 		local_dlt_offsets[r_symndx] |= 1;
+
+		/* If we are generating a shared library, we need
+		   a relocation for the local symbol.  */
+		if (bfd_link_pic (info))
+		  need_dlt_reloc = true;
+
 		bfd_put_64 (hppa_info->dlt_sec->owner,
 			    value + addend,
 			    hppa_info->dlt_sec->contents + off);
@@ -3397,6 +3477,50 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	  value = hppa_field_adjust (value, 0, e_rsel);
 
 	insn = elf_hppa_relocate_insn (insn, (int) value, r_type);
+
+	if (need_dlt_reloc)
+	  {
+	    Elf_Internal_Rela rela;
+	    bfd_byte *loc;
+	    int dynindx;
+	    asection *sec;
+	    asection *sdlt, *sdltrel;
+
+	    sdlt = hppa_info->dlt_sec;
+	    sdltrel = hppa_info->dlt_rel_sec;
+
+	    /* The offset of this relocation is the absolute address
+	       of the .dlt entry.  */
+	    rela.r_offset = (off + sdlt->output_offset
+			     + sdlt->output_section->vma);
+
+	    if (sym_sec->flags & SEC_READONLY)
+	      {
+		sec = hppa_info->text_hash_entry->root.u.def.section;
+		dynindx = hppa_info->text_hash_entry->dynindx;
+	      }
+	    else
+	      {
+		sec = hppa_info->data_hash_entry->root.u.def.section;
+		dynindx = hppa_info->data_hash_entry->dynindx;
+	      }
+
+	    /* Adjust addend using the difference of the symbol's
+	       location and the section symbol's address.  */
+	    value = (relocation + addend
+		     - sec->output_offset
+		     - sec->output_section->vma);
+
+	    /* The result becomes the addend of the relocation.  */
+	    rela.r_addend = value;
+
+	    BFD_ASSERT (dynindx != -1);
+	    rela.r_info = ELF64_R_INFO (dynindx, R_PARISC_DIR64);
+
+	    loc = sdltrel->contents;
+	    loc += sdltrel->reloc_count++ * sizeof (Elf64_External_Rela);
+	    bfd_elf64_swap_reloca_out (output_bfd, &rela, loc);
+	  }
 	break;
       }
 
@@ -3524,7 +3648,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 		 + hppa_info->dlt_sec->output_offset
 		 + hppa_info->dlt_sec->output_section->vma);
 	value -= _bfd_get_gp_value (output_bfd);
-	bfd_put_32 (input_bfd, value, hit_data);
+	bfd_put_32 (output_bfd, value, hit_data);
 	return bfd_reloc_ok;
       }
 
@@ -3566,16 +3690,16 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 		 + hppa_info->dlt_sec->output_offset
 		 + hppa_info->dlt_sec->output_section->vma);
 	value -= _bfd_get_gp_value (output_bfd);
-	bfd_put_64 (input_bfd, value, hit_data);
+	bfd_put_64 (output_bfd, value, hit_data);
 	return bfd_reloc_ok;
       }
 
     case R_PARISC_DIR32:
-      bfd_put_32 (input_bfd, value + addend, hit_data);
+      bfd_put_32 (output_bfd, value + addend, hit_data);
       return bfd_reloc_ok;
 
     case R_PARISC_DIR64:
-      bfd_put_64 (input_bfd, value + addend, hit_data);
+      bfd_put_64 (output_bfd, value + addend, hit_data);
       return bfd_reloc_ok;
 
     case R_PARISC_GPREL64:
@@ -3583,7 +3707,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	 relative address.  */
       value -= _bfd_get_gp_value (output_bfd);
 
-      bfd_put_64 (input_bfd, value + addend, hit_data);
+      bfd_put_64 (output_bfd, value + addend, hit_data);
       return bfd_reloc_ok;
 
     case R_PARISC_LTOFF64:
@@ -3596,7 +3720,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	       + hppa_info->dlt_sec->output_section->vma);
       value -= _bfd_get_gp_value (output_bfd);
 
-      bfd_put_64 (input_bfd, value + addend, hit_data);
+      bfd_put_64 (output_bfd, value + addend, hit_data);
       return bfd_reloc_ok;
 
     case R_PARISC_PCREL32:
@@ -3614,7 +3738,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 
 	value += addend;
 	value -= 8;
-	bfd_put_32 (input_bfd, value, hit_data);
+	bfd_put_32 (output_bfd, value, hit_data);
 	return bfd_reloc_ok;
       }
 
@@ -3633,13 +3757,20 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 
 	value += addend;
 	value -= 8;
-	bfd_put_64 (input_bfd, value, hit_data);
+	bfd_put_64 (output_bfd, value, hit_data);
 	return bfd_reloc_ok;
       }
 
     case R_PARISC_FPTR64:
       {
 	bfd_vma off;
+	bfd_vma relocation = value;
+	asection *sopd;
+	asection *sopdrel;
+	bool need_opd_reloc = false;
+
+	sopd = hppa_info->opd_sec;
+	sopdrel = hppa_info->opd_rel_sec;
 
 	/* We may still need to create the FPTR itself if it was for
 	   a local symbol.  */
@@ -3647,7 +3778,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	  {
 	    bfd_vma *local_opd_offsets;
 
-	    if (local_offsets == NULL)
+	    if (local_offsets == NULL || symtab_hdr->sh_info == 0)
 	      abort ();
 
 	    local_opd_offsets = local_offsets + 2 * symtab_hdr->sh_info;
@@ -3662,17 +3793,23 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	      }
 	    else
 	      {
+		local_opd_offsets[r_symndx] |= 1;
+
+		/* If we are generating a shared library, we need
+		   a relocation for the local symbol.  */
+		if (bfd_link_pic (info))
+		  need_opd_reloc = true;
+
 		/* The first two words of an .opd entry are zero.  */
 		memset (hppa_info->opd_sec->contents + off, 0, 16);
 
 		/* The next word is the address of the function.  */
-		bfd_put_64 (hppa_info->opd_sec->owner, value + addend,
-			    (hppa_info->opd_sec->contents + off + 16));
+		bfd_put_64 (sopd->owner, value + addend,
+			    (sopd->contents + off + 16));
 
 		/* The last word is our local __gp value.  */
 		value = _bfd_get_gp_value (info->output_bfd);
-		bfd_put_64 (hppa_info->opd_sec->owner, value,
-			    hppa_info->opd_sec->contents + off + 24);
+		bfd_put_64 (sopd->owner, value, sopd->contents + off + 24);
 	      }
 	  }
 	else
@@ -3680,28 +3817,67 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 
 	if (hh == NULL || hh->want_opd)
 	  /* We want the value of the OPD offset for this symbol.  */
-	  value = (off
-		   + hppa_info->opd_sec->output_offset
-		   + hppa_info->opd_sec->output_section->vma);
+	  value = off + sopd->output_offset + sopd->output_section->vma;
 	else
 	  /* We want the address of the symbol.  */
 	  value += addend;
 
-	bfd_put_64 (input_bfd, value, hit_data);
+	bfd_put_64 (output_bfd, value, hit_data);
+
+	if (need_opd_reloc)
+	  {
+	    Elf_Internal_Rela rela;
+	    bfd_byte *loc;
+	    int dynindx;
+	    asection *sec;
+
+	    /* The offset of this relocation is the absolute address
+	       of the .opd entry for this symbol.  */
+	    rela.r_offset = (off + sopd->output_offset
+			     + sopd->output_section->vma);
+
+	    /* Select base segment.  */
+	    if (sym_sec->flags & SEC_READONLY)
+	      {
+		sec = hppa_info->text_hash_entry->root.u.def.section;
+		dynindx = hppa_info->text_hash_entry->dynindx;
+	      }
+	    else
+	      {
+		sec = hppa_info->data_hash_entry->root.u.def.section;
+		dynindx = hppa_info->data_hash_entry->dynindx;
+	      }
+
+	    /* Compute the difference between the symbol's address
+	       and the base segment's address.  */
+	    value = (relocation + addend
+		     - sec->output_offset
+		     - sec->output_section->vma);
+
+	    /* The result becomes the addend of the relocation.  */
+	    rela.r_addend = value;
+
+	    BFD_ASSERT (dynindx != -1);
+	    rela.r_info = ELF64_R_INFO (dynindx, R_PARISC_EPLT);
+
+	    loc = sopdrel->contents;
+	    loc += sopdrel->reloc_count++ * sizeof (Elf64_External_Rela);
+	    bfd_elf64_swap_reloca_out (info->output_bfd, &rela, loc);
+	  }
+
 	return bfd_reloc_ok;
       }
 
     case R_PARISC_SECREL32:
       if (sym_sec && sym_sec->output_section)
 	value -= sym_sec->output_section->vma;
-      bfd_put_32 (input_bfd, value + addend, hit_data);
+      bfd_put_32 (output_bfd, value + addend, hit_data);
       return bfd_reloc_ok;
 
     case R_PARISC_SEGREL32:
     case R_PARISC_SEGREL64:
       {
-	/* If this is the first SEGREL relocation, then initialize
-	   the segment base values.  */
+	/* Initialize the segment base values.  */
 	if (hppa_info->text_segment_base == (bfd_vma) -1)
 	  bfd_map_over_sections (output_bfd, elf_hppa_record_segment_addrs,
 				 hppa_info);
@@ -3720,9 +3896,9 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
 	  value -= hppa_info->data_segment_base;
 
 	if (r_type == R_PARISC_SEGREL32)
-	  bfd_put_32 (input_bfd, value, hit_data);
+	  bfd_put_32 (output_bfd, value, hit_data);
 	else
-	  bfd_put_64 (input_bfd, value, hit_data);
+	  bfd_put_64 (output_bfd, value, hit_data);
 	return bfd_reloc_ok;
       }
 
@@ -3732,7 +3908,7 @@ elf_hppa_final_link_relocate (Elf_Internal_Rela *rel,
     }
 
   /* Update the instruction word.  */
-  bfd_put_32 (input_bfd, (bfd_vma) insn, hit_data);
+  bfd_put_32 (output_bfd, (bfd_vma) insn, hit_data);
   return bfd_reloc_ok;
 }
 
@@ -3864,7 +4040,8 @@ elf64_hppa_relocate_section (bfd *output_bfd,
 
       if (sym_sec != NULL && discarded_section (sym_sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_PARISC_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;
@@ -3922,7 +4099,7 @@ static const struct bfd_elf_special_section elf64_hppa_special_sections[] =
 
 /* The hash bucket size is the standard one, namely 4.  */
 
-const struct elf_size_info hppa64_elf_size_info =
+static const struct elf_size_info hppa64_elf_size_info =
 {
   sizeof (Elf64_External_Ehdr),
   sizeof (Elf64_External_Phdr),

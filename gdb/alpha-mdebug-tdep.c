@@ -1,5 +1,5 @@
 /* Target-dependent mdebug code for the ALPHA architecture.
-   Copyright (C) 1993-2024 Free Software Foundation, Inc.
+   Copyright (C) 1993-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -285,7 +285,7 @@ alpha_mdebug_frame_prev_register (const frame_info_ptr &this_frame,
      the correct place.  */
   if (regnum == ALPHA_PC_REGNUM)
     regnum = PROC_PC_REG (info->proc_desc);
-  
+
   return trad_frame_get_prev_register (this_frame, info->saved_regs, regnum);
 }
 
@@ -330,16 +330,16 @@ alpha_mdebug_frame_sniffer (const struct frame_unwind *self,
   return 1;
 }
 
-static const struct frame_unwind alpha_mdebug_frame_unwind =
-{
+static const struct frame_unwind_legacy alpha_mdebug_frame_unwind (
   "alpha mdebug",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   alpha_mdebug_frame_this_id,
   alpha_mdebug_frame_prev_register,
   NULL,
   alpha_mdebug_frame_sniffer
-};
+);
 
 static CORE_ADDR
 alpha_mdebug_frame_base_address (const frame_info_ptr &this_frame,

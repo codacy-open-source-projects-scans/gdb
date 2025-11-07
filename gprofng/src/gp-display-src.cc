@@ -1,4 +1,4 @@
-/* Copyright (C) 2021-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2021-2025 Free Software Foundation, Inc.
    Contributed by Oracle.
 
    This file is part of GNU Binutils.
@@ -171,7 +171,9 @@ er_src::usage ()
     "\n"
     "See also:\n"
     "\n"
-    "gprofng(1), gp-archive(1), gp-collect-app(1), gp-display-html(1), gp-display-text(1)\n"));
+    "gprofng(1), gprofng-archive(1), gprofng-collect-app(1), "
+    "gprofng-display-html(1), gprofng-display-text(1)\n"
+    "\nReport bugs to <https://sourceware.org/bugzilla/>\n"));
 /*
   printf (GTXT ("Usage: %s [OPTION] a.out/.so/.o/.class\n\n"), whoami);
   printf (GTXT ("    -func                     List all the functions from the given object\n"
@@ -312,11 +314,7 @@ er_src::proc_cmd (CmdType cmd_type, bool first, char *arg1,
       break;
     case VERSION_cmd:
       if (out_file != stdout)
-// Ruud
 	Application::print_version_info ();
-/*
-	fprintf (out_file, "GNU %s version %s\n", get_basename (prog_name), VERSION);
-*/
       break;
     default:
       fprintf (stderr, GTXT ("Invalid option"));

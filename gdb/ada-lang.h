@@ -1,6 +1,6 @@
 /* Ada language support definitions for GDB, the GNU debugger.
 
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#if !defined (ADA_LANG_H)
-#define ADA_LANG_H 1
+#ifndef GDB_ADA_LANG_H
+#define GDB_ADA_LANG_H
 
 class frame_info_ptr;
 struct inferior;
@@ -218,16 +218,13 @@ extern const char *ada_decode_symbol (const struct general_symbol_info *);
    simply wrapped in <...>.  If WRAP is false, then the empty string
    will be returned.
 
-   When OPERATORS is false, operator names will not be decoded.  By
-   default, they are decoded, e.g., 'Oadd' will be transformed to
-   '"+"'.
-
-   When WIDE is false, wide characters will be left as-is.  By
-   default, they converted from their hex encoding to the host
-   charset.  */
+   TRANSLATE has two effects.  When true (the default), operator names
+   and wide characters will be decoded.  E.g., 'Oadd' will be
+   transformed to '"+"', and wide characters converted from their hex
+   encoding to the host charset.  When false, these will be left
+   alone.  */
 extern std::string ada_decode (const char *name, bool wrap = true,
-			       bool operators = true,
-			       bool wide = true);
+			       bool translate = true);
 
 extern std::vector<struct block_symbol> ada_lookup_symbol_list
      (const char *, const struct block *, domain_search_flags);
@@ -437,4 +434,4 @@ extern struct type *ada_index_type (struct type *type, int n,
 
 extern void ada_clear_symbol_cache (program_space *pspace);
 
-#endif
+#endif /* GDB_ADA_LANG_H */

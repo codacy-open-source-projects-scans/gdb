@@ -1,4 +1,4 @@
-# Copyright 2022-2024 Free Software Foundation, Inc.
+# Copyright 2022-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
 # This test triggers the "separate debug info file has no debug info" warning by replacing
 # the build-id based .debug file with the stripped binary and then loading it to gdb.
 # It then also sets up local debuginfod server with the correct debug file to download
-# to make sure no warnings are emmitted.
+# to make sure no warnings are emitted.
 
 
 standard_testfile
@@ -46,7 +46,7 @@ set build_id_debug_file \
     [standard_output_file [build_id_debug_filename_get $binfile]]
 
 # Get the BINFILE.debug filename.  This is the file we should be
-# moving to the BUILD_ID_DEBUG_FILE location, but we wont, we're going
+# moving to the BUILD_ID_DEBUG_FILE location, but we won't, we're going
 # to move something else there instead.
 set debugfile [standard_output_file "${binfile}.debug"]
 
@@ -139,7 +139,7 @@ proc_with_prefix local_debuginfod { } {
     gdb_test "file ${build_id_debug_file}" \
 	[multi_line \
 	     "Reading symbols from ${build_id_debug_file}\\.\\.\\." \
-	     "Downloading separate debug info for ${build_id_debug_file}\\.\\.\\." \
+	     "Downloading\[^\r\n\]*separate debug info for ${build_id_debug_file}\\.\\.\\." \
 	     "Reading symbols from ${cache}/\[^\r\n\]+\\.\\.\\.(?:\r\nExpanding full symbols from \[^\r\n\]+)*"] \
 	"debuginfod running, info downloaded, no warnings"
 }

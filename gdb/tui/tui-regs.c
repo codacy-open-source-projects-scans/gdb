@@ -1,6 +1,6 @@
 /* TUI display registers in window.
 
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -22,6 +22,7 @@
 #include "arch-utils.h"
 #include "tui/tui.h"
 #include "symtab.h"
+#include "cli/cli-style.h"
 #include "frame.h"
 #include "regcache.h"
 #include "inferior.h"
@@ -421,7 +422,7 @@ tui_register_info::rerender (WINDOW *handle, int field_width)
        to code that causes the compiler to generate an unused-value
        warning.  */
     (void) wstandout (handle);
-      
+
   mvwaddnstr (handle, y, x, content.c_str (), field_width - 1);
   if (content.size () < field_width)
     waddstr (handle, n_spaces (field_width - content.size ()));
@@ -437,7 +438,7 @@ tui_register_info::rerender (WINDOW *handle, int field_width)
 
 /* Helper for "tui reg next", returns the next register group after
    CURRENT_GROUP in the register group list for GDBARCH, with wrap around
-   behaviour.
+   behavior.
 
    If CURRENT_GROUP is nullptr (e.g. if the tui register window has only
    just been displayed and has no current group selected) or the currently
@@ -459,7 +460,7 @@ tui_reg_next (const reggroup *current_group, struct gdbarch *gdbarch)
 
 /* Helper for "tui reg prev", returns the register group previous to
    CURRENT_GROUP in the register group list for GDBARCH, with wrap around
-   behaviour.
+   behavior.
 
    If CURRENT_GROUP is nullptr (e.g. if the tui register window has only
    just been displayed and has no current group selected) or the currently
@@ -532,9 +533,10 @@ tui_reg_command (const char *args, int from_tty)
     }
   else
     {
-      gdb_printf (_("\"tui reg\" must be followed by the name of "
+      gdb_printf (_("\"%ps\" must be followed by the name of "
 		    "either a register group,\nor one of 'next' "
-		    "or 'prev'.  Known register groups are:\n"));
+		    "or 'prev'.  Known register groups are:\n"),
+		  styled_string (command_style.style (), "tui reg"));
 
       bool first = true;
       for (const struct reggroup *group : gdbarch_reggroups (gdbarch))
@@ -564,9 +566,7 @@ tui_reggroup_completer (struct cmd_list_element *ignore,
   complete_on_enum (tracker, extra, text, word);
 }
 
-void _initialize_tui_regs ();
-void
-_initialize_tui_regs ()
+INIT_GDB_FILE (tui_regs)
 {
   struct cmd_list_element **tuicmd, *cmd;
 

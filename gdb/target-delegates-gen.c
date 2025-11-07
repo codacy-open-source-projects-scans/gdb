@@ -3,7 +3,7 @@
 
 /* Boilerplate target methods for GDB
 
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -172,7 +172,7 @@ struct dummy_target : public target_ops
   enum btrace_error read_btrace (struct btrace_data *arg0, struct btrace_target_info *arg1, enum btrace_read_type arg2) override;
   const struct btrace_config *btrace_conf (const struct btrace_target_info *arg0) override;
   enum record_method record_method (ptid_t arg0) override;
-  void stop_recording () override;
+  bool stop_recording () override;
   void info_record () override;
   void save_record (const char *arg0) override;
   bool supports_delete_record () override;
@@ -199,6 +199,10 @@ struct dummy_target : public target_ops
   bool store_memtags (CORE_ADDR arg0, size_t arg1, const gdb::byte_vector &arg2, int arg3) override;
   bool is_address_tagged (gdbarch *arg0, CORE_ADDR arg1) override;
   x86_xsave_layout fetch_x86_xsave_layout () override;
+  bool supports_displaced_step (thread_info *arg0) override;
+  displaced_step_prepare_status displaced_step_prepare (thread_info *arg0, CORE_ADDR &arg1) override;
+  displaced_step_finish_status displaced_step_finish (thread_info *arg0, const target_waitstatus &arg1) override;
+  void displaced_step_restore_all_in_ptid (inferior *arg0, ptid_t arg1) override;
 };
 
 struct debug_target : public target_ops
@@ -349,7 +353,7 @@ struct debug_target : public target_ops
   enum btrace_error read_btrace (struct btrace_data *arg0, struct btrace_target_info *arg1, enum btrace_read_type arg2) override;
   const struct btrace_config *btrace_conf (const struct btrace_target_info *arg0) override;
   enum record_method record_method (ptid_t arg0) override;
-  void stop_recording () override;
+  bool stop_recording () override;
   void info_record () override;
   void save_record (const char *arg0) override;
   bool supports_delete_record () override;
@@ -376,6 +380,10 @@ struct debug_target : public target_ops
   bool store_memtags (CORE_ADDR arg0, size_t arg1, const gdb::byte_vector &arg2, int arg3) override;
   bool is_address_tagged (gdbarch *arg0, CORE_ADDR arg1) override;
   x86_xsave_layout fetch_x86_xsave_layout () override;
+  bool supports_displaced_step (thread_info *arg0) override;
+  displaced_step_prepare_status displaced_step_prepare (thread_info *arg0, CORE_ADDR &arg1) override;
+  displaced_step_finish_status displaced_step_finish (thread_info *arg0, const target_waitstatus &arg1) override;
+  void displaced_step_restore_all_in_ptid (inferior *arg0, ptid_t arg1) override;
 };
 
 void
@@ -3786,24 +3794,28 @@ debug_target::record_method (ptid_t arg0)
   return result;
 }
 
-void
+bool
 target_ops::stop_recording ()
 {
-  this->beneath ()->stop_recording ();
+  return this->beneath ()->stop_recording ();
 }
 
-void
+bool
 dummy_target::stop_recording ()
 {
+  return false;
 }
 
-void
+bool
 debug_target::stop_recording ()
 {
   target_debug_printf_nofunc ("-> %s->stop_recording (...)", this->beneath ()->shortname ());
-  this->beneath ()->stop_recording ();
-  target_debug_printf_nofunc ("<- %s->stop_recording ()",
-	      this->beneath ()->shortname ());
+  bool result
+    = this->beneath ()->stop_recording ();
+  target_debug_printf_nofunc ("<- %s->stop_recording () = %s",
+	      this->beneath ()->shortname (),
+	      target_debug_print_bool (result).c_str ());
+  return result;
 }
 
 void
@@ -4410,4 +4422,104 @@ debug_target::fetch_x86_xsave_layout ()
 	      this->beneath ()->shortname (),
 	      target_debug_print_x86_xsave_layout (result).c_str ());
   return result;
+}
+
+bool
+target_ops::supports_displaced_step (thread_info *arg0)
+{
+  return this->beneath ()->supports_displaced_step (arg0);
+}
+
+bool
+dummy_target::supports_displaced_step (thread_info *arg0)
+{
+  return default_supports_displaced_step (this, arg0);
+}
+
+bool
+debug_target::supports_displaced_step (thread_info *arg0)
+{
+  target_debug_printf_nofunc ("-> %s->supports_displaced_step (...)", this->beneath ()->shortname ());
+  bool result
+    = this->beneath ()->supports_displaced_step (arg0);
+  target_debug_printf_nofunc ("<- %s->supports_displaced_step (%s) = %s",
+	      this->beneath ()->shortname (),
+	      target_debug_print_thread_info_p (arg0).c_str (),
+	      target_debug_print_bool (result).c_str ());
+  return result;
+}
+
+displaced_step_prepare_status
+target_ops::displaced_step_prepare (thread_info *arg0, CORE_ADDR &arg1)
+{
+  return this->beneath ()->displaced_step_prepare (arg0, arg1);
+}
+
+displaced_step_prepare_status
+dummy_target::displaced_step_prepare (thread_info *arg0, CORE_ADDR &arg1)
+{
+  return default_displaced_step_prepare (this, arg0, arg1);
+}
+
+displaced_step_prepare_status
+debug_target::displaced_step_prepare (thread_info *arg0, CORE_ADDR &arg1)
+{
+  target_debug_printf_nofunc ("-> %s->displaced_step_prepare (...)", this->beneath ()->shortname ());
+  displaced_step_prepare_status result
+    = this->beneath ()->displaced_step_prepare (arg0, arg1);
+  target_debug_printf_nofunc ("<- %s->displaced_step_prepare (%s, %s) = %s",
+	      this->beneath ()->shortname (),
+	      target_debug_print_thread_info_p (arg0).c_str (),
+	      target_debug_print_CORE_ADDR_r (arg1).c_str (),
+	      target_debug_print_displaced_step_prepare_status (result).c_str ());
+  return result;
+}
+
+displaced_step_finish_status
+target_ops::displaced_step_finish (thread_info *arg0, const target_waitstatus &arg1)
+{
+  return this->beneath ()->displaced_step_finish (arg0, arg1);
+}
+
+displaced_step_finish_status
+dummy_target::displaced_step_finish (thread_info *arg0, const target_waitstatus &arg1)
+{
+  return default_displaced_step_finish (this, arg0, arg1);
+}
+
+displaced_step_finish_status
+debug_target::displaced_step_finish (thread_info *arg0, const target_waitstatus &arg1)
+{
+  target_debug_printf_nofunc ("-> %s->displaced_step_finish (...)", this->beneath ()->shortname ());
+  displaced_step_finish_status result
+    = this->beneath ()->displaced_step_finish (arg0, arg1);
+  target_debug_printf_nofunc ("<- %s->displaced_step_finish (%s, %s) = %s",
+	      this->beneath ()->shortname (),
+	      target_debug_print_thread_info_p (arg0).c_str (),
+	      target_debug_print_const_target_waitstatus_r (arg1).c_str (),
+	      target_debug_print_displaced_step_finish_status (result).c_str ());
+  return result;
+}
+
+void
+target_ops::displaced_step_restore_all_in_ptid (inferior *arg0, ptid_t arg1)
+{
+  this->beneath ()->displaced_step_restore_all_in_ptid (arg0, arg1);
+}
+
+void
+dummy_target::displaced_step_restore_all_in_ptid (inferior *arg0, ptid_t arg1)
+{
+  default_displaced_step_restore_all_in_ptid (this, arg0, arg1);
+}
+
+void
+debug_target::displaced_step_restore_all_in_ptid (inferior *arg0, ptid_t arg1)
+{
+  target_debug_printf_nofunc ("-> %s->displaced_step_restore_all_in_ptid (...)", this->beneath ()->shortname ());
+  this->beneath ()->displaced_step_restore_all_in_ptid (arg0, arg1);
+  target_debug_printf_nofunc ("<- %s->displaced_step_restore_all_in_ptid (%s, %s)",
+	      this->beneath ()->shortname (),
+	      target_debug_print_inferior_p (arg0).c_str (),
+	      target_debug_print_ptid_t (arg1).c_str ());
 }

@@ -1,6 +1,6 @@
 /* Routines for name->symbol lookups in GDB.
-   
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
    Contributed by David Carlton <carlton@bactrian.org> and by Kealia,
    Inc.
@@ -20,8 +20,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef DICTIONARY_H
-#define DICTIONARY_H
+#ifndef GDB_DICTIONARY_H
+#define GDB_DICTIONARY_H
 
 #include "symfile.h"
 
@@ -151,7 +151,7 @@ extern struct symbol *
 /* Advance MITERATOR to point at the next symbol in MDICT whose
    search_name () is NAME, as tested using COMPARE (see
    dict_iter_match_first), or NULL if there are no more such symbols.
-   Don't call this if you've previously received NULL from 
+   Don't call this if you've previously received NULL from
    mdict_iterator_match_first or mdict_iterator_match_next on this
    iteration.  And don't call it unless MITERATOR was created by a
    previous call to mdict_iter_match_first with the same NAME and COMPARE.  */
@@ -208,4 +208,4 @@ private:
   struct mdict_iterator m_iter;
 };
 
-#endif /* DICTIONARY_H */
+#endif /* GDB_DICTIONARY_H */

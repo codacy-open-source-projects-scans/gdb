@@ -1,5 +1,5 @@
 /* I/O, string, cleanup, and other random utilities for GDB.
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef GDB_UTILS_H
+#define GDB_UTILS_H
 
 #include <chrono>
 
@@ -133,15 +133,16 @@ private:
 extern int gdb_filename_fnmatch (const char *pattern, const char *string,
 				 int flags);
 
-extern void substitute_path_component (char **stringp, const char *from,
-				       const char *to);
-
-std::string ldirname (const char *filename);
+std::string gdb_ldirname (const char *filename);
 
 extern int count_path_elements (const char *path);
 
 extern const char *strip_leading_path_elements (const char *path, int n);
-
+
+/* Wrapper around readline's tilde_expand, to return a unique pointer.  */
+
+extern gdb::unique_xmalloc_ptr<char> gdb_rl_tilde_expand (const char *path);
+
 /* GDB output, ui_file utilities.  */
 
 struct ui_file;
@@ -486,4 +487,4 @@ private:
   std::vector<string_file> m_warnings;
 };
 
-#endif /* UTILS_H */
+#endif /* GDB_UTILS_H */

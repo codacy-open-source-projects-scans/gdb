@@ -1,6 +1,6 @@
 /* Native-dependent code for GNU/Linux x86 (i386 and x86-64).
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef NAT_X86_LINUX_H
-#define NAT_X86_LINUX_H
+#ifndef GDB_NAT_X86_LINUX_H
+#define GDB_NAT_X86_LINUX_H
 
 #include "nat/linux-nat.h"
 
@@ -75,4 +75,8 @@ private:
 
 extern x86_linux_arch_size x86_linux_ptrace_get_arch_size (int tid);
 
-#endif /* NAT_X86_LINUX_H */
+/* Check shadow stack hardware and kernel support.  */
+
+extern bool x86_check_ssp_support (const int tid);
+
+#endif /* GDB_NAT_X86_LINUX_H */

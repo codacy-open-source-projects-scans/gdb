@@ -1,6 +1,6 @@
 /* Dynamic architecture support for GDB, the GNU debugger.
 
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -48,7 +48,7 @@
 bool
 default_displaced_step_hw_singlestep (struct gdbarch *gdbarch)
 {
-  return !gdbarch_software_single_step_p (gdbarch);
+  return !gdbarch_get_next_pcs_p (gdbarch);
 }
 
 CORE_ADDR
@@ -75,7 +75,7 @@ legacy_register_sim_regno (struct gdbarch *gdbarch, int regnum)
   gdb_assert (regnum >= 0 && regnum < gdbarch_num_regs (gdbarch));
   /* NOTE: cagney/2002-05-13: The old code did it this way and it is
      suspected that some GDB/SIM combinations may rely on this
-     behaviour.  The default should be one2one_register_sim_regno
+     behavior.  The default should be one2one_register_sim_regno
      (below).  */
   if (gdbarch_register_name (gdbarch, regnum)[0] != '\0')
     return regnum;
@@ -257,7 +257,7 @@ cannot_register_not (struct gdbarch *gdbarch, int regnum)
    cooked or raw.  */
 
 void
-legacy_virtual_frame_pointer (struct gdbarch *gdbarch, 
+legacy_virtual_frame_pointer (struct gdbarch *gdbarch,
 			      CORE_ADDR pc,
 			      int *frame_regnum,
 			      LONGEST *frame_offset)
@@ -320,12 +320,6 @@ default_floatformat_for_type (struct gdbarch *gdbarch,
 int
 generic_convert_register_p (struct gdbarch *gdbarch, int regnum,
 			    struct type *type)
-{
-  return 0;
-}
-
-int
-default_stabs_argument_has_addr (struct gdbarch *gdbarch, struct type *type)
 {
   return 0;
 }
@@ -592,7 +586,7 @@ gdbarch_update_p (inferior *inf, struct gdbarch_info info)
     info.abfd = inf->pspace->exec_bfd ();
 
   if (info.abfd == NULL)
-    info.abfd = inf->pspace->core_bfd ();
+    info.abfd = get_inferior_core_bfd (inf);
 
   /* Check for the current target description.  */
   if (info.target_desc == NULL)
@@ -692,7 +686,7 @@ void
 initialize_current_architecture (void)
 {
   arches = gdbarch_printable_names ();
-  
+
   /* Find a default architecture.  */
   if (default_bfd_arch == NULL)
     {
@@ -1218,6 +1212,16 @@ default_gdbarch_return_value
 				readbuf, writebuf);
 }
 
+/* See arch-utils.h.  */
+
+std::optional<CORE_ADDR>
+default_get_shadow_stack_pointer (gdbarch *gdbarch, regcache *regcache,
+				  bool &shadow_stack_enabled)
+{
+  shadow_stack_enabled = false;
+  return {};
+}
+
 obstack *gdbarch_obstack (gdbarch *arch)
 {
   return &arch->obstack;
@@ -1499,12 +1503,36 @@ gdbarch_initialized_p (gdbarch *arch)
   return arch->initialized_p;
 }
 
-void _initialize_gdbarch_utils ();
-void
-_initialize_gdbarch_utils ()
+/* See arch-utils.h.  */
+
+gdb_environ
+core_file_exec_context::environment () const
+{
+  gdb_environ e;
+
+  for (const auto &entry : m_environment)
+    {
+      char *eq = strchr (entry.get (), '=');
+
+      /* If there's no '=' character, then skip this entry.  */
+      if (eq == nullptr)
+	continue;
+
+      const char *value = eq + 1;
+      const char *var = entry.get ();
+
+      *eq = '\0';
+      e.set (var, value);
+      *eq = '=';
+    }
+
+  return e;
+}
+
+INIT_GDB_FILE (gdbarch_utils)
 {
   add_setshow_enum_cmd ("endian", class_support,
-			endian_enum, &set_endian_string, 
+			endian_enum, &set_endian_string,
 			_("Set endianness of target."),
 			_("Show endianness of target."),
 			NULL, set_endian, show_endian,

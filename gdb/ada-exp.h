@@ -1,6 +1,6 @@
 /* Definitions for Ada expressions
 
-   Copyright (C) 2020-2024 Free Software Foundation, Inc.
+   Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ADA_EXP_H
-#define ADA_EXP_H
+#ifndef GDB_ADA_EXP_H
+#define GDB_ADA_EXP_H
 
 #include "expop.h"
 
@@ -30,36 +30,14 @@ extern struct value *ada_atr_tag (struct type *expect_type,
 				  struct expression *exp,
 				  enum noside noside, enum exp_opcode op,
 				  struct value *arg1);
-extern struct value *ada_atr_size (struct type *expect_type,
-				   struct expression *exp,
-				   enum noside noside, enum exp_opcode op,
-				   struct value *arg1);
 extern struct value *ada_abs (struct type *expect_type,
 			      struct expression *exp,
 			      enum noside noside, enum exp_opcode op,
 			      struct value *arg1);
-extern struct value *ada_unop_in_range (struct type *expect_type,
-					struct expression *exp,
-					enum noside noside, enum exp_opcode op,
-					struct value *arg1, struct type *type);
 extern struct value *ada_mult_binop (struct type *expect_type,
 				     struct expression *exp,
 				     enum noside noside, enum exp_opcode op,
 				     struct value *arg1, struct value *arg2);
-extern struct value *ada_equal_binop (struct type *expect_type,
-				      struct expression *exp,
-				      enum noside noside, enum exp_opcode op,
-				      struct value *arg1, struct value *arg2);
-extern struct value *ada_ternop_slice (struct expression *exp,
-				       enum noside noside,
-				       struct value *array,
-				       struct value *low_bound_val,
-				       struct value *high_bound_val);
-extern struct value *ada_binop_in_bounds (struct expression *exp,
-					  enum noside noside,
-					  struct value *arg1,
-					  struct value *arg2,
-					  int n);
 extern struct value *ada_binop_minmax (struct type *expect_type,
 				       struct expression *exp,
 				       enum noside noside, enum exp_opcode op,
@@ -200,9 +178,23 @@ public:
 
 using ada_neg_operation = unop_operation<UNOP_NEG, ada_unop_neg>;
 using ada_atr_tag_operation = unop_operation<OP_ATR_TAG, ada_atr_tag>;
-using ada_atr_size_operation = unop_operation<OP_ATR_SIZE, ada_atr_size>;
 using ada_abs_operation = unop_operation<UNOP_ABS, ada_abs>;
 using ada_pos_operation = unop_operation<OP_ATR_POS, ada_pos_atr>;
+
+/* Implementation of the 'Size and 'Object_Size attribute.  The
+   boolean parameter is true for 'Size and false for 'Object_Size.  */
+class ada_atr_size_operation
+  : public maybe_constant_operation<operation_up, bool>
+{
+  using maybe_constant_operation::maybe_constant_operation;
+
+  value *evaluate (struct type *expect_type,
+		   struct expression *exp,
+		   enum noside noside) override;
+
+  enum exp_opcode opcode () const override
+  { return OP_ATR_SIZE; }
+};
 
 /* The in-range operation, given a type.  */
 class ada_unop_range_operation
@@ -214,12 +206,7 @@ public:
 
   value *evaluate (struct type *expect_type,
 		   struct expression *exp,
-		   enum noside noside) override
-  {
-    value *val = std::get<0> (m_storage)->evaluate (nullptr, exp, noside);
-    return ada_unop_in_range (expect_type, exp, noside, UNOP_IN_RANGE,
-			      val, std::get<1> (m_storage));
-  }
+		   enum noside noside) override;
 
   enum exp_opcode opcode () const override
   { return UNOP_IN_RANGE; }
@@ -261,14 +248,7 @@ public:
 
   value *evaluate (struct type *expect_type,
 		   struct expression *exp,
-		   enum noside noside) override
-  {
-    value *arg1 = std::get<1> (m_storage)->evaluate (nullptr, exp, noside);
-    value *arg2 = std::get<2> (m_storage)->evaluate (arg1->type (),
-						     exp, noside);
-    return ada_equal_binop (expect_type, exp, noside, std::get<0> (m_storage),
-			    arg1, arg2);
-  }
+		   enum noside noside) override;
 
   void do_generate_ax (struct expression *exp,
 		       struct agent_expr *ax,
@@ -297,13 +277,7 @@ public:
 
   value *evaluate (struct type *expect_type,
 		   struct expression *exp,
-		   enum noside noside) override
-  {
-    value *array = std::get<0> (m_storage)->evaluate (nullptr, exp, noside);
-    value *low = std::get<1> (m_storage)->evaluate (nullptr, exp, noside);
-    value *high = std::get<2> (m_storage)->evaluate (nullptr, exp, noside);
-    return ada_ternop_slice (exp, noside, array, low, high);
-  }
+		   enum noside noside) override;
 
   enum exp_opcode opcode () const override
   { return TERNOP_SLICE; }
@@ -325,13 +299,7 @@ public:
 
   value *evaluate (struct type *expect_type,
 		   struct expression *exp,
-		   enum noside noside) override
-  {
-    value *arg1 = std::get<0> (m_storage)->evaluate (nullptr, exp, noside);
-    value *arg2 = std::get<1> (m_storage)->evaluate (nullptr, exp, noside);
-    return ada_binop_in_bounds (exp, noside, arg1, arg2,
-				std::get<2> (m_storage));
-  }
+		   enum noside noside) override;
 
   enum exp_opcode opcode () const override
   { return BINOP_IN_BOUNDS; }
@@ -981,4 +949,4 @@ public:
 
 } /* namespace expr */
 
-#endif /* ADA_EXP_H */
+#endif /* GDB_ADA_EXP_H */

@@ -1,6 +1,6 @@
 /* GNU/Linux/RISC-V specific low level interface, for the remote server
    for GDB.
-   Copyright (C) 2020-2024 Free Software Foundation, Inc.
+   Copyright (C) 2020-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -58,6 +58,10 @@ protected:
   void low_set_pc (regcache *regcache, CORE_ADDR newpc) override;
 
   bool low_breakpoint_at (CORE_ADDR pc) override;
+
+  bool low_supports_catch_syscall () override;
+
+  void low_get_syscall_trapinfo (regcache *regcache, int *sysno) override;
 };
 
 /* The singleton target ops object.  */
@@ -78,6 +82,26 @@ riscv_target::low_cannot_store_register (int regno)
 			  "is not implemented by the target");
 }
 
+/* Implementation of linux target ops method "low_supports_catch_syscall".  */
+
+bool
+riscv_target::low_supports_catch_syscall ()
+{
+  return true;
+}
+
+/* Implementation of linux target ops method "low_get_syscall_trapinfo".  */
+
+void
+riscv_target::low_get_syscall_trapinfo (regcache *regcache, int *sysno)
+{
+  LONGEST l_sysno;
+
+  /* The content of a register.  */
+  collect_register_by_name (regcache, "a7", &l_sysno);
+  *sysno = (int)l_sysno;
+}
+
 /* Implementation of linux target ops method "low_arch_setup".  */
 
 void
@@ -86,12 +110,12 @@ riscv_target::low_arch_setup ()
   static const char *expedite_regs[] = { "sp", "pc", NULL };
 
   const riscv_gdbarch_features features
-    = riscv_linux_read_features (lwpid_of (current_thread));
+    = riscv_linux_read_features (current_thread->id.lwp ());
   target_desc_up tdesc = riscv_create_target_description (features);
 
   if (tdesc->expedite_regs.empty ())
     {
-      init_target_desc (tdesc.get (), expedite_regs);
+      init_target_desc (tdesc.get (), expedite_regs, GDB_OSABI_LINUX);
       gdb_assert (!tdesc->expedite_regs.empty ());
     }
 

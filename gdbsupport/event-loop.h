@@ -1,5 +1,5 @@
 /* Definitions used by the GDB event loop.
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
    Written by Elena Zannoni <ezannoni@cygnus.com> of Cygnus Solutions.
 
    This file is part of GDB.
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef EVENT_LOOP_H
-#define EVENT_LOOP_H
+#ifndef GDBSUPPORT_EVENT_LOOP_H
+#define GDBSUPPORT_EVENT_LOOP_H
 
 /* An event loop listens for events from multiple event sources.  When
    an event arrives, it is queued and processed by calling the
@@ -92,8 +92,8 @@ extern void add_file_handler (int fd, handler_func *proc,
 			      gdb_client_data client_data,
 			      std::string &&name, bool is_ui = false);
 
-extern int create_timer (int milliseconds, 
-			 timer_handler_func *proc, 
+extern int create_timer (int milliseconds,
+			 timer_handler_func *proc,
 			 gdb_client_data client_data);
 extern void delete_timer (int id);
 
@@ -145,4 +145,4 @@ extern debug_event_loop_kind debug_event_loop;
     } \
   while (0)
 
-#endif /* EVENT_LOOP_H */
+#endif /* GDBSUPPORT_EVENT_LOOP_H */

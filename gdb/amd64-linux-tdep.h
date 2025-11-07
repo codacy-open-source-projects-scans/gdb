@@ -1,6 +1,6 @@
 /* Target-dependent code for GNU/Linux AMD64.
 
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef AMD64_LINUX_TDEP_H
-#define AMD64_LINUX_TDEP_H
+#ifndef GDB_AMD64_LINUX_TDEP_H
+#define GDB_AMD64_LINUX_TDEP_H
 
 /* Like for i386 GNU/Linux, there is an extra "register"
    used to control syscall restarting.  */
@@ -302,6 +302,7 @@ enum amd64_syscall {
   amd64_sys_sync_file_range = 277,
   amd64_sys_vmsplice = 278,
   amd64_sys_move_pages = 279,
+  amd64_sys_accept4 = 288,
   amd64_sys_pipe2 = 293,
   amd64_sys_getrandom = 318
 };
@@ -553,6 +554,7 @@ enum amd64_x32_syscall {
   amd64_x32_sys_splice = (amd64_x32_syscall_bit + 275),
   amd64_x32_sys_tee = (amd64_x32_syscall_bit + 276),
   amd64_x32_sys_sync_file_range = (amd64_x32_syscall_bit + 277),
+  amd64_x32_sys_accept4 = (amd64_x32_syscall_bit + 288),
   amd64_x32_sys_rt_sigaction = (amd64_x32_syscall_bit + 512),
   amd64_x32_sys_rt_sigreturn = (amd64_x32_syscall_bit + 513),
   amd64_x32_sys_ioctl = (amd64_x32_syscall_bit + 514),
@@ -586,4 +588,4 @@ enum amd64_x32_syscall {
   amd64_x32_sys_getsockopt = (amd64_x32_syscall_bit + 542),
 };
 
-#endif /* amd64-linux-tdep.h */
+#endif /* GDB_AMD64_LINUX_TDEP_H */

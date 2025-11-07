@@ -1,6 +1,6 @@
 /* Target-dependent code for the Motorola 68000 series.
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1007,16 +1007,16 @@ m68k_frame_prev_register (const frame_info_ptr &this_frame, void **this_cache,
   return frame_unwind_got_register (this_frame, regnum, regnum);
 }
 
-static const struct frame_unwind m68k_frame_unwind =
-{
+static const struct frame_unwind_legacy m68k_frame_unwind (
   "m68k prologue",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   m68k_frame_this_id,
   m68k_frame_prev_register,
   NULL,
   default_frame_sniffer
-};
+);
 
 static CORE_ADDR
 m68k_frame_base_address (const frame_info_ptr &this_frame, void **this_cache)
@@ -1201,15 +1201,15 @@ m68k_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   if (info.bfd_arch_info && info.bfd_arch_info->mach != 0)
     {
-      const bfd_arch_info_type *coldfire_arch = 
+      const bfd_arch_info_type *coldfire_arch =
 	bfd_lookup_arch (bfd_arch_m68k, bfd_mach_mcf_isa_a_nodiv);
 
       if (coldfire_arch
-	  && ((*info.bfd_arch_info->compatible) 
+	  && ((*info.bfd_arch_info->compatible)
 	      (info.bfd_arch_info, coldfire_arch)))
 	flavour = m68k_coldfire_flavour;
     }
-  
+
   /* Try to figure out if the arch uses floating registers to return
      floating point values from functions.  On ColdFire, floating
      point values are returned in D0.  */
@@ -1365,9 +1365,7 @@ m68k_osabi_sniffer (bfd *abfd)
   return osabi;
 }
 
-void _initialize_m68k_tdep ();
-void
-_initialize_m68k_tdep ()
+INIT_GDB_FILE (m68k_tdep)
 {
   gdbarch_register (bfd_arch_m68k, m68k_gdbarch_init, m68k_dump_tdep);
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2023-2024 Free Software Foundation, Inc.
+/* Copyright (C) 2023-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef UI_H
-#define UI_H
+#ifndef GDB_UI_H
+#define GDB_UI_H
 
 #include "gdbsupport/event-loop.h"
 #include "gdbsupport/intrusive_list.h"
@@ -227,7 +227,9 @@ using ui_range = next_range<ui>;
 static inline
 ui_range all_uis ()
 {
-  return ui_range (ui_list);
+  next_iterator<ui> begin (ui_list);
+
+  return ui_range (std::move (begin));
 }
 
-#endif /* UI_H */
+#endif /* GDB_UI_H */

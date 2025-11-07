@@ -1,6 +1,6 @@
 /* Machine independent support for Solaris /proc (process file system) for GDB.
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    Written by Michael Snyder at Cygnus Solutions.
    Based on work by Fred Fish, Stu Grossman, Geoff Noer, and others.
@@ -38,7 +38,6 @@
 #include <sys/syscall.h>
 #include "gdbsupport/gdb_wait.h"
 #include <signal.h>
-#include <ctype.h>
 #include "gdb_bfd.h"
 #include "auxv.h"
 #include "procfs.h"
@@ -46,6 +45,7 @@
 #include "gdbsupport/scoped_fd.h"
 #include "gdbsupport/pathstuff.h"
 #include "gdbsupport/buildargv.h"
+#include "gdbsupport/eintr.h"
 #include "cli/cli-style.h"
 
 /* This module provides the interface between GDB and the
@@ -2062,8 +2062,9 @@ wait_again:
 	    {
 	      int wait_retval;
 
-	      /* /proc file not found; presumably child has terminated.  */
-	      wait_retval = ::wait (&wstat); /* "wait" for the child's exit.  */
+	      /* /proc file not found; presumably child has terminated.  Wait
+		 for the child's exit.  */
+	      wait_retval = gdb::wait (&wstat);
 
 	      /* Wrong child?  */
 	      if (wait_retval != inf->pid)
@@ -2150,7 +2151,7 @@ wait_again:
 		      }
 		    else
 		      {
-			int temp = ::wait (&wstat);
+			int temp = gdb::wait (&wstat);
 
 			/* FIXME: shouldn't I make sure I get the right
 			   event from the right process?  If (for
@@ -2560,9 +2561,9 @@ unconditionally_kill_inferior (procinfo *pi)
 #if 0
       int status, ret;
 
-      ret = waitpid (pi->pid, &status, 0);
+      ret = gdb::waitpid (pi->pid, &status, 0);
 #else
-      wait (NULL);
+      gdb::wait (NULL);
 #endif
     }
 }
@@ -3167,7 +3168,7 @@ find_memory_regions_callback (struct prmap *map,
 		  (map->pr_mflags & MA_READ) != 0,
 		  (map->pr_mflags & MA_WRITE) != 0,
 		  (map->pr_mflags & MA_EXEC) != 0,
-		  1, /* MODIFIED is unknown, pass it as true.  */
+		  true, /* MODIFIED is unknown, pass it as true.  */
 		  false,
 		  data);
 }
@@ -3302,7 +3303,7 @@ procfs_target::info_proc (const char *args, enum info_proc_what what)
   gdb_argv built_argv (args);
   for (char *arg : built_argv)
     {
-      if (isdigit (arg[0]))
+      if (c_isdigit (arg[0]))
 	{
 	  pid = strtoul (arg, &tmp, 10);
 	  if (*tmp == '/')
@@ -3413,7 +3414,7 @@ proc_trace_syscalls (const char *args, int from_tty, int entry_or_exit, int mode
     error_no_arg (_("system call to trace"));
 
   pi = find_procinfo_or_die (inferior_ptid.pid (), 0);
-  if (isdigit (args[0]))
+  if (c_isdigit (args[0]))
     {
       const int syscallnum = atoi (args);
 
@@ -3445,9 +3446,7 @@ proc_untrace_sysexit_cmd (const char *args, int from_tty)
   proc_trace_syscalls (args, from_tty, PR_SYSEXIT, FLAG_RESET);
 }
 
-void _initialize_procfs ();
-void
-_initialize_procfs ()
+INIT_GDB_FILE (procfs)
 {
   add_com ("proc-trace-entry", no_class, proc_trace_sysentry_cmd,
 	   _("Give a trace of entries into the syscall."));
@@ -3548,21 +3547,17 @@ procfs_corefile_thread_callback (procinfo *pi, procinfo *thread, void *data)
   return 0;
 }
 
-static int
-find_signalled_thread (struct thread_info *info, void *data)
+static bool
+find_signalled_thread (struct thread_info *info)
 {
-  if (info->stop_signal () != GDB_SIGNAL_0
-      && info->ptid.pid () == inferior_ptid.pid ())
-    return 1;
-
-  return 0;
+  return (info->stop_signal () != GDB_SIGNAL_0
+	  && info->ptid.pid () == inferior_ptid.pid ());
 }
 
 static enum gdb_signal
 find_stop_signal (void)
 {
-  struct thread_info *info =
-    iterate_over_threads (find_signalled_thread, NULL);
+  struct thread_info *info = iterate_over_threads (find_signalled_thread);
 
   if (info)
     return info->stop_signal ();

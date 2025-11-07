@@ -6,6 +6,7 @@
 *~
 .#*
 *#
+.*.swp
 
 *.flt
 *.gmo
@@ -42,6 +43,7 @@ TAGS.sub
 .cache
 compile_commands.json
 .vscode
+.devcontainer/
 
 .gdbinit
 .gdb_history

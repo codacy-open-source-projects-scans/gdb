@@ -1,6 +1,6 @@
 /* DWARF 2 abbreviations
 
-   Copyright (C) 1994-2024 Free Software Foundation, Inc.
+   Copyright (C) 1994-2025 Free Software Foundation, Inc.
 
    Adapted by Gary Funck (gary@intrepid.com), Intrepid Technology,
    Inc.  with support from Florida State University (under contract
@@ -28,52 +28,6 @@
 #include "dwarf2/leb.h"
 #include "dwarf2/section.h"
 #include "bfd.h"
-
-/* Hash function for an abbrev.  */
-
-static hashval_t
-hash_abbrev (const void *item)
-{
-  const struct abbrev_info *info = (const struct abbrev_info *) item;
-  /* Warning: if you change this next line, you must also update the
-     other code in this class using the _with_hash functions.  */
-  return info->number;
-}
-
-/* Comparison function for abbrevs.  */
-
-static int
-eq_abbrev (const void *lhs, const void *rhs)
-{
-  const struct abbrev_info *l_info = (const struct abbrev_info *) lhs;
-  const struct abbrev_info *r_info = (const struct abbrev_info *) rhs;
-  return l_info->number == r_info->number;
-}
-
-/* Abbreviation tables.
-
-   In DWARF version 2, the description of the debugging information is
-   stored in a separate .debug_abbrev section.  Before we read any
-   dies from a section we read in all abbreviations and install them
-   in a hash table.  */
-
-abbrev_table::abbrev_table (sect_offset off, struct dwarf2_section_info *sect)
-  : sect_off (off),
-    section (sect),
-    m_abbrevs (htab_create_alloc (20, hash_abbrev, eq_abbrev,
-				  nullptr, xcalloc, xfree))
-{
-}
-
-/* Add an abbreviation to the table.  */
-
-void
-abbrev_table::add_abbrev (struct abbrev_info *abbrev)
-{
-  void **slot = htab_find_slot_with_hash (m_abbrevs.get (), abbrev,
-					  abbrev->number, INSERT);
-  *slot = abbrev;
-}
 
 /* Helper function that returns true if a DIE with the given tag might
    plausibly be indexed.  */
@@ -153,6 +107,8 @@ abbrev_table::read (struct dwarf2_section_info *section,
       abbrev_ptr += bytes_read;
       cur_abbrev->has_children = read_1_byte (abfd, abbrev_ptr);
       abbrev_ptr += 1;
+
+      cur_abbrev->maybe_ada_import = false;
 
       unsigned int size = 0;
       unsigned int sibling_offset = -1;
@@ -288,7 +244,12 @@ abbrev_table::read (struct dwarf2_section_info *section,
 	}
       else if (has_hardcoded_declaration
 	       && (cur_abbrev->tag != DW_TAG_variable || !has_external))
-	cur_abbrev->interesting = false;
+	{
+	  cur_abbrev->interesting = false;
+	  if (cur_abbrev->tag == DW_TAG_subprogram && has_name
+	      && has_linkage_name)
+	    cur_abbrev->maybe_ada_import = true;
+	}
       else if (!tag_interesting_for_index (cur_abbrev->tag))
 	cur_abbrev->interesting = false;
       else

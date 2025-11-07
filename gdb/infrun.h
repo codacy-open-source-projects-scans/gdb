@@ -1,4 +1,4 @@
-/* Copyright (C) 1986-2024 Free Software Foundation, Inc.
+/* Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -15,8 +15,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef INFRUN_H
-#define INFRUN_H 1
+#ifndef GDB_INFRUN_H
+#define GDB_INFRUN_H
 
 #include "gdbthread.h"
 #include "symtab.h"
@@ -65,13 +65,13 @@ infrun_debug_show_threads (const char *title, ThreadRange threads)
       INFRUN_SCOPED_DEBUG_ENTER_EXIT;
 
       infrun_debug_printf ("%s:", title);
-      for (thread_info *thread : threads)
+      for (thread_info &thread : threads)
 	infrun_debug_printf ("  thread %s, executing = %d, resumed = %d, "
 			     "state = %s",
-			     thread->ptid.to_string ().c_str (),
-			     thread->executing (),
-			     thread->resumed (),
-			     thread_state_string (thread->state));
+			     thread.ptid.to_string ().c_str (),
+			     thread.executing (),
+			     thread.resumed (),
+			     thread_state_string (thread.state));
     }
 }
 
@@ -256,7 +256,8 @@ extern void print_stop_event (struct ui_out *uiout, bool displays = true);
 /* Pretty print the results of target_wait, for debugging purposes.  */
 
 extern void print_target_wait_results (ptid_t waiton_ptid, ptid_t result_ptid,
-				       const struct target_waitstatus &ws);
+				       const struct target_waitstatus &ws,
+				       process_stratum_target *proc_target);
 
 extern int signal_stop_state (int);
 
@@ -418,4 +419,4 @@ private:
 };
 
 
-#endif /* INFRUN_H */
+#endif /* GDB_INFRUN_H */

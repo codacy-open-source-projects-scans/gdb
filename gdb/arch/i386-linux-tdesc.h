@@ -1,6 +1,6 @@
 /* Target description related code for GNU/Linux i386.
 
-   Copyright (C) 2024 Free Software Foundation, Inc.
+   Copyright (C) 2024-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,13 +17,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ARCH_I386_LINUX_TDESC_H
-#define ARCH_I386_LINUX_TDESC_H
+#ifndef GDB_ARCH_I386_LINUX_TDESC_H
+#define GDB_ARCH_I386_LINUX_TDESC_H
 
 struct target_desc;
 
-/* Return the i386 target description corresponding to XCR0.  */
+/* Return the i386 target description corresponding to XSTATE_BV.  */
 
-extern const struct target_desc *i386_linux_read_description (uint64_t xcr0);
+extern const struct target_desc *i386_linux_read_description
+  (uint64_t xstate_bv);
 
-#endif /* ARCH_I386_LINUX_TDESC_H */
+#endif /* GDB_ARCH_I386_LINUX_TDESC_H */

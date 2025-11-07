@@ -1,6 +1,6 @@
 /* Native-dependent code for GNU/Linux on LoongArch processors.
 
-   Copyright (C) 2024 Free Software Foundation, Inc.
+   Copyright (C) 2024-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
    This file is part of GDB.
@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef NAT_LOONGARCH_LINUX_H
-#define NAT_LOONGARCH_LINUX_H
+#ifndef GDB_NAT_LOONGARCH_LINUX_H
+#define GDB_NAT_LOONGARCH_LINUX_H
 
 #include <signal.h>
 
@@ -39,4 +39,4 @@ void loongarch_linux_new_thread (struct lwp_info *lwp);
 
 void loongarch_linux_delete_thread (struct arch_lwp_info *arch_lwp);
 
-#endif /* LOONGARCH_LINUX_H */
+#endif /* GDB_NAT_LOONGARCH_LINUX_H */

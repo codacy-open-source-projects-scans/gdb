@@ -1,6 +1,6 @@
 /* Native-dependent code for GNU/Linux on LoongArch processors.
 
-   Copyright (C) 2024 Free Software Foundation, Inc.
+   Copyright (C) 2024-2025 Free Software Foundation, Inc.
    Contributed by Loongson Ltd.
 
    This file is part of GDB.
@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
-#ifndef NAT_LOONGARCH_HW_POINT_H
-#define NAT_LOONGARCH_HW_POINT_H
+#ifndef GDB_NAT_LOONGARCH_HW_POINT_H
+#define GDB_NAT_LOONGARCH_HW_POINT_H
 
 /* Macro definitions, data structures, and code for the hardware
    breakpoint and hardware watchpoint support follow.  We use the
@@ -33,8 +33,8 @@
    Neither of these values may exceed the width of dr_changed_t
    measured in bits.  */
 
-#define LOONGARCH_HBP_MAX_NUM 8
-#define LOONGARCH_HWP_MAX_NUM 8
+#define LOONGARCH_HBP_MAX_NUM 14
+#define LOONGARCH_HWP_MAX_NUM 14
 
 
 /* The maximum length of a memory region that can be watched by one
@@ -100,4 +100,12 @@ void loongarch_show_debug_reg_state (struct loongarch_debug_reg_state *state,
 
 int loongarch_region_ok_for_watchpoint (CORE_ADDR addr, int len);
 
-#endif /* NAT_LOONGARCH_HW_POINT_H */
+/* Helper for the "stopped_data_address/low_stopped_data_address" target
+   method.  Returns TRUE if a hardware watchpoint trap at ADDR_TRAP matches
+   a set watchpoint.  The address of the matched watchpoint is returned in
+   *ADDR_P.  */
+
+bool loongarch_stopped_data_address (const struct loongarch_debug_reg_state *state,
+				     CORE_ADDR addr_trap, CORE_ADDR *addr_p);
+
+#endif /* GDB_NAT_LOONGARCH_HW_POINT_H */

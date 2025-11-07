@@ -1,7 +1,7 @@
 /* Multi-process/thread control defs for GDB, the GNU debugger.
-   Copyright (C) 1987-2024 Free Software Foundation, Inc.
+   Copyright (C) 1987-2025 Free Software Foundation, Inc.
    Contributed by Lynx Real-Time Systems, Inc.  Los Gatos, CA.
-   
+
 
    This file is part of GDB.
 
@@ -18,8 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef GDBTHREAD_H
-#define GDBTHREAD_H
+#ifndef GDB_GDBTHREAD_H
+#define GDB_GDBTHREAD_H
 
 struct symtab;
 
@@ -70,10 +70,10 @@ extern bool debug_threads;
    you want.  */
 enum thread_state
 {
-  /* In the frontend's perpective, the thread is stopped.  */
+  /* In the frontend's perspective, the thread is stopped.  */
   THREAD_STOPPED,
 
-  /* In the frontend's perpective, the thread is running.  */
+  /* In the frontend's perspective, the thread is running.  */
   THREAD_RUNNING,
 
   /* The thread is listed, but known to have exited.  We keep it
@@ -216,7 +216,7 @@ struct thread_suspend_state
      - If the thread is running, then this field has its value removed by
        calling stop_pc.reset() (see thread_info::set_executing()).
        Attempting to read a std::optional with no value is undefined
-       behaviour and will trigger an assertion error when _GLIBCXX_DEBUG is
+       behavior and will trigger an assertion error when _GLIBCXX_DEBUG is
        defined, which should make error easier to track down.  */
   std::optional<CORE_ADDR> stop_pc;
 };
@@ -263,7 +263,7 @@ public:
   void set_running (bool running);
 
   ptid_t ptid;			/* "Actual process id";
-				    In fact, this may be overloaded with 
+				    In fact, this may be overloaded with
 				    kernel thread id, etc.  */
 
   /* Each thread has two GDB IDs.
@@ -533,7 +533,7 @@ public:
   struct target_waitstatus pending_follow;
 
   /* True if this thread has been explicitly requested to stop.  */
-  int stop_requested = 0;
+  bool stop_requested = false;
 
   /* The initiating frame of a nexting operation, used for deciding
      which exceptions to intercept.  If it is null_frame_id no
@@ -627,7 +627,7 @@ extern void init_thread_list (void);
 
 /* Add a thread to the thread list, print a message
    that a new thread is found, and return the pointer to
-   the new thread.  Caller my use this pointer to 
+   the new thread.  Caller my use this pointer to
    initialize the private thread data.  */
 extern struct thread_info *add_thread (process_stratum_target *targ,
 				       ptid_t ptid);
@@ -734,8 +734,8 @@ void thread_change_ptid (process_stratum_target *targ,
 
 /* Iterator function to call a user-provided callback function
    once for each known thread.  */
-typedef int (*thread_callback_func) (struct thread_info *, void *);
-extern struct thread_info *iterate_over_threads (thread_callback_func, void *);
+typedef gdb::function_view<bool (struct thread_info *)> thread_callback_func;
+extern struct thread_info *iterate_over_threads (thread_callback_func);
 
 /* Pull in the internals of the inferiors/threads ranges and
    iterators.  Must be done after struct thread_info is defined.  */
@@ -747,7 +747,7 @@ extern struct thread_info *iterate_over_threads (thread_callback_func, void *);
    Used like this, it walks over all threads of all inferiors of all
    targets:
 
-       for (thread_info *thr : all_threads ())
+       for (thread_info &thr : all_threads ())
 	 { .... }
 
    FILTER_PTID can be used to filter out threads that don't match.
@@ -786,15 +786,18 @@ all_non_exited_threads (process_stratum_target *proc_target = nullptr,
    currently-iterated thread.  When combined with range-for, this
    allow convenient patterns like this:
 
-     for (thread_info *t : all_threads_safe ())
+     for (thread_info &t : all_threads_safe ())
        if (some_condition ())
-	 delete f;
+	 delete &f;
 */
 
 inline all_threads_safe_range
 all_threads_safe ()
 {
-  return all_threads_safe_range (all_threads_iterator::begin_t {});
+  all_threads_iterator begin (all_threads_iterator::begin_t {});
+  all_threads_safe_iterator safe_begin (std::move (begin));
+
+  return all_threads_safe_range (std::move (safe_begin));
 }
 
 extern int thread_count (process_stratum_target *proc_target);
@@ -973,10 +976,8 @@ using thread_step_over_list_node
   = intrusive_member_node<thread_info, &thread_info::step_over_list_node>;
 using thread_step_over_list
   = intrusive_list<thread_info, thread_step_over_list_node>;
-using thread_step_over_list_iterator
-  = reference_to_pointer_iterator<thread_step_over_list::iterator>;
 using thread_step_over_list_safe_iterator
-  = basic_safe_iterator<thread_step_over_list_iterator>;
+  = basic_safe_iterator<thread_step_over_list::iterator>;
 using thread_step_over_list_safe_range
   = iterator_range<thread_step_over_list_safe_iterator>;
 
@@ -1071,4 +1072,4 @@ extern void thread_try_catch_cmd (thread_info *thr,
 
 extern const char *thread_state_string (enum thread_state state);
 
-#endif /* GDBTHREAD_H */
+#endif /* GDB_GDBTHREAD_H */

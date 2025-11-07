@@ -1,6 +1,6 @@
 /* Rust language support definitions for GDB, the GNU debugger.
 
-   Copyright (C) 2016-2024 Free Software Foundation, Inc.
+   Copyright (C) 2016-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef RUST_LANG_H
-#define RUST_LANG_H
+#ifndef GDB_RUST_LANG_H
+#define GDB_RUST_LANG_H
 
 #include "demangle.h"
 #include "language.h"
@@ -228,4 +228,4 @@ private:
 		   const struct value_print_options *options) const;
 };
 
-#endif /* RUST_LANG_H */
+#endif /* GDB_RUST_LANG_H */

@@ -1,6 +1,6 @@
 /* Target-dependent code for the AMDGPU architectures.
 
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef AMDGPU_TDEP_H
-#define AMDGPU_TDEP_H
+#ifndef GDB_AMDGPU_TDEP_H
+#define GDB_AMDGPU_TDEP_H
 
 #include "gdbarch.h"
 
@@ -84,10 +84,15 @@ struct amdgpu_gdbarch_tdep : gdbarch_tdep_base
 };
 
 /* Return true if GDBARCH is of an AMDGPU architecture.  */
+
 bool is_amdgpu_arch (struct gdbarch *gdbarch);
+
+/* Return true if ABFD is of an AMDGPU architecture.  */
+
+bool is_amdgpu_arch (bfd *abfd);
 
 /* Return the amdgpu-specific data associated to ARCH.  */
 
 amdgpu_gdbarch_tdep *get_amdgpu_gdbarch_tdep (gdbarch *arch);
 
-#endif /* AMDGPU_TDEP_H */
+#endif /* GDB_AMDGPU_TDEP_H */

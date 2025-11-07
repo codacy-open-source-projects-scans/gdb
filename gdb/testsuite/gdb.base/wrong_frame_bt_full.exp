@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2024 Free Software Foundation, Inc.
+# Copyright (C) 2015-2025 Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@ if {[gdb_compile \
 
 clean_restart ${main_testfile}
 
-if ![runto opaque_routine] {
+if {![runto opaque_routine]} {
     untested "could not run to opaque_routine"
     return -1
 }

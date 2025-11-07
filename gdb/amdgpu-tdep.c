@@ -1,6 +1,6 @@
 /* Target-dependent code for the AMDGPU architectures.
 
-   Copyright (C) 2019-2024 Free Software Foundation, Inc.
+   Copyright (C) 2019-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -31,13 +31,28 @@
 #include "producer.h"
 #include "reggroups.h"
 
+/* Return true if INFO is of an AMDGPU architecture.  */
+
+static bool
+is_amdgpu_arch (const bfd_arch_info *info)
+{
+  return info->arch == bfd_arch_amdgcn;
+}
+
 /* See amdgpu-tdep.h.  */
 
 bool
 is_amdgpu_arch (struct gdbarch *arch)
 {
-  gdb_assert (arch != nullptr);
-  return gdbarch_bfd_arch_info (arch)->arch == bfd_arch_amdgcn;
+  return is_amdgpu_arch (gdbarch_bfd_arch_info (arch));
+}
+
+/* See amdgpu-tdep.h.  */
+
+bool
+is_amdgpu_arch (bfd *abfd)
+{
+  return is_amdgpu_arch (abfd->arch_info);
 }
 
 /* See amdgpu-tdep.h.  */
@@ -889,17 +904,18 @@ amdgpu_frame_prev_register (const frame_info_ptr &this_frame, void **this_cache,
   return frame_unwind_got_register (this_frame, regnum, regnum);
 }
 
-static const frame_unwind amdgpu_frame_unwind = {
+static const frame_unwind_legacy amdgpu_frame_unwind (
   "amdgpu",
   NORMAL_FRAME,
+  FRAME_UNWIND_ARCH,
   default_frame_unwind_stop_reason,
   amdgpu_frame_this_id,
   amdgpu_frame_prev_register,
   nullptr,
   default_frame_sniffer,
   nullptr,
-  nullptr,
-};
+  nullptr
+);
 
 static int
 print_insn_amdgpu (bfd_vma memaddr, struct disassemble_info *info)
@@ -1001,7 +1017,7 @@ amdgpu_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR start_pc)
     {
       CORE_ADDR post_prologue_pc
 	= skip_prologue_using_sal (gdbarch, func_addr);
-      struct compunit_symtab *cust = find_pc_compunit_symtab (func_addr);
+      struct compunit_symtab *cust = find_compunit_symtab_for_pc (func_addr);
 
       /* Clang always emits a line note before the prologue and another
 	 one after.  We trust clang to emit usable line notes.  */
@@ -1370,10 +1386,7 @@ amdgpu_register_type_parse_test ()
 
 #endif
 
-void _initialize_amdgpu_tdep ();
-
-void
-_initialize_amdgpu_tdep ()
+INIT_GDB_FILE (amdgpu_tdep)
 {
   gdbarch_register (bfd_arch_amdgcn, amdgpu_gdbarch_init, NULL,
 		    amdgpu_supports_arch_info);

@@ -1,6 +1,6 @@
 /* Python interface to breakpoints
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,6 +17,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+#include "source.h"
 #include "value.h"
 #include "python-internal.h"
 #include "python.h"
@@ -34,8 +35,7 @@
 #include "linespec.h"
 #include "gdbsupport/common-utils.h"
 
-extern PyTypeObject breakpoint_location_object_type
-    CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("breakpoint_location_object");
+extern PyTypeObject breakpoint_location_object_type;
 
 struct gdbpy_breakpoint_location_object
 {
@@ -927,14 +927,14 @@ bppy_init (PyObject *self, PyObject *args, PyObject *kwargs)
   char *label = NULL;
   char *source = NULL;
   char *function = NULL;
-  PyObject * qualified = NULL;
+  PyObject *qualified = Py_False;
 
-  if (!gdb_PyArg_ParseTupleAndKeywords (args, kwargs, "|siiOOsssOO", keywords,
+  if (!gdb_PyArg_ParseTupleAndKeywords (args, kwargs, "|siiOOsssOO!", keywords,
 					&spec, &type, &access_type,
 					&internal,
 					&temporary, &source,
 					&function, &label, &lineobj,
-					&qualified))
+					&PyBool_Type, &qualified))
     return -1;
 
 
@@ -947,7 +947,7 @@ bppy_init (PyObject *self, PyObject *args, PyObject *kwargs)
       else
 	{
 	  PyErr_SetString (PyExc_RuntimeError,
-			   _("Line keyword should be an integer or a string. "));
+			   _("Line keyword should be an integer or a string."));
 	  return -1;
 	}
     }
@@ -982,10 +982,11 @@ bppy_init (PyObject *self, PyObject *args, PyObject *kwargs)
 	case bp_hardware_breakpoint:
 	  {
 	    location_spec_up locspec;
+	    gdb_assert (PyBool_Check (qualified));
 	    symbol_name_match_type func_name_match_type
-	      = (qualified != NULL && PyObject_IsTrue (qualified)
-		  ? symbol_name_match_type::FULL
-		  : symbol_name_match_type::WILD);
+	      = (qualified == Py_True
+		 ? symbol_name_match_type::FULL
+		 : symbol_name_match_type::WILD);
 
 	    if (spec != NULL)
 	      {
@@ -1351,8 +1352,8 @@ gdbpy_breakpoint_modified (struct breakpoint *b)
 
 
 /* Initialize the Python breakpoint code.  */
-static int CPYCHECKER_NEGATIVE_RESULT_SETS_EXCEPTION
-gdbpy_initialize_breakpoints (void)
+static int
+gdbpy_initialize_breakpoints ()
 {
   int i;
 
@@ -1387,7 +1388,7 @@ gdbpy_initialize_breakpoints (void)
 
 /* Initialize the Python BreakpointLocation code.  */
 
-static int CPYCHECKER_NEGATIVE_RESULT_SETS_EXCEPTION
+static int
 gdbpy_initialize_breakpoint_locations ()
 {
   return gdbpy_type_ready (&breakpoint_location_object_type);
@@ -1535,9 +1536,7 @@ PyTypeObject breakpoint_object_type =
   0,				  /* tp_alloc */
 };
 
-void _initialize_py_breakpoint ();
-void
-_initialize_py_breakpoint ()
+INIT_GDB_FILE (py_breakpoint)
 {
   add_setshow_boolean_cmd
       ("py-breakpoint", class_maintenance, &pybp_debug,
@@ -1628,6 +1627,26 @@ bplocpy_get_owner (PyObject *py_self, void *closure)
   return (PyObject *) self->owner;
 }
 
+/* Attempt to get fully resolved file path for symtab.  */
+
+static gdbpy_ref<>
+bploc_filepath (struct symtab *bploc_symtab)
+{
+  /* The exception is not ours to handle.  We should always
+     return some string value and filename is never null.  */
+  try
+    {
+      const char *full = symtab_to_fullname (bploc_symtab);
+      if (full)
+	return host_string_to_python_string (full);
+    }
+  catch (const gdb_exception &except)
+    {
+    }
+
+  return host_string_to_python_string (bploc_symtab->filename ());
+}
+
 /* Python function to get the source file name path and line number
    where this breakpoint location was set.   */
 
@@ -1642,9 +1661,7 @@ bplocpy_get_source_location (PyObject *py_self, void *closure)
       gdbpy_ref<> tup (PyTuple_New (2));
       if (tup == nullptr)
 	return nullptr;
-      /* symtab->filename is never NULL. */
-      gdbpy_ref<> filename
-	= host_string_to_python_string (self->bp_loc->symtab->filename);
+      gdbpy_ref<> filename = bploc_filepath (self->bp_loc->symtab);
       if (filename == nullptr)
 	return nullptr;
       auto line = gdb_py_object_from_ulongest (self->bp_loc->line_number);
@@ -1689,7 +1706,7 @@ bplocpy_get_thread_groups (PyObject *py_self, void *closure)
 	  gdbpy_ref<> num = gdb_py_object_from_ulongest (inf->num);
 	  if (num == nullptr)
 	    return nullptr;
-	  if (PyList_Append (list.get (), num.release ()) != 0)
+	  if (PyList_Append (list.get (), num.get ()) != 0)
 	    return nullptr;
 	}
     }
@@ -1746,7 +1763,7 @@ bplocpy_repr (PyObject *py_self)
 			  paddress (self->bp_loc->owner->gdbarch,
 				    self->bp_loc->requested_address));
   if (self->bp_loc->symtab != nullptr)
-    str += string_printf (" source=%s:%d", self->bp_loc->symtab->filename,
+    str += string_printf (" source=%s:%d", self->bp_loc->symtab->filename (),
 			  self->bp_loc->line_number);
 
   const auto fn_name = self->bp_loc->function_name.get ();

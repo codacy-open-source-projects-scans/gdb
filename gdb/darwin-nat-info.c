@@ -1,5 +1,5 @@
 /* Darwin support for GDB, the GNU debugger.
-   Copyright (C) 1997-2024 Free Software Foundation, Inc.
+   Copyright (C) 1997-2025 Free Software Foundation, Inc.
 
    Contributed by Apple Computer, Inc.
 
@@ -246,7 +246,7 @@ info_mach_ports_command (const char *args, int from_tty)
 	      gdb_printf (_("%u"), ref);
 	    gdb_printf (_(" refs)"));
 	  }
-      
+
       if (task == task_self ())
 	{
 	  if (port == task_self())
@@ -630,7 +630,7 @@ darwin_debug_regions_recurse (task_t task)
     }
   uiout->table_header (3, ui_left, "min-prot", "Min");
   uiout->table_header (3, ui_left, "max-prot", "Max");
-  uiout->table_header (5, ui_left, "inheritence", "Inh");
+  uiout->table_header (5, ui_left, "inheritance", "Inh");
   uiout->table_header (9, ui_left, "share-mode", "Shr");
   uiout->table_header (1, ui_left, "depth", "D");
   uiout->table_header (3, ui_left, "submap", "Sm");
@@ -662,7 +662,7 @@ darwin_debug_regions_recurse (task_t task)
 			     unparse_protection (r_info.protection));
 	uiout->field_string ("max-prot",
 			     unparse_protection (r_info.max_protection));
-	uiout->field_string ("inheritence",
+	uiout->field_string ("inheritance",
 			     unparse_inheritance (r_info.inheritance));
 	uiout->field_string ("share-mode",
 			     unparse_share_mode (r_info.share_mode));
@@ -700,7 +700,7 @@ info_mach_regions_command (const char *args, int from_tty)
   task = get_task_from_args (args);
   if (task == TASK_NULL)
     return;
-  
+
   darwin_debug_regions (task, 0, -1);
 }
 
@@ -712,7 +712,7 @@ info_mach_regions_recurse_command (const char *args, int from_tty)
   task = get_task_from_args (args);
   if (task == TASK_NULL)
     return;
-  
+
   darwin_debug_regions_recurse (task);
 }
 
@@ -828,7 +828,7 @@ info_mach_exceptions_command (const char *args, int from_tty)
       if (inferior_ptid == null_ptid)
 	gdb_printf (_("No inferior running\n"));
       inf = current_inferior ();
-      
+
       darwin_inferior *priv = get_darwin_inferior (inf);
 
       kret = task_get_exception_ports
@@ -839,9 +839,7 @@ info_mach_exceptions_command (const char *args, int from_tty)
     }
 }
 
-void _initialize_darwin_info_commands ();
-void
-_initialize_darwin_info_commands ()
+INIT_GDB_FILE (darwin_info_commands)
 {
   add_info ("mach-tasks", info_mach_tasks_command,
 	    _("Get list of tasks in system."));

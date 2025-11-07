@@ -1,6 +1,6 @@
 /* TUI display registers in window.
 
-   Copyright (C) 1998-2024 Free Software Foundation, Inc.
+   Copyright (C) 1998-2025 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -19,8 +19,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef TUI_TUI_REGS_H
-#define TUI_TUI_REGS_H
+#ifndef GDB_TUI_TUI_REGS_H
+#define GDB_TUI_TUI_REGS_H
 
 #include "gdbsupport/gdb-checked-static-cast.h"
 #include "tui/tui-data.h"
@@ -160,4 +160,4 @@ tui_data_win ()
   return gdb::checked_static_cast<tui_data_window *> (tui_win_list[DATA_WIN]);
 }
 
-#endif /* TUI_TUI_REGS_H */
+#endif /* GDB_TUI_TUI_REGS_H */

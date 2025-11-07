@@ -1,6 +1,6 @@
 /* Linux-dependent part of branch trace support for GDB, and GDBserver.
 
-   Copyright (C) 2013-2024 Free Software Foundation, Inc.
+   Copyright (C) 2013-2025 Free Software Foundation, Inc.
 
    Contributed by Intel Corp. <markus.t.metzger@intel.com>
 
@@ -384,7 +384,7 @@ intel_supports_bts (const struct btrace_cpu *cpu)
 	case 0x3a: /* Ivy Bridge */
 
 	  /* AAJ122: LBR, BTM, or BTS records may have incorrect branch
-	     "from" information afer an EIST transition, T-states, C1E, or
+	     "from" information after an EIST transition, T-states, C1E, or
 	     Adaptive Thermal Throttling.  */
 	  return 0;
 	}
@@ -1004,7 +1004,7 @@ linux_read_btrace (struct btrace_data *btrace,
       return linux_read_pt (&btrace->variant.pt, tinfo, type);
     }
 
-  internal_error (_("Unkown branch trace format."));
+  internal_error (_("Unknown branch trace format."));
 }
 
 /* See linux-btrace.h.  */

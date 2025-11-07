@@ -2,7 +2,7 @@
    Written by Fred Fish <fnf@cygnus.com>
    Rewritten by Jim Blandy <jimb@cygnus.com>
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -19,8 +19,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef BCACHE_H
-#define BCACHE_H 1
+#ifndef GDB_BCACHE_H
+#define GDB_BCACHE_H
 
 /* A bcache is a data structure for factoring out duplication in
    read-only structures.  You give the bcache some string of bytes S.
@@ -133,7 +133,7 @@
    Mind you, looking at the wall clock, the same GDB debugging GDB
    showed only marginal speed up (0.780 vs 0.773s).  Seems GDB is too
    busy doing something else :-(
-  
+
 */
 
 namespace gdb {
@@ -173,7 +173,7 @@ struct bcache
 				     added);
   }
 
-  /* Print statistics on this bcache's memory usage and efficacity at
+  /* Print statistics on this bcache's memory usage and efficacy at
      eliminating duplication.  TYPE should be a string describing the
      kind of data this bcache holds.  Statistics are printed using
      `gdb_printf' and its ilk.  */
@@ -230,4 +230,4 @@ private:
 
 } /* namespace gdb */
 
-#endif /* BCACHE_H */
+#endif /* GDB_BCACHE_H */

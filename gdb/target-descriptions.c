@@ -1,6 +1,6 @@
 /* Target description support for GDB.
 
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
    Contributed by CodeSourcery.
 
@@ -21,6 +21,7 @@
 
 #include "arch-utils.h"
 #include "cli/cli-cmds.h"
+#include "gdbsupport/unordered_set.h"
 #include "gdbtypes.h"
 #include "reggroups.h"
 #include "target.h"
@@ -30,11 +31,10 @@
 #include "osabi.h"
 
 #include "gdbsupport/gdb_obstack.h"
-#include "hashtab.h"
 #include "inferior.h"
 #include <algorithm>
 #include "completer.h"
-#include "readline/tilde.h"
+#include "cli/cli-style.h"
 
 /* Types.  */
 
@@ -451,10 +451,6 @@ get_arch_data (struct gdbarch *gdbarch)
     result = tdesc_data.emplace (gdbarch);
   return result;
 }
-
-/* The string manipulated by the "set tdesc filename ..." command.  */
-
-static std::string tdesc_filename_cmd_string;
 
 /* Fetch the current target's description, and switch the current
    architecture to one which incorporates that description.  */
@@ -1042,16 +1038,14 @@ tdesc_use_registers (struct gdbarch *gdbarch,
   data->arch_regs = std::move (early_data->arch_regs);
 
   /* Build up a set of all registers, so that we can assign register
-     numbers where needed.  The hash table expands as necessary, so
-     the initial size is arbitrary.  */
-  htab_up reg_hash (htab_create (37, htab_hash_pointer, htab_eq_pointer,
-				 NULL));
+     numbers where needed.  */
+  gdb::unordered_set<tdesc_reg *> reg_hash;
+
   for (const tdesc_feature_up &feature : target_desc->features)
     for (const tdesc_reg_up &reg : feature->registers)
       {
-	void **slot = htab_find_slot (reg_hash.get (), reg.get (), INSERT);
+	reg_hash.insert (reg.get ());
 
-	*slot = reg.get ();
 	/* Add reggroup if its new.  */
 	if (!reg->group.empty ())
 	  if (reggroup_find (gdbarch, reg->group.c_str ()) == NULL)
@@ -1064,7 +1058,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
      architecture.  */
   for (const tdesc_arch_reg &arch_reg : data->arch_regs)
     if (arch_reg.reg != NULL)
-      htab_remove_elt (reg_hash.get (), arch_reg.reg);
+      reg_hash.erase (arch_reg.reg);
 
   /* Assign numbers to the remaining registers and add them to the
      list of registers.  The new numbers are always above gdbarch_num_regs.
@@ -1082,7 +1076,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
     {
       for (const tdesc_feature_up &feature : target_desc->features)
 	for (const tdesc_reg_up &reg : feature->registers)
-	  if (htab_find (reg_hash.get (), reg.get ()) != NULL)
+	  if (reg_hash.contains (reg.get ()))
 	    {
 	      int regno = unk_reg_cb (gdbarch, feature.get (),
 				      reg->name.c_str (), num_regs);
@@ -1093,7 +1087,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
 		    data->arch_regs.emplace_back (nullptr, nullptr);
 		  data->arch_regs[regno] = tdesc_arch_reg (reg.get (), NULL);
 		  num_regs = regno + 1;
-		  htab_remove_elt (reg_hash.get (), reg.get ());
+		  reg_hash.erase (reg.get ());
 		}
 	    }
     }
@@ -1105,7 +1099,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
      unnumbered registers.  */
   for (const tdesc_feature_up &feature : target_desc->features)
     for (const tdesc_reg_up &reg : feature->registers)
-      if (htab_find (reg_hash.get (), reg.get ()) != NULL)
+      if (reg_hash.contains (reg.get ()))
 	{
 	  data->arch_regs.emplace_back (reg.get (), nullptr);
 	  num_regs++;
@@ -1209,18 +1203,27 @@ set_tdesc_osabi (struct target_desc *target_desc, enum gdb_osabi osabi)
 static struct cmd_list_element *tdesc_set_cmdlist, *tdesc_show_cmdlist;
 static struct cmd_list_element *tdesc_unset_cmdlist;
 
-/* Helper functions for the CLI commands.  */
+/* Setter for the "tdesc filename" setting.  */
 
 static void
-set_tdesc_filename_cmd (const char *args, int from_tty,
-			struct cmd_list_element *c)
+set_tdesc_filename (const std::string &value)
 {
   target_desc_info *tdesc_info = &current_inferior ()->tdesc_info;
 
-  tdesc_info->filename = tdesc_filename_cmd_string;
+  tdesc_info->filename = value;
 
   target_clear_description ();
   target_find_description ();
+}
+
+/* Getter for the "tdesc filename" setting.  */
+
+static const std::string &
+get_tdesc_filename ()
+{
+  target_desc_info *tdesc_info = &current_inferior ()->tdesc_info;
+
+  return tdesc_info->filename;
 }
 
 static void
@@ -1228,12 +1231,10 @@ show_tdesc_filename_cmd (struct ui_file *file, int from_tty,
 			 struct cmd_list_element *c,
 			 const char *value)
 {
-  value = current_inferior ()->tdesc_info.filename.data ();
-
   if (value != NULL && *value != '\0')
     gdb_printf (file,
-		_("The target description will be read from \"%s\".\n"),
-		value);
+		_("The target description will be read from \"%ps\".\n"),
+		styled_string (file_name_style.style (), value));
   else
     gdb_printf (file,
 		_("The target description will be "
@@ -1858,7 +1859,7 @@ maintenance_check_xml_descriptions (const char *dir, int from_tty)
   if (dir == NULL)
     error (_("Missing dir name"));
 
-  gdb::unique_xmalloc_ptr<char> dir1 (tilde_expand (dir));
+  gdb::unique_xmalloc_ptr<char> dir1 = gdb_rl_tilde_expand (dir);
   std::string feature_dir (dir1.get ());
   unsigned int failed = 0;
 
@@ -1881,9 +1882,7 @@ maintenance_check_xml_descriptions (const char *dir, int from_tty)
 	      (long) selftests::xml_tdesc.size (), failed);
 }
 
-void _initialize_target_descriptions ();
-void
-_initialize_target_descriptions ()
+INIT_GDB_FILE (target_descriptions)
 {
   cmd_list_element *cmd;
 
@@ -1899,13 +1898,13 @@ Unset target description specific variables."),
 			0 /* allow-unknown */, &unsetlist);
 
   add_setshow_filename_cmd ("filename", class_obscure,
-			    &tdesc_filename_cmd_string,
 			    _("\
 Set the file to read for an XML target description."), _("\
 Show the file to read for an XML target description."), _("\
 When set, GDB will read the target description from a local\n\
 file instead of querying the remote target."),
-			    set_tdesc_filename_cmd,
+			    set_tdesc_filename,
+			    get_tdesc_filename,
 			    show_tdesc_filename_cmd,
 			    &tdesc_set_cmdlist, &tdesc_show_cmdlist);
 

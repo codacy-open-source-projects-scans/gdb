@@ -1,6 +1,6 @@
 /* Top level stuff for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -34,6 +34,7 @@
 #include "value.h"
 #include "language.h"
 #include "terminal.h"
+#include "gdbsupport/cleanups.h"
 #include "gdbsupport/job-control.h"
 #include "annotate.h"
 #include "completer.h"
@@ -68,7 +69,6 @@
 
 #include "event-top.h"
 #include <sys/stat.h>
-#include <ctype.h>
 #include "ui-out.h"
 #include "cli-out.h"
 #include "tracepoint.h"
@@ -84,10 +84,6 @@
 #endif
 
 extern void initialize_all_files (void);
-
-#define PROMPT(X) the_prompts.prompt_stack[the_prompts.top + X].prompt
-#define PREFIX(X) the_prompts.prompt_stack[the_prompts.top + X].prefix
-#define SUFFIX(X) the_prompts.prompt_stack[the_prompts.top + X].suffix
 
 /* Default command line prompt.  This is overridden in some configs.  */
 
@@ -385,10 +381,10 @@ check_frame_language_change (void)
   /* Warn the user if the working language does not match the language
      of the current frame.  Only warn the user if we are actually
      running the program, i.e. there is a stack.  */
-  /* FIXME: This should be cacheing the frame and only running when
+  /* FIXME: This should be caching the frame and only running when
      the frame changes.  */
 
-  if (has_stack_frames ())
+  if (warn_frame_lang_mismatch && has_stack_frames ())
     {
       enum language flang;
 
@@ -419,7 +415,7 @@ wait_sync_command_done (void)
      point.  */
   scoped_enable_commit_resumed enable ("sync wait");
 
-  while (gdb_do_one_event () >= 0)
+  while (current_interpreter ()->do_one_event () >= 0)
     if (ui->prompt_state != PROMPT_BLOCKED)
       break;
 }
@@ -549,12 +545,10 @@ execute_command (const char *p, int from_tty)
 	   that can be followed by its args), report the list of
 	   subcommands.  */
 	{
-	  std::string prefixname = c->prefixname ();
-	  std::string prefixname_no_space
-	    = prefixname.substr (0, prefixname.length () - 1);
+	  std::string prefixname = c->prefixname_no_space ();
 	  gdb_printf
 	    ("\"%s\" must be followed by the name of a subcommand.\n",
-	     prefixname_no_space.c_str ());
+	     prefixname.c_str ());
 	  help_list (*c->subcommands, prefixname.c_str (), all_commands,
 		     gdb_stdout);
 	}
@@ -1037,7 +1031,7 @@ gdb_readline_wrapper (const char *prompt)
     (*after_char_processing_hook) ();
   gdb_assert (after_char_processing_hook == NULL);
 
-  while (gdb_do_one_event () >= 0)
+  while (current_interpreter ()->do_one_event () >= 0)
     if (gdb_readline_wrapper_done)
       break;
 
@@ -1054,11 +1048,14 @@ static int operate_saved_history = -1;
 static void
 gdb_rl_operate_and_get_next_completion (void)
 {
-  int delta = where_history () - operate_saved_history;
+  if (operate_saved_history != -1)
+    {
+      int delta = where_history () - operate_saved_history;
 
-  /* The `key' argument to rl_get_previous_history is ignored.  */
-  rl_get_previous_history (delta, 0);
-  operate_saved_history = -1;
+      /* The `key' argument to rl_get_previous_history is ignored.  */
+      rl_get_previous_history (delta, 0);
+      operate_saved_history = -1;
+    }
 
   /* readline doesn't automatically update the display for us.  */
   rl_redisplay ();
@@ -1083,9 +1080,10 @@ gdb_rl_operate_and_get_next (int count, int key)
   /* Find the current line, and find the next line to use.  */
   where = where_history();
 
-  if ((history_is_stifled () && (history_length >= history_max_entries))
-      || (where >= history_length - 1))
+  if (history_is_stifled () && history_length >= history_max_entries)
     operate_saved_history = where;
+  else if (where >= history_length - 1)
+    operate_saved_history = -1;
   else
     operate_saved_history = where + 1;
 
@@ -1313,7 +1311,7 @@ print_gdb_version (struct ui_file *stream, bool interactive)
   /* Second line is a copyright notice.  */
 
   gdb_printf (stream,
-	      "Copyright (C) 2024 Free Software Foundation, Inc.\n");
+	      "Copyright (C) 2025 Free Software Foundation, Inc.\n");
 
   /* Following the copyright is a brief statement that the program is
      free software, that users are free to copy and change it on
@@ -1330,8 +1328,9 @@ There is NO WARRANTY, to the extent permitted by law.",
   if (!interactive)
     return;
 
-  gdb_printf (stream, ("\nType \"show copying\" and "
-		       "\"show warranty\" for details.\n"));
+  gdb_printf (stream, ("\nType \"%ps\" and \"%ps\" for details.\n"),
+	      styled_string (command_style.style (), "show copying"),
+	      styled_string (command_style.style (), "show warranty"));
 
   /* After the required info we print the configuration information.  */
 
@@ -1347,8 +1346,8 @@ There is NO WARRANTY, to the extent permitted by law.",
     }
   gdb_printf (stream, "\".\n");
 
-  gdb_printf (stream, _("Type \"show configuration\" "
-			"for configuration details.\n"));
+  gdb_printf (stream, _("Type \"%ps\" for configuration details.\n"),
+	      styled_string (command_style.style (), "show configuration"));
 
   if (REPORT_BUGS_TO[0])
     {
@@ -1364,10 +1363,11 @@ resources online at:\n    <%ps>."),
 	      styled_string (file_name_style.style (),
 			     "http://www.gnu.org/software/gdb/documentation/"));
   gdb_printf (stream, "\n\n");
-  gdb_printf (stream, _("For help, type \"help\".\n"));
+  gdb_printf (stream, _("For help, type \"%ps\".\n"),
+	      styled_string (command_style.style (), "help"));
   gdb_printf (stream,
-	      _("Type \"apropos word\" to search for commands \
-related to \"word\"."));
+	      _("Type \"%ps\" to search for commands related to \"word\"."),
+	      styled_string (command_style.style (), "apropos word"));
 }
 
 /* Print the details of GDB build-time configuration.  */
@@ -1595,12 +1595,27 @@ This GDB was configured as follows:\n\
 	     --with-system-gdbinit-dir=%s%s\n\
 "), SYSTEM_GDBINIT_DIR, SYSTEM_GDBINIT_DIR_RELOCATABLE ? " (relocatable)" : "");
 
+#ifdef SUPPORTED_BINARY_FILE_FORMATS
+  gdb_printf (stream, _("\
+	     --enable-binary-file-formats=%s\n"), SUPPORTED_BINARY_FILE_FORMATS);
+#endif
+
   /* We assume "relocatable" will be printed at least once, thus we always
      print this text.  It's a reasonably safe assumption for now.  */
   gdb_printf (stream, _("\n\
 (\"Relocatable\" means the directory can be moved with the GDB installation\n\
 tree, and GDB will still find it.)\n\
 "));
+
+  gdb_printf (stream, "\n");
+  gdb_printf (stream, _("GNU Readline library version: %s\t%s\n"),
+	      rl_library_version,
+#ifdef HAVE_READLINE_READLINE_H
+	      "(system)"
+#else
+	      "(internal)"
+#endif
+	      );
 }
 
 
@@ -2118,6 +2133,17 @@ show_startup_quiet (struct ui_file *file, int from_tty,
 }
 
 static void
+init_colorsupport_var ()
+{
+  const std::vector<color_space> &cs = colorsupport ();
+  std::string s;
+  for (color_space c : cs)
+    s.append (s.empty () ? "" : ",").append (color_space_name (c));
+  struct internalvar *colorsupport_var = create_internalvar ("_colorsupport");
+  set_internalvar_string (colorsupport_var, s.c_str ());
+}
+
+static void
 init_main (void)
 {
   /* Initialize the prompt to a simple "(gdb) " prompt or to whatever
@@ -2321,11 +2347,12 @@ gdb_init ()
      during startup.  */
   set_language (language_c);
   expected_language = current_language;	/* Don't warn about the change.  */
+
+  /* Create $_colorsupport convenience variable.  */
+  init_colorsupport_var ();
 }
 
-void _initialize_top ();
-void
-_initialize_top ()
+INIT_GDB_FILE (top)
 {
   /* Determine a default value for the history filename.  */
   const char *tmpenv = getenv ("GDBHISTFILE");

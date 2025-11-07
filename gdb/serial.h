@@ -1,5 +1,5 @@
 /* Remote serial support interface definitions for GDB, the GNU Debugger.
-   Copyright (C) 1992-2024 Free Software Foundation, Inc.
+   Copyright (C) 1992-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -16,8 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef SERIAL_H
-#define SERIAL_H
+#ifndef GDB_SERIAL_H
+#define GDB_SERIAL_H
 
 #ifdef USE_WIN32API
 #include <winsock2.h>
@@ -126,7 +126,7 @@ extern void serial_write (struct serial *scb, const void *buf, size_t count);
 
 /* Write a printf style string onto the serial port.  */
 
-extern void serial_printf (struct serial *desc, 
+extern void serial_printf (struct serial *desc,
 			   const char *,...) ATTRIBUTE_PRINTF (2, 3);
 
 /* Allow pending output to drain.  */
@@ -240,7 +240,7 @@ struct serial
        immediately forwarded to gdb_stderr.  This may be -1.
        If != -1, this descriptor should be non-blocking or
        ops->avail should be non-NULL.  */
-    int error_fd;               
+    int error_fd;
     const struct serial_ops *ops; /* Function vector */
     void *state;       		/* Local context info for open FD */
     serial_ttystate ttystate;	/* Not used (yet) */
@@ -326,4 +326,4 @@ extern void serial_done_wait_handle (struct serial *);
 
 #endif /* USE_WIN32API */
 
-#endif /* SERIAL_H */
+#endif /* GDB_SERIAL_H */

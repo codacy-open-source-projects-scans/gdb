@@ -1,6 +1,6 @@
 /* Output generating routines for GDB CLI.
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Solutions.
    Written by Fernando Nasser for Cygnus.
@@ -73,7 +73,7 @@ cli_ui_out::do_table_header (int width, ui_align alignment,
     return;
 
   do_field_string (0, width, alignment, 0, col_hdr.c_str (),
-		   ui_file_style ());
+		   title_style.style ());
 }
 
 /* Mark beginning of a list */

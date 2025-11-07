@@ -1,6 +1,6 @@
 /* Python interface to program spaces.
 
-   Copyright (C) 2010-2024 Free Software Foundation, Inc.
+   Copyright (C) 2010-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -55,12 +55,11 @@ struct pspace_object
   /* The debug method list.  */
   PyObject *xmethods;
 
-  /* The missing debug handler list.  */
-  PyObject *missing_debug_handlers;
+  /* The missing file handler list.  */
+  PyObject *missing_file_handlers;
 };
 
-extern PyTypeObject pspace_object_type
-    CPYCHECKER_TYPE_OBJECT_FOR_TYPEDEF ("pspace_object");
+extern PyTypeObject pspace_object_type;
 
 /* Clear the PSPACE pointer in a Pspace object and remove the reference.  */
 struct pspace_deleter
@@ -116,7 +115,7 @@ pspy_get_filename (PyObject *self, void *closure)
   Py_RETURN_NONE;
 }
 
-/* Implement the gdb.Progspace.symbol_file attribute.  Retun the
+/* Implement the gdb.Progspace.symbol_file attribute.  Return the
    gdb.Objfile corresponding to the currently loaded symbol-file, or None
    if no symbol-file is loaded.  If the Progspace is invalid then raise an
    exception.  */
@@ -136,7 +135,7 @@ pspy_get_symbol_file (PyObject *self, void *closure)
   Py_RETURN_NONE;
 }
 
-/* Implement the gdb.Progspace.executable_filename attribute.  Retun a
+/* Implement the gdb.Progspace.executable_filename attribute.  Return a
    string containing the name of the current executable, or None if no
    executable is currently set.  If the Progspace is invalid then raise an
    exception.  */
@@ -166,7 +165,7 @@ pspy_dealloc (PyObject *self)
   Py_XDECREF (ps_self->frame_unwinders);
   Py_XDECREF (ps_self->type_printers);
   Py_XDECREF (ps_self->xmethods);
-  Py_XDECREF (ps_self->missing_debug_handlers);
+  Py_XDECREF (ps_self->missing_file_handlers);
   Py_TYPE (self)->tp_free (self);
 }
 
@@ -202,8 +201,8 @@ pspy_initialize (pspace_object *self)
   if (self->xmethods == NULL)
     return 0;
 
-  self->missing_debug_handlers = PyList_New (0);
-  if (self->missing_debug_handlers == nullptr)
+  self->missing_file_handlers = PyList_New (0);
+  if (self->missing_file_handlers == nullptr)
     return 0;
 
   return 1;
@@ -349,18 +348,18 @@ pspy_get_xmethods (PyObject *o, void *ignore)
 /* Return the list of missing debug handlers for this program space.  */
 
 static PyObject *
-pspy_get_missing_debug_handlers (PyObject *o, void *ignore)
+pspy_get_missing_file_handlers (PyObject *o, void *ignore)
 {
   pspace_object *self = (pspace_object *) o;
 
-  Py_INCREF (self->missing_debug_handlers);
-  return self->missing_debug_handlers;
+  Py_INCREF (self->missing_file_handlers);
+  return self->missing_file_handlers;
 }
 
 /* Set this program space's list of missing debug handlers to HANDLERS.  */
 
 static int
-pspy_set_missing_debug_handlers (PyObject *o, PyObject *handlers,
+pspy_set_missing_file_handlers (PyObject *o, PyObject *handlers,
 				 void *ignore)
 {
   pspace_object *self = (pspace_object *) o;
@@ -380,9 +379,9 @@ pspy_set_missing_debug_handlers (PyObject *o, PyObject *handlers,
     }
 
   /* Take care in case the LHS and RHS are related somehow.  */
-  gdbpy_ref<> tmp (self->missing_debug_handlers);
+  gdbpy_ref<> tmp (self->missing_file_handlers);
   Py_INCREF (handlers);
-  self->missing_debug_handlers = handlers;
+  self->missing_file_handlers = handlers;
 
   return 0;
 }
@@ -431,9 +430,9 @@ pspy_get_objfiles (PyObject *self_, PyObject *args)
 
   if (self->pspace != NULL)
     {
-      for (objfile *objf : self->pspace->objfiles ())
+      for (objfile &objf : self->pspace->objfiles ())
 	{
-	  gdbpy_ref<> item = objfile_to_objfile_object (objf);
+	  gdbpy_ref<> item = objfile_to_objfile_object (&objf);
 
 	  if (item == nullptr
 	      || PyList_Append (list.get (), item.get ()) == -1)
@@ -515,7 +514,7 @@ pspy_block_for_pc (PyObject *o, PyObject *args)
       scoped_restore_current_program_space saver;
 
       set_current_program_space (self->pspace);
-      cust = find_pc_compunit_symtab (pc);
+      cust = find_compunit_symtab_for_pc (pc);
 
       if (cust != NULL && cust->objfile () != NULL)
 	block = block_for_pc (pc);
@@ -559,7 +558,7 @@ pspy_find_pc_line (PyObject *o, PyObject *args)
 
       set_current_program_space (self->pspace);
 
-      sal = find_pc_line (pc, 0);
+      sal = find_sal_for_pc (pc, 0);
       result = symtab_and_line_to_sal_object (sal);
     }
   catch (const gdb_exception &except)
@@ -737,8 +736,8 @@ gdbpy_free_program_space_event (program_space *pspace)
   gdbpy_program_space_event (pspace, false);
 }
 
-static int CPYCHECKER_NEGATIVE_RESULT_SETS_EXCEPTION
-gdbpy_initialize_pspace (void)
+static int
+gdbpy_initialize_pspace ()
 {
   gdb::observers::executable_changed.attach (gdbpy_executable_changed,
 					     "py-progspace");
@@ -778,8 +777,8 @@ static gdb_PyGetSetDef pspace_getset[] =
     "Type printers.", NULL },
   { "xmethods", pspy_get_xmethods, NULL,
     "Debug methods.", NULL },
-  { "missing_debug_handlers", pspy_get_missing_debug_handlers,
-    pspy_set_missing_debug_handlers, "Missing debug handlers.", NULL },
+  { "missing_file_handlers", pspy_get_missing_file_handlers,
+    pspy_set_missing_file_handlers, "Missing file handlers.", NULL },
   { NULL }
 };
 

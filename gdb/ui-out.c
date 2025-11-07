@@ -1,6 +1,6 @@
 /* Output generating routines for GDB.
 
-   Copyright (C) 1999-2024 Free Software Foundation, Inc.
+   Copyright (C) 1999-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Solutions.
    Written by Fernando Nasser for Cygnus.
@@ -353,7 +353,7 @@ ui_out::table_begin (int nr_cols, int nr_rows, const std::string &tblid)
     internal_error (_("tables cannot be nested; table_begin found before \
 previous table_end."));
 
-  m_table_up.reset (new ui_out_table (level () + 1, nr_cols, tblid));
+  m_table_up = std::make_unique<ui_out_table> (level () + 1, nr_cols, tblid);
 
   do_table_begin (nr_cols, nr_rows, tblid.c_str ());
 }
@@ -586,7 +586,7 @@ ui_out::vmessage (const ui_file_style &in_style, const char *format,
 
   for (auto &&piece : fpieces)
     {
-      const char *current_substring = piece.string;
+      const char *current_substring = fpieces.piece_str (piece);
 
       gdb_assert (piece.n_int_args >= 0 && piece.n_int_args <= 2);
       int intvals[2] = { 0, 0 };

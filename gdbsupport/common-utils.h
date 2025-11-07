@@ -1,6 +1,6 @@
 /* Shared general utility routines for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef COMMON_COMMON_UTILS_H
-#define COMMON_COMMON_UTILS_H
+#ifndef GDBSUPPORT_COMMON_UTILS_H
+#define GDBSUPPORT_COMMON_UTILS_H
 
 #include <string>
 #include <vector>
@@ -83,6 +83,11 @@ char *savestring (const char *ptr, size_t len);
    quote.  */
 
 std::string extract_string_maybe_quoted (const char **arg);
+
+/* Return a copy of STR, but with any white space, single quote, or
+   double quote characters escaped with a backslash.  */
+
+std::string make_quoted_string (const char *str);
 
 /* The strerror() function can return NULL for errno values that are
    out of range.  Provide a "safe" version that always returns a
@@ -191,6 +196,16 @@ in_inclusive_range (T value, T low, T high)
 extern ULONGEST align_up (ULONGEST v, int n);
 extern ULONGEST align_down (ULONGEST v, int n);
 
+/* Sign-extend the value V, using N as the number of valid bits.  That
+   is, bit N-1 is the sign bit.  The higher-order bits (those outside
+   0..N-1) must be zero.  */
+static inline ULONGEST
+sign_extend (ULONGEST v, int n)
+{
+  ULONGEST mask = (ULONGEST) 1 << (n - 1);
+  return (v ^ mask) - mask;
+}
+
 /* Convert hex digit A to a number, or throw an exception.  */
 extern int fromhex (int a);
 
@@ -252,4 +267,4 @@ struct string_view_hash
 
 } /* namespace gdb */
 
-#endif /* COMMON_COMMON_UTILS_H */
+#endif /* GDBSUPPORT_COMMON_UTILS_H */

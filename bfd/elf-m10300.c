@@ -1,5 +1,5 @@
 /* Matsushita 10300 specific support for 32-bit ELF
-   Copyright (C) 1996-2024 Free Software Foundation, Inc.
+   Copyright (C) 1996-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -1385,19 +1385,19 @@ mn10300_elf_check_relocs (bfd *abfd,
 static asection *
 mn10300_elf_gc_mark_hook (asection *sec,
 			  struct bfd_link_info *info,
-			  Elf_Internal_Rela *rel,
+			  struct elf_reloc_cookie *cookie,
 			  struct elf_link_hash_entry *h,
-			  Elf_Internal_Sym *sym)
+			  unsigned int symndx)
 {
   if (h != NULL)
-    switch (ELF32_R_TYPE (rel->r_info))
+    switch (ELF32_R_TYPE (cookie->rel->r_info))
       {
       case R_MN10300_GNU_VTINHERIT:
       case R_MN10300_GNU_VTENTRY:
 	return NULL;
       }
 
-  return _bfd_elf_gc_mark_hook (sec, info, rel, h, sym);
+  return _bfd_elf_gc_mark_hook (sec, info, cookie, h, symndx);
 }
 
 /* Perform a relocation as part of a final link.  */
@@ -2101,7 +2101,8 @@ mn10300_elf_relocate_section (bfd *output_bfd,
 
       if (sec != NULL && discarded_section (sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_MN10300_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;
@@ -2646,8 +2647,8 @@ mn10300_elf_relax_section (bfd *abfd,
   bfd_vma align_gap_adjustment;
 
   if (bfd_link_relocatable (link_info))
-    (*link_info->callbacks->einfo)
-      (_("%P%F: --relax and -r may not be used together\n"));
+    link_info->callbacks->fatal
+      (_("%P: --relax and -r may not be used together\n"));
 
   /* Assume nothing changes.  */
   *again = false;
@@ -3392,7 +3393,6 @@ mn10300_elf_relax_section (bfd *abfd,
 		symval += irel->r_addend;
 
 	      symval = _bfd_merged_section_offset (abfd, & sym_sec,
-						   elf_section_data (sym_sec)->sec_info,
 						   symval);
 
 	      if (ELF_ST_TYPE (isym->st_info) != STT_SECTION)
@@ -4618,8 +4618,7 @@ elf32_mn10300_link_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (&ret->static_hash_table->root, abfd,
 				      elf32_mn10300_link_hash_newfunc,
-				      sizeof (struct elf32_mn10300_link_hash_entry),
-				      MN10300_ELF_DATA))
+				      sizeof (struct elf32_mn10300_link_hash_entry)))
     {
       free (ret->static_hash_table);
       free (ret);
@@ -4630,8 +4629,7 @@ elf32_mn10300_link_hash_table_create (bfd *abfd)
   abfd->link.hash = NULL;
   if (!_bfd_elf_link_hash_table_init (&ret->root, abfd,
 				      elf32_mn10300_link_hash_newfunc,
-				      sizeof (struct elf32_mn10300_link_hash_entry),
-				      MN10300_ELF_DATA))
+				      sizeof (struct elf32_mn10300_link_hash_entry)))
     {
       abfd->is_linker_output = true;
       abfd->link.hash = &ret->static_hash_table->root.root;
@@ -5032,10 +5030,11 @@ _bfd_mn10300_elf_late_size_sections (bfd * output_bfd,
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  s = bfd_get_linker_section (dynobj, ".interp");
+	  s = elf_hash_table (info)->interp;
 	  BFD_ASSERT (s != NULL);
 	  s->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  s->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
   else
@@ -5122,6 +5121,7 @@ _bfd_mn10300_elf_late_size_sections (bfd * output_bfd,
       s->contents = bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   return _bfd_elf_add_dynamic_tags (output_bfd, info, relocs);
@@ -5466,8 +5466,7 @@ _bfd_mn10300_elf_reloc_type_class (const struct bfd_link_info *info ATTRIBUTE_UN
 static bool
 mn10300_elf_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd, sizeof (struct elf_mn10300_obj_tdata),
-				  MN10300_ELF_DATA);
+  return bfd_elf_allocate_object (abfd, sizeof (struct elf_mn10300_obj_tdata));
 }
 
 #define bfd_elf32_mkobject	mn10300_elf_mkobject

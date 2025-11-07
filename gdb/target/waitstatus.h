@@ -1,6 +1,6 @@
 /* Target waitstatus definitions and prototypes.
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef TARGET_WAITSTATUS_H
-#define TARGET_WAITSTATUS_H
+#ifndef GDB_TARGET_WAITSTATUS_H
+#define GDB_TARGET_WAITSTATUS_H
 
 #include "diagnostics.h"
 #include "gdb/signals.h"
@@ -47,15 +47,15 @@ enum target_waitkind
      value.related_pid.  I.e., if the child forks, value.related_pid
      is the parent's ID.  */
   TARGET_WAITKIND_FORKED,
- 
+
   /* The program has vforked.  A "related" process's PTID is in
      value.related_pid.  */
   TARGET_WAITKIND_VFORKED,
- 
+
   /* The program has exec'ed a new executable file.  The new file's
      pathname is pointed to by value.execd_pathname.  */
   TARGET_WAITKIND_EXECD,
-  
+
   /* The program had previously vforked, and now the child is done
      with the shared memory region, because it exec'ed or exited.
      Note that the event is reported to the vfork parent.  This is
@@ -87,11 +87,11 @@ enum target_waitkind
      function.  This way the event loop is responsive to other events,
      like for instance the user typing.  */
   TARGET_WAITKIND_IGNORE,
- 
+
   /* The target has run out of history information,
      and cannot run backward any further.  */
   TARGET_WAITKIND_NO_HISTORY,
- 
+
   /* There are no resumed children left in the program.  */
   TARGET_WAITKIND_NO_RESUMED,
 
@@ -470,4 +470,4 @@ enum target_stop_reason
   TARGET_STOPPED_BY_SINGLE_STEP
 };
 
-#endif /* TARGET_WAITSTATUS_H */
+#endif /* GDB_TARGET_WAITSTATUS_H */

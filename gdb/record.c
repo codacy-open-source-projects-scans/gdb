@@ -1,6 +1,6 @@
 /* Process record and replay target for GDB, the GNU debugger.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -28,7 +28,6 @@
 #include "interps.h"
 #include "top.h"
 
-#include <ctype.h>
 
 /* This is the debug switch for process record.  */
 unsigned int record_debug = 0;
@@ -152,12 +151,12 @@ record_read_memory (struct gdbarch *gdbarch,
 
 /* Stop recording.  */
 
-static void
+static bool
 record_stop (struct target_ops *t)
 {
   DEBUG ("stop %s", t->shortname ());
 
-  t->stop_recording ();
+  return t->stop_recording ();
 }
 
 /* Unpush the record target.  */
@@ -179,7 +178,7 @@ record_disconnect (struct target_ops *t, const char *args, int from_tty)
 
   DEBUG ("disconnect %s", t->shortname ());
 
-  record_stop (t);
+  (void) record_stop (t);
   record_unpush (t);
 
   target_disconnect (args, from_tty);
@@ -194,7 +193,7 @@ record_detach (struct target_ops *t, inferior *inf, int from_tty)
 
   DEBUG ("detach %s", t->shortname ());
 
-  record_stop (t);
+  (void) record_stop (t);
   record_unpush (t);
 
   target_detach (inf, from_tty);
@@ -306,17 +305,18 @@ cmd_record_delete (const char *args, int from_tty)
 static void
 cmd_record_stop (const char *args, int from_tty)
 {
-  struct target_ops *t;
-
-  t = require_record_target ();
-
-  record_stop (t);
+  struct target_ops *t = require_record_target ();
+  bool thread_moved = record_stop (t);
   record_unpush (t);
 
   gdb_printf (_("Process record is stopped and all execution "
 		"logs are deleted.\n"));
 
   interps_notify_record_changed (current_inferior (), 0, NULL, NULL);
+
+  /* INFERIOR_PTID may have moved when we stopped recording.  */
+  if (thread_moved)
+    notify_user_selected_context_changed (USER_SELECTED_FRAME);
 }
 
 
@@ -423,7 +423,7 @@ get_insn_number (const char **arg)
   begin = *arg;
   pos = skip_spaces (begin);
 
-  if (!isdigit (*pos))
+  if (!c_isdigit (*pos))
     error (_("Expected positive number, got: %s."), pos);
 
   number = strtoulst (pos, &end, 10);
@@ -443,7 +443,7 @@ get_context_size (const char **arg)
 
   pos = skip_spaces (*arg);
 
-  if (!isdigit (*pos))
+  if (!c_isdigit (*pos))
     error (_("Expected positive number, got: %s."), pos);
 
   long result = strtol (pos, &end, 10);
@@ -483,7 +483,7 @@ get_insn_history_modifiers (const char **arg)
 
       for (; *args; ++args)
 	{
-	  if (isspace (*args))
+	  if (c_isspace (*args))
 	    break;
 
 	  if (*args == '/')
@@ -627,7 +627,7 @@ get_call_history_modifiers (const char **arg)
 
       for (; *args; ++args)
 	{
-	  if (isspace (*args))
+	  if (c_isspace (*args))
 	    break;
 
 	  if (*args == '/')
@@ -769,9 +769,7 @@ set_record_call_history_size (const char *args, int from_tty,
 			 &record_call_history_size);
 }
 
-void _initialize_record ();
-void
-_initialize_record ()
+INIT_GDB_FILE (record)
 {
   struct cmd_list_element *c;
 
@@ -865,25 +863,25 @@ With a /m or /s modifier, source lines are included (if available).\n\
 With a /r modifier, raw instructions in hex are included.\n\
 With a /f modifier, function names are omitted.\n\
 With a /p modifier, current position markers are omitted.\n\
-With a /a modifier, omits output of auxiliary data, which is enabled \
+With a /a modifier, omits output of auxiliary data, which is enabled\n\
 by default.\n\
-With no argument, disassembles ten more instructions after the previous \
+With no argument, disassembles ten more instructions after the previous\n\
 disassembly.\n\
-\"record instruction-history -\" disassembles ten instructions before a \
+\"record instruction-history -\" disassembles ten instructions before a\n\
 previous disassembly.\n\
-One argument specifies an instruction number as shown by 'info record', and \
+One argument specifies an instruction number as shown by 'info record', and\n\
 ten instructions are disassembled after that instruction.\n\
-Two arguments with comma between them specify starting and ending instruction \
+Two arguments with comma between them specify starting and ending instruction\n\
 numbers to disassemble.\n\
-If the second argument is preceded by '+' or '-', it specifies the distance \
+If the second argument is preceded by '+' or '-', it specifies the distance\n\
 from the first argument.\n\
-The number of instructions to disassemble can be defined with \"set record \
-instruction-history-size\"."),
+The number of instructions to disassemble can be defined with\n\
+\"set record instruction-history-size\"."),
 	   &record_cmdlist);
 
   add_cmd ("function-call-history", class_obscure, cmd_record_call_history, _("\
 Prints the execution history at function granularity.\n\
-It prints one line for each sequence of instructions that belong to the same \
+It prints one line for each sequence of instructions that belong to the same\n\
 function.\n\
 Without modifiers, it prints the function name.\n\
 With a /l modifier, the source file and line number range is included.\n\
@@ -892,15 +890,15 @@ With a /c modifier, the output is indented based on the call stack depth.\n\
 With a /a modifier, omits output of auxiliary data, which is enabled \
 by default.\n\
 With no argument, prints ten more lines after the previous ten-line print.\n\
-\"record function-call-history -\" prints ten lines before a previous ten-line \
+\"record function-call-history -\" prints ten lines before a previous ten-line\n\
 print.\n\
-One argument specifies a function number as shown by 'info record', and \
+One argument specifies a function number as shown by 'info record', and\n\
 ten lines are printed after that function.\n\
 Two arguments with comma between them specify a range of functions to print.\n\
-If the second argument is preceded by '+' or '-', it specifies the distance \
+If the second argument is preceded by '+' or '-', it specifies the distance\n\
 from the first argument.\n\
-The number of functions to print can be defined with \"set record \
-function-call-history-size\"."),
+The number of functions to print can be defined with\n\
+\"set record function-call-history-size\"."),
 	   &record_cmdlist);
 
   /* Sync command control variables.  */

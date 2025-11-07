@@ -1,5 +1,5 @@
 /* TILE-Gx-specific support for ELF.
-   Copyright (C) 2011-2024 Free Software Foundation, Inc.
+   Copyright (C) 2011-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -26,9 +26,6 @@
 #include "opcode/tilegx.h"
 #include "libiberty.h"
 #include "elfxx-tilegx.h"
-
-#define ABI_64_P(abfd) \
-  (get_elf_backend_data (abfd)->s->elfclass == ELFCLASS64)
 
 #define TILEGX_ELF_WORD_BYTES(htab) \
   ((htab)->bytes_per_word)
@@ -1399,8 +1396,7 @@ tilegx_elf_link_hash_table_create (bfd *abfd)
     }
 
   if (!_bfd_elf_link_hash_table_init (&ret->elf, abfd, link_hash_newfunc,
-				      sizeof (struct tilegx_elf_link_hash_entry),
-				      TILEGX_ELF_DATA))
+				      sizeof (struct tilegx_elf_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -2034,13 +2030,13 @@ tilegx_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 asection *
 tilegx_elf_gc_mark_hook (asection *sec,
 			 struct bfd_link_info *info,
-			 Elf_Internal_Rela *rel,
+			 struct elf_reloc_cookie *cookie,
 			 struct elf_link_hash_entry *h,
-			 Elf_Internal_Sym *sym)
+			 unsigned int symndx)
 {
   if (h != NULL)
     {
-      switch (TILEGX_ELF_R_TYPE (rel->r_info))
+      switch (TILEGX_ELF_R_TYPE (cookie->rel->r_info))
 	{
 	case R_TILEGX_GNU_VTINHERIT:
 	case R_TILEGX_GNU_VTENTRY:
@@ -2054,7 +2050,7 @@ tilegx_elf_gc_mark_hook (asection *sec,
     {
       struct bfd_link_hash_entry *bh;
 
-      switch (TILEGX_ELF_R_TYPE (rel->r_info))
+      switch (TILEGX_ELF_R_TYPE (cookie->rel->r_info))
 	{
 	case R_TILEGX_TLS_GD_CALL:
 	  /* This reloc implicitly references __tls_get_addr.  We know
@@ -2074,11 +2070,11 @@ tilegx_elf_gc_mark_hook (asection *sec,
 	  h->mark = 1;
 	  if (h->is_weakalias)
 	    weakdef (h)->mark = 1;
-	  sym = NULL;
+	  symndx = 0;
 	}
     }
 
-  return _bfd_elf_gc_mark_hook (sec, info, rel, h, sym);
+  return _bfd_elf_gc_mark_hook (sec, info, cookie, h, symndx);
 }
 
 /* Adjust a symbol defined by a dynamic object and referenced by a
@@ -2449,10 +2445,11 @@ tilegx_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  s = bfd_get_linker_section (dynobj, ".interp");
+	  s = htab->elf.interp;
 	  BFD_ASSERT (s != NULL);
 	  s->size = strlen (htab->dynamic_interpreter) + 1;
 	  s->contents = (unsigned char *) htab->dynamic_interpreter;
+	  s->alloced = 1;
 	}
     }
 
@@ -2618,6 +2615,7 @@ tilegx_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       s->contents = (bfd_byte *) bfd_zalloc (dynobj, s->size);
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   return _bfd_elf_add_dynamic_tags (output_bfd, info, true);
@@ -2893,7 +2891,8 @@ tilegx_elf_relocate_section (bfd *output_bfd, struct bfd_link_info *info,
 
       if (sec != NULL && discarded_section (sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_TILEGX_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;

@@ -1,6 +1,6 @@
 /* Interface between GDB and target environments, including files and processes
 
-   Copyright (C) 1990-2024 Free Software Foundation, Inc.
+   Copyright (C) 1990-2025 Free Software Foundation, Inc.
 
    Contributed by Cygnus Support.  Written by John Gilmore.
 
@@ -41,8 +41,8 @@
    dummy target at the bottom stratum, so we can call the target
    methods without checking them.  */
 
-#if !defined (TARGET_H)
-#define TARGET_H
+#ifndef GDB_TARGET_H
+#define GDB_TARGET_H
 
 struct objfile;
 struct ui_file;
@@ -108,7 +108,7 @@ enum thread_control_capabilities
 /* The structure below stores information about a system call.
    It is basically used in the "catch syscall" command, and in
    every function that gives information about a system call.
-   
+
    It's also good to mention that its fields represent everything
    that we currently know about a syscall in GDB.  */
 struct syscall
@@ -392,18 +392,18 @@ typedef void async_callback_ftype (enum inferior_event_type event_type,
 /* These defines are used to mark target_ops methods.  The script
    make-target-delegates scans these and auto-generates the base
    method implementations.  There are four macros that can be used:
-   
+
    1. TARGET_DEFAULT_IGNORE.  There is no argument.  The base method
    does nothing.  This is only valid if the method return type is
    'void'.
-   
+
    2. TARGET_DEFAULT_NORETURN.  The argument is a function call, like
    'tcomplain ()'.  The base method simply makes this call, which is
    assumed not to return.
-   
+
    3. TARGET_DEFAULT_RETURN.  The argument is a C expression.  The
    base method returns this expression's value.
-   
+
    4. TARGET_DEFAULT_FUNC.  The argument is the name of a function.
    make-target-delegates does not generate a base method in this case,
    but instead uses the argument function as the base method.  */
@@ -1016,8 +1016,8 @@ struct target_ops
        filesystem seen by the debugger (GDB or, for remote targets, the
        remote stub).  Return 0 on success, or -1 if an error occurs (and
        set *TARGET_ERRNO).  */
-    virtual int fileio_stat (struct inferior *inf, const char *filename,
-			     struct stat *sb, fileio_error *target_errno);
+    virtual int fileio_lstat (struct inferior *inf, const char *filename,
+			      struct stat *sb, fileio_error *target_errno);
 
     /* Close FD on the target.  Return 0, or -1 if an error occurs
        (and set *TARGET_ERRNO).  */
@@ -1162,8 +1162,12 @@ struct target_ops
 			       CORE_ADDR memaddr, ULONGEST size)
       TARGET_DEFAULT_FUNC (default_verify_memory);
 
-    /* Return the address of the start of the Thread Information Block
-       a Windows OS specific feature.  */
+    /* Set *ADDR to the address of the start of the Thread Information
+       Block (TIB) for thread PTID.  Return true on success and false
+       otherwise.
+
+       ADDR may be nullptr, in which case the checks will be done but
+       the result will be discarded.  */
     virtual bool get_tib_address (ptid_t ptid, CORE_ADDR *addr)
       TARGET_DEFAULT_NORETURN (tcomplain ());
 
@@ -1232,9 +1236,9 @@ struct target_ops
     virtual enum record_method record_method (ptid_t ptid)
       TARGET_DEFAULT_RETURN (RECORD_METHOD_NONE);
 
-    /* Stop trace recording.  */
-    virtual void stop_recording ()
-      TARGET_DEFAULT_IGNORE ();
+    /* Stop trace recording.  Return whether the selected thread moved.  */
+    virtual bool stop_recording ()
+      TARGET_DEFAULT_RETURN (false);
 
     /* Print information about the recording.  */
     virtual void info_record ()
@@ -1376,6 +1380,42 @@ struct target_ops
     /* Return the x86 XSAVE extended state area layout.  */
     virtual x86_xsave_layout fetch_x86_xsave_layout ()
       TARGET_DEFAULT_RETURN (x86_xsave_layout ());
+
+    /* Return true if the target supports displaced stepping for THREAD.  */
+    virtual bool supports_displaced_step (thread_info *thread)
+      TARGET_DEFAULT_FUNC (default_supports_displaced_step);
+
+    /* See documentation of gdbarch_displaced_step_prepare.  */
+    virtual displaced_step_prepare_status displaced_step_prepare (thread_info *thread,
+								  CORE_ADDR &displaced_pc)
+      TARGET_DEFAULT_FUNC (default_displaced_step_prepare);
+
+    /* See documentation of gdbarch_displaced_step_finish.  */
+    virtual displaced_step_finish_status displaced_step_finish
+      (thread_info *thread, const target_waitstatus &status)
+      TARGET_DEFAULT_FUNC (default_displaced_step_finish);
+
+    /* See documentation of gdbarch_displaced_step_restore_all_in_ptid.  */
+    virtual void displaced_step_restore_all_in_ptid (inferior *parent_inf,
+						     ptid_t child_ptid)
+      TARGET_DEFAULT_FUNC (default_displaced_step_restore_all_in_ptid);
+
+    /* Return true if an instance of this target can appear on multiple
+       target stacks, or false if an instance of this target can only
+       appear on a single target stack.
+
+       Returning false doesn't mean that GDB can't create multiple
+       instances of this target, just that each instance will only be used
+       by a single inferior.
+
+       The default return value for this function is true indicating
+       targets can be shared.  The only non-shareable targets are some of
+       the process_stratum_target sub-classes, as such, this default is
+       changed in process_stratum_target to return false, then those
+       process_stratum_target sub-classes that are shareable set this to
+       true.  */
+    virtual bool is_shareable ()
+    { return true; }
   };
 
 /* Deleter for std::unique_ptr.  See comments in
@@ -1651,7 +1691,7 @@ struct memory_write_request
     : begin (begin_), end (end_), data (data_), baton (baton_)
   {}
 
-  /* Begining address that must be written.  */
+  /* Beginning address that must be written.  */
   ULONGEST begin;
   /* Past-the-end address.  */
   ULONGEST end;
@@ -1661,7 +1701,7 @@ struct memory_write_request
   void *baton;
 };
 
-/* Enumeration specifying different flash preservation behaviour.  */
+/* Enumeration specifying different flash preservation behavior.  */
 enum flash_preserve_mode
   {
     flash_preserve,
@@ -2233,8 +2273,8 @@ extern int target_fileio_fstat (int fd, struct stat *sb,
    filesystem seen by the debugger (GDB or, for remote targets, the remote
    stub).  Return 0 on success, or -1 if an error occurs (and set
    *TARGET_ERRNO).  */
-extern int target_fileio_stat (struct inferior *inf, const char *filename,
-			       struct stat *sb, fileio_error *target_errno);
+extern int target_fileio_lstat (struct inferior *inf, const char *filename,
+				struct stat *sb, fileio_error *target_errno);
 
 /* Close FD on the target.  Return 0, or -1 if an error occurs
    (and set *TARGET_ERRNO).  */
@@ -2338,6 +2378,8 @@ extern void target_set_trace_buffer_size (LONGEST val);
 extern bool target_set_trace_notes (const char *user, const char *notes,
 				    const char *stopnotes);
 
+/* A wrapper that calls get_tib_address on the top target of the
+   current inferior.  */
 extern bool target_get_tib_address (ptid_t ptid, CORE_ADDR *addr);
 
 extern void target_set_permissions ();
@@ -2447,8 +2489,14 @@ extern void target_pre_inferior ();
 
 extern void target_preopen (int);
 
+/* Using the objfile specified in OBJFILE, find the address for the
+   current thread's thread-local storage with offset OFFSET.  If it's
+   provided, NAME might be used to indicate the relevant variable
+   in an error message.  */
+
 extern CORE_ADDR target_translate_tls_address (struct objfile *objfile,
-					       CORE_ADDR offset);
+					       CORE_ADDR offset,
+					       const char *name = nullptr);
 
 /* Return the "section" containing the specified address.  */
 const struct target_section *target_section_by_addr (struct target_ops *target,
@@ -2629,4 +2677,4 @@ extern void target_prepare_to_generate_core (void);
 /* See to_done_generating_core.  */
 extern void target_done_generating_core (void);
 
-#endif /* !defined (TARGET_H) */
+#endif /* GDB_TARGET_H */

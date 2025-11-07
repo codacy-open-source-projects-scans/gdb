@@ -1,6 +1,6 @@
 /* Common Linux target-dependent definitions for AArch64 MTE
 
-   Copyright (C) 2021-2024 Free Software Foundation, Inc.
+   Copyright (C) 2021-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,8 +17,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef ARCH_AARCH64_MTE_LINUX_H
-#define ARCH_AARCH64_MTE_LINUX_H
+#ifndef GDB_ARCH_AARCH64_MTE_LINUX_H
+#define GDB_ARCH_AARCH64_MTE_LINUX_H
 
 
 /* Feature check for Memory Tagging Extension.  */
@@ -53,4 +53,4 @@ extern void aarch64_mte_pack_tags (gdb::byte_vector &tags);
    first unpacked element.  Otherwise leave it in the unpacked vector.  */
 extern void aarch64_mte_unpack_tags (gdb::byte_vector &tags, bool skip_first);
 
-#endif /* ARCH_AARCH64_MTE_LINUX_H */
+#endif /* GDB_ARCH_AARCH64_MTE_LINUX_H */

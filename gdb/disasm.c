@@ -1,6 +1,6 @@
 /* Disassemble support for GDB.
 
-   Copyright (C) 2000-2024 Free Software Foundation, Inc.
+   Copyright (C) 2000-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -19,6 +19,7 @@
 
 #include "arch-utils.h"
 #include "event-top.h"
+#include "gdbsupport/unordered_set.h"
 #include "target.h"
 #include "value.h"
 #include "ui-out.h"
@@ -27,7 +28,6 @@
 #include "cli/cli-cmds.h"
 #include "dis-asm.h"
 #include "source.h"
-#include "gdbsupport/gdb-safe-ctype.h"
 #include <algorithm>
 #include <optional>
 #include "valprint.h"
@@ -122,73 +122,25 @@ struct deprecated_dis_line_entry
 
 struct dis_line_entry
 {
+  dis_line_entry (struct symtab *symtab, int line) noexcept
+    : symtab (symtab),
+      line (line)
+  {}
+
+  bool operator== (const dis_line_entry &other) const noexcept
+  { return this->symtab == other.symtab && this->line == other.line; }
+
   struct symtab *symtab;
   int line;
 };
 
 /* Hash function for dis_line_entry.  */
 
-static hashval_t
-hash_dis_line_entry (const void *item)
+struct dis_line_entry_hash
 {
-  const struct dis_line_entry *dle = (const struct dis_line_entry *) item;
-
-  return htab_hash_pointer (dle->symtab) + dle->line;
-}
-
-/* Equal function for dis_line_entry.  */
-
-static int
-eq_dis_line_entry (const void *item_lhs, const void *item_rhs)
-{
-  const struct dis_line_entry *lhs = (const struct dis_line_entry *) item_lhs;
-  const struct dis_line_entry *rhs = (const struct dis_line_entry *) item_rhs;
-
-  return (lhs->symtab == rhs->symtab
-	  && lhs->line == rhs->line);
-}
-
-/* Create the table to manage lines for mixed source/disassembly.  */
-
-static htab_t
-allocate_dis_line_table (void)
-{
-  return htab_create_alloc (41,
-			    hash_dis_line_entry, eq_dis_line_entry,
-			    xfree, xcalloc, xfree);
-}
-
-/* Add a new dis_line_entry containing SYMTAB and LINE to TABLE.  */
-
-static void
-add_dis_line_entry (htab_t table, struct symtab *symtab, int line)
-{
-  void **slot;
-  struct dis_line_entry dle, *dlep;
-
-  dle.symtab = symtab;
-  dle.line = line;
-  slot = htab_find_slot (table, &dle, INSERT);
-  if (*slot == NULL)
-    {
-      dlep = XNEW (struct dis_line_entry);
-      dlep->symtab = symtab;
-      dlep->line = line;
-      *slot = dlep;
-    }
-}
-
-/* Return non-zero if SYMTAB, LINE are in TABLE.  */
-
-static int
-line_has_code_p (htab_t table, struct symtab *symtab, int line)
-{
-  struct dis_line_entry dle;
-
-  dle.symtab = symtab;
-  dle.line = line;
-  return htab_find (table, &dle) != NULL;
-}
+  std::size_t operator() (const dis_line_entry &x) const noexcept
+  { return std::hash<symtab *> () (x.symtab) + std::hash<int> () (x.line); }
+};
 
 /* Wrapper of target_read_code.  */
 
@@ -642,7 +594,7 @@ do_mixed_source_and_assembly_deprecated
     {
       mle[newlines].line = le[i].line;
       mle[newlines].start_pc = le[i].pc (objfile);
-      sal = find_pc_line (le[i].pc (objfile), 0);
+      sal = find_sal_for_pc (le[i].pc (objfile), 0);
       mle[newlines].end_pc = sal.end;
       newlines++;
     }
@@ -747,7 +699,7 @@ do_mixed_source_and_assembly (struct gdbarch *gdbarch,
      but if that text is for code that will be disassembled later, then
      we'll want to defer printing it until later with its associated code.  */
 
-  htab_up dis_line_table (allocate_dis_line_table ());
+  gdb::unordered_set<dis_line_entry, dis_line_entry_hash> dis_line_table;
 
   struct objfile *objfile = main_symtab->compunit ()->objfile ();
 
@@ -760,7 +712,7 @@ do_mixed_source_and_assembly (struct gdbarch *gdbarch,
 
   /* The prologue may be empty, but there may still be a line number entry
      for the opening brace which is distinct from the first line of code.
-     If the prologue has been eliminated find_pc_line may return the source
+     If the prologue has been eliminated find_sal_for_pc may return the source
      line after the opening brace.  We still want to print this opening brace.
      first_le is used to implement this.  */
 
@@ -781,12 +733,12 @@ do_mixed_source_and_assembly (struct gdbarch *gdbarch,
       struct symtab_and_line sal;
       int length;
 
-      sal = find_pc_line (pc, 0);
+      sal = find_sal_for_pc (pc, 0);
       length = gdb_insn_length (gdbarch, pc);
       pc += length;
 
       if (sal.symtab != NULL)
-	add_dis_line_entry (dis_line_table.get (), sal.symtab, sal.line);
+	dis_line_table.emplace (sal.symtab, sal.line);
     }
 
   /* Second pass: print the disassembly.
@@ -830,7 +782,7 @@ do_mixed_source_and_assembly (struct gdbarch *gdbarch,
       int end_preceding_line_to_display = 0;
       int new_source_line = 0;
 
-      sal = find_pc_line (pc, 0);
+      sal = find_sal_for_pc (pc, 0);
 
       if (sal.symtab != last_symtab)
 	{
@@ -859,11 +811,9 @@ do_mixed_source_and_assembly (struct gdbarch *gdbarch,
 		  /* Several preceding source lines.  Print the trailing ones
 		     not associated with code that we'll print later.  */
 		  for (l = sal.line - 1; l > last_line; --l)
-		    {
-		      if (line_has_code_p (dis_line_table.get (),
-					   sal.symtab, l))
-			break;
-		    }
+		    if (dis_line_table.contains ({sal.symtab, l}))
+		      break;
+
 		  if (l < sal.line - 1)
 		    {
 		      start_preceding_line_to_display = l + 1;
@@ -1200,7 +1150,7 @@ gdb_disassembly (struct gdbarch *gdbarch, struct ui_out *uiout,
   int nlines = -1;
 
   /* Assume symtab is valid for whole PC range.  */
-  symtab = find_pc_line_symtab (low);
+  symtab = find_symtab_for_pc (low);
 
   if (symtab != NULL && symtab->linetable () != NULL)
     nlines = symtab->linetable ()->nitems;
@@ -1319,7 +1269,6 @@ set_disassembler_options (const char *prospective_options)
     = make_unique_xstrdup (prospective_options);
   char *options = remove_whitespace_and_extra_commas
     (prospective_options_local.get ());
-  const char *opt;
 
   /* Allow all architectures, even ones that do not support 'set disassembler',
      to reset their disassembler options to NULL.  */
@@ -1341,9 +1290,13 @@ set_disassembler_options (const char *prospective_options)
   valid_options = &valid_options_and_args->options;
 
   /* Verify we have valid disassembler options.  */
-  FOR_EACH_DISASSEMBLER_OPTION (opt, options)
+  char *opt = options;
+  while (1)
     {
       size_t i;
+      char *opt_end = strchr (opt, ',');
+      if (opt_end)
+	*opt_end = 0;
       for (i = 0; valid_options->name[i] != NULL; i++)
 	if (valid_options->arg != NULL && valid_options->arg[i] != NULL)
 	  {
@@ -1358,8 +1311,7 @@ set_disassembler_options (const char *prospective_options)
 	    if (valid_options->arg[i]->values == NULL)
 	      break;
 	    for (j = 0; valid_options->arg[i]->values[j] != NULL; j++)
-	      if (disassembler_options_cmp
-		    (arg, valid_options->arg[i]->values[j]) == 0)
+	      if (strcmp (arg, valid_options->arg[i]->values[j]) == 0)
 		{
 		  found = true;
 		  break;
@@ -1367,7 +1319,7 @@ set_disassembler_options (const char *prospective_options)
 	    if (found)
 	      break;
 	  }
-	else if (disassembler_options_cmp (opt, valid_options->name[i]) == 0)
+	else if (strcmp (opt, valid_options->name[i]) == 0)
 	  break;
       if (valid_options->name[i] == NULL)
 	{
@@ -1376,6 +1328,10 @@ set_disassembler_options (const char *prospective_options)
 		      opt);
 	  return;
 	}
+      if (!opt_end)
+	break;
+      *opt_end = ',';
+      opt = opt_end + 1;
     }
 
   *disassembler_options = options;
@@ -1519,9 +1475,7 @@ disassembler_options_completer (struct cmd_list_element *ignore,
 
 /* Initialization code.  */
 
-void _initialize_disasm ();
-void
-_initialize_disasm ()
+INIT_GDB_FILE (disasm)
 {
   /* Add the command that controls the disassembler options.  */
   set_show_commands set_show_disas_opts

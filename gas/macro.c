@@ -1,5 +1,5 @@
 /* macro.c - macro support for gas
-   Copyright (C) 1994-2024 Free Software Foundation, Inc.
+   Copyright (C) 1994-2025 Free Software Foundation, Inc.
 
    Written by Steve and Judy Chamberlain of Cygnus Support,
       sac@cygnus.com
@@ -29,10 +29,8 @@
 /* The routines in this file handle macro definition and expansion.
    They are called by gas.  */
 
-#define ISWHITE(x) ((x) == ' ' || (x) == '\t')
-
 #define ISSEP(x) \
- ((x) == ' ' || (x) == '\t' || (x) == ',' || (x) == '"' || (x) == ';' \
+ (is_whitespace (x) || (x) == ',' || (x) == '"' || (x) == ';' \
   || (x) == ')' || (x) == '(' \
   || ((flag_macro_alternate || flag_mri) && ((x) == '<' || (x) == '>')))
 
@@ -114,11 +112,13 @@ buffer_and_nest (const char *from, const char *to, sb *ptr,
     unsigned int line;
     char *linefile;
 
-    as_where_top (&line);
-    if (!flag_m68k_mri)
-      linefile = xasprintf ("\t.linefile %u .", line + 1);
+    const char *prefix = flag_m68k_mri ? "" : ".";
+    const char *file = as_where_top (&line);
+
+    if (file)
+      linefile = xasprintf ("\t%slinefile %u \"%s\"", prefix, line + 1, file);
     else
-      linefile = xasprintf ("\tlinefile %u .", line + 1);
+      linefile = xasprintf ("\t%slinefile %u .", prefix, line + 1);
     sb_add_string (ptr, linefile);
     xfree (linefile);
   }
@@ -139,8 +139,7 @@ buffer_and_nest (const char *from, const char *to, sb *ptr,
       if (! LABELS_WITHOUT_COLONS)
 	{
 	  /* Skip leading whitespace.  */
-	  while (i < ptr->len && ISWHITE (ptr->ptr[i]))
-	    i++;
+	  i = sb_skip_white (i, ptr);
 	}
 
       for (;;)
@@ -154,8 +153,7 @@ buffer_and_nest (const char *from, const char *to, sb *ptr,
 	  if (i < ptr->len && is_name_ender (ptr->ptr[i]))
 	    i++;
 	  /* Skip whitespace.  */
-	  while (i < ptr->len && ISWHITE (ptr->ptr[i]))
-	    i++;
+	  i = sb_skip_white (i, ptr);
 	  /* Check for the colon.  */
 	  if (i >= ptr->len || ptr->ptr[i] != ':')
 	    {
@@ -174,8 +172,7 @@ buffer_and_nest (const char *from, const char *to, sb *ptr,
 	}
 
       /* Skip trailing whitespace.  */
-      while (i < ptr->len && ISWHITE (ptr->ptr[i]))
-	i++;
+      i = sb_skip_white (i, ptr);
 
       if (i < ptr->len && (ptr->ptr[i] == '.'
 			   || NO_PSEUDO_DOT
@@ -295,24 +292,25 @@ getstring (size_t idx, sb *in, sb *acc)
 	{
 	  int nest = 0;
 	  idx++;
-	  while (idx < in->len
-		 && (in->ptr[idx] != '>' || nest))
+	  while (idx < in->len)
 	    {
-	      if (in->ptr[idx] == '!')
+	      if (in->ptr[idx] == '!' && idx + 1 < in->len)
+		idx++;
+	      else if (in->ptr[idx] == '>')
 		{
-		  idx++;
-		  sb_add_char (acc, in->ptr[idx++]);
+		  if (nest == 0)
+		    {
+		      idx++;
+		      break;
+		    }
+		  nest--;
 		}
-	      else
-		{
-		  if (in->ptr[idx] == '>')
-		    nest--;
-		  if (in->ptr[idx] == '<')
-		    nest++;
-		  sb_add_char (acc, in->ptr[idx++]);
-		}
+	      else if (in->ptr[idx] == '<')
+		nest++;
+
+	      sb_add_char (acc, in->ptr[idx]);
+	      idx++;
 	    }
-	  idx++;
 	}
       else if (in->ptr[idx] == '"' || in->ptr[idx] == '\'')
 	{
@@ -320,7 +318,6 @@ getstring (size_t idx, sb *in, sb *acc)
 	  int escaped = 0;
 
 	  idx++;
-
 	  while (idx < in->len)
 	    {
 	      if (in->ptr[idx - 1] == '\\')
@@ -328,32 +325,19 @@ getstring (size_t idx, sb *in, sb *acc)
 	      else
 		escaped = 0;
 
-	      if (flag_macro_alternate && in->ptr[idx] == '!')
+	      if (flag_macro_alternate
+		  && in->ptr[idx] == '!' && idx + 1 < in->len)
 		{
-		  idx ++;
-
-		  sb_add_char (acc, in->ptr[idx]);
-
-		  idx ++;
+		  idx++;
 		}
-	      else if (escaped && in->ptr[idx] == tchar)
+	      else if (!escaped && in->ptr[idx] == tchar)
 		{
-		  sb_add_char (acc, tchar);
-		  idx ++;
+		  idx++;
+		  if (idx >= in->len || in->ptr[idx] != tchar)
+		    break;
 		}
-	      else
-		{
-		  if (in->ptr[idx] == tchar)
-		    {
-		      idx ++;
-
-		      if (idx >= in->len || in->ptr[idx] != tchar)
-			break;
-		    }
-
-		  sb_add_char (acc, in->ptr[idx]);
-		  idx ++;
-		}
+	      sb_add_char (acc, in->ptr[idx]);
+	      idx++;
 	    }
 	}
     }
@@ -424,9 +408,7 @@ get_any_string (size_t idx, sb *in, sb *out)
 
 	  *in_br = '\0';
 	  while (idx < in->len
-		 && (*in_br
-		     || (in->ptr[idx] != ' '
-			 && in->ptr[idx] != '\t'))
+		 && (*in_br || !is_whitespace (in->ptr[idx]))
 		 && in->ptr[idx] != ','
 		 && (in->ptr[idx] != '<'
 		     || (! flag_macro_alternate && ! flag_mri)))
@@ -916,7 +898,7 @@ macro_expand_body (sb *in, sb *out, formal_entry *formals,
 	  if (! macro
 	      || src + 5 >= in->len
 	      || strncasecmp (in->ptr + src, "LOCAL", 5) != 0
-	      || ! ISWHITE (in->ptr[src + 5])
+	      || ! is_whitespace (in->ptr[src + 5])
 	      /* PR 11507: Skip keyword LOCAL if it is found inside a quoted string.  */
 	      || inquote)
 	    {
@@ -1069,9 +1051,7 @@ macro_expand (size_t idx, sb *in, macro_entry *m, sb *out)
 	  /* The Microtec assembler ignores this if followed by a white space.
 	     (Macro invocation with empty extension) */
 	  idx++;
-	  if (    idx < in->len
-		  && in->ptr[idx] != ' '
-		  && in->ptr[idx] != '\t')
+	  if (idx < in->len && !is_whitespace (in->ptr[idx]))
 	    {
 	      formal_entry *n = new_formal ();
 
@@ -1192,7 +1172,7 @@ macro_expand (size_t idx, sb *in, macro_entry *m, sb *out)
 	{
 	  if (idx < in->len && in->ptr[idx] == ',')
 	    ++idx;
-	  if (idx < in->len && ISWHITE (in->ptr[idx]))
+	  if (idx < in->len && is_whitespace (in->ptr[idx]))
 	    break;
 	}
     }

@@ -1,5 +1,5 @@
 /* Or1k-specific support for 32-bit ELF.
-   Copyright (C) 2001-2024 Free Software Foundation, Inc.
+   Copyright (C) 2001-2025 Free Software Foundation, Inc.
    Contributed for OR32 by Johan Rydberg, jrydberg@opencores.org
 
    PIC parts added by Stefan Kristiansson, stefan.kristiansson@saunalahti.fi,
@@ -977,8 +977,7 @@ elf_or1k_plt_entry_size (bfd_vma plt_index)
 static bool
 elf_or1k_mkobject (bfd *abfd)
 {
-  return bfd_elf_allocate_object (abfd, sizeof (struct elf_or1k_obj_tdata),
-				  OR1K_ELF_DATA);
+  return bfd_elf_allocate_object (abfd, sizeof (struct elf_or1k_obj_tdata));
 }
 
 /* Create an entry in an or1k ELF linker hash table.  */
@@ -1028,8 +1027,7 @@ or1k_elf_link_hash_table_create (bfd *abfd)
 
   if (!_bfd_elf_link_hash_table_init (&ret->root, abfd,
 				      or1k_elf_link_hash_newfunc,
-				      sizeof (struct elf_or1k_link_hash_entry),
-				      OR1K_ELF_DATA))
+				      sizeof (struct elf_or1k_link_hash_entry)))
     {
       free (ret);
       return NULL;
@@ -1409,7 +1407,8 @@ or1k_elf_relocate_section (bfd *output_bfd,
 
       if (sec != NULL && discarded_section (sec))
 	RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
-					 rel, 1, relend, howto, 0, contents);
+					 rel, 1, relend, R_OR1K_NONE,
+					 howto, 0, contents);
 
       if (bfd_link_relocatable (info))
 	continue;
@@ -1925,19 +1924,19 @@ or1k_elf_relocate_section (bfd *output_bfd,
 static asection *
 or1k_elf_gc_mark_hook (asection *sec,
 		       struct bfd_link_info *info,
-		       Elf_Internal_Rela *rel,
+		       struct elf_reloc_cookie *cookie,
 		       struct elf_link_hash_entry *h,
-		       Elf_Internal_Sym *sym)
+		       unsigned int symndx)
 {
   if (h != NULL)
-    switch (ELF32_R_TYPE (rel->r_info))
+    switch (ELF32_R_TYPE (cookie->rel->r_info))
       {
       case R_OR1K_GNU_VTINHERIT:
       case R_OR1K_GNU_VTENTRY:
 	return NULL;
       }
 
-  return _bfd_elf_gc_mark_hook (sec, info, rel, h, sym);
+  return _bfd_elf_gc_mark_hook (sec, info, cookie, h, symndx);
 }
 
 /* Look through the relocs for a section during the first phase.  */
@@ -3067,10 +3066,11 @@ or1k_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       /* Set the contents of the .interp section to the interpreter.  */
       if (bfd_link_executable (info) && !info->nointerp)
 	{
-	  s = bfd_get_section_by_name (dynobj, ".interp");
+	  s = htab->root.interp;
 	  BFD_ASSERT (s != NULL);
 	  s->size = sizeof ELF_DYNAMIC_INTERPRETER;
 	  s->contents = (unsigned char *) ELF_DYNAMIC_INTERPRETER;
+	  s->alloced = 1;
 	}
     }
 
@@ -3206,9 +3206,9 @@ or1k_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 	 but this way if it does, we get a R_OR1K_NONE reloc instead
 	 of garbage.  */
       s->contents = bfd_zalloc (dynobj, s->size);
-
       if (s->contents == NULL)
 	return false;
+      s->alloced = 1;
     }
 
   return _bfd_elf_add_dynamic_tags (output_bfd, info, relocs);

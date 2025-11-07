@@ -1,6 +1,6 @@
 /* Declarations for common types.
 
-   Copyright (C) 1986-2024 Free Software Foundation, Inc.
+   Copyright (C) 1986-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,10 +17,11 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef COMMON_COMMON_TYPES_H
-#define COMMON_COMMON_TYPES_H
+#ifndef GDBSUPPORT_COMMON_TYPES_H
+#define GDBSUPPORT_COMMON_TYPES_H
 
 #include <inttypes.h>
+#include "gdbsupport/offset-type.h"
 
 /* * A byte from the program being debugged.  */
 typedef unsigned char gdb_byte;
@@ -29,10 +30,8 @@ typedef unsigned char gdb_byte;
 typedef uint64_t CORE_ADDR;
 
 /* Like a CORE_ADDR, but not directly convertible.  This is used to
-   represent an unrelocated CORE_ADDR.  DEFINE_OFFSET_TYPE is not used
-   here because there's no need to add or subtract values of this
-   type.  */
-enum class unrelocated_addr : CORE_ADDR { };
+   represent an unrelocated CORE_ADDR.  */
+DEFINE_OFFSET_TYPE (unrelocated_addr, CORE_ADDR);
 
 /* LONGEST must be at least as big as CORE_ADDR.  */
 
@@ -53,4 +52,4 @@ typedef uint64_t ULONGEST;
 
 enum tribool { TRIBOOL_UNKNOWN = -1, TRIBOOL_FALSE = 0, TRIBOOL_TRUE = 1 };
 
-#endif /* COMMON_COMMON_TYPES_H */
+#endif /* GDBSUPPORT_COMMON_TYPES_H */

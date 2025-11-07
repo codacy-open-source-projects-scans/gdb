@@ -1,5 +1,5 @@
 dnl Autoconf configure script for GDB support library
-dnl Copyright (C) 2020-2024 Free Software Foundation, Inc.
+dnl Copyright (C) 2020-2025 Free Software Foundation, Inc.
 dnl
 dnl This program is free software; you can redistribute it and/or modify
 dnl it under the terms of the GNU General Public License as published by
@@ -55,6 +55,11 @@ AM_CONDITIONAL(SELFTEST, $enable_unittests)
 
 AM_CONDITIONAL(HAVE_PIPE_OR_PIPE2,
    [test x$ac_cv_func_pipe = xyes -o x$ac_cv_func_pipe2 = xyes ])
+
+AC_CHECK_FUNCS([ \
+    waitpid \
+    wait
+  ])
 
 # Check the return and argument types of ptrace.
 GDB_AC_PTRACE

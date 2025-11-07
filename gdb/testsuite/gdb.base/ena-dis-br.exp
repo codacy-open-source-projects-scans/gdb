@@ -1,6 +1,6 @@
 # This testcase is part of GDB, the GNU debugger.
 
-# Copyright 1997-2024 Free Software Foundation, Inc.
+# Copyright 1997-2025 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -240,7 +240,7 @@ with_test_prefix "run $count" {
     incr count
 }
 
-# See the comments in condbreak.exp for "run until breakpoint at marker1" 
+# See the comments in condbreak.exp for "run until breakpoint at marker1"
 # for an explanation of the xfail below.
 set test "continue to break marker1, 2nd time"
 gdb_test_multiple "continue" "$test" {

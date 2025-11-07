@@ -1,6 +1,6 @@
 /* Code dealing with blocks for GDB.
 
-   Copyright (C) 2003-2024 Free Software Foundation, Inc.
+   Copyright (C) 2003-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,11 +17,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef BLOCK_H
-#define BLOCK_H
+#ifndef GDB_BLOCK_H
+#define GDB_BLOCK_H
 
 #include "dictionary.h"
 #include "gdbsupport/array-view.h"
+#include "gdbsupport/next-iterator.h"
 
 /* Opaque declarations.  */
 
@@ -145,7 +146,11 @@ struct block : public allocate_on_obstack<block>
 
   /* Return an iterator range for this block's multidict.  */
   iterator_range<mdict_iterator_wrapper> multidict_symbols () const
-  { return iterator_range<mdict_iterator_wrapper> (m_multidict); }
+  {
+    mdict_iterator_wrapper begin (m_multidict);
+
+    return iterator_range<mdict_iterator_wrapper> (std::move (begin));
+  }
 
   /* Set this block's multidict.  */
   void set_multidict (multidictionary *multidict)
@@ -177,27 +182,31 @@ struct block : public allocate_on_obstack<block>
   bool is_contiguous () const
   { return this->ranges ().size () <= 1; }
 
-  /* Return the "entry PC" of this block.
+  /* Return the entry-pc of this block.
 
-     The entry PC is the lowest (start) address for the block when all addresses
-     within the block are contiguous.  If non-contiguous, then use the start
-     address for the first range in the block.
-
-     At the moment, this almost matches what DWARF specifies as the entry
-     pc.  (The missing bit is support for DW_AT_entry_pc which should be
-     preferred over range data and the low_pc.)
-
-     Once support for DW_AT_entry_pc is added, I expect that an entry_pc
-     field will be added to one of these data structures.  Once that's done,
-     the entry_pc field can be set from the dwarf reader (and other readers
-     too).  ENTRY_PC can then be redefined to be less DWARF-centric.  */
+     If the entry PC has been set to a specific value then this is
+     returned.  Otherwise, the default_entry_pc() address is returned.  */
 
   CORE_ADDR entry_pc () const
   {
-    if (this->is_contiguous ())
-      return this->start ();
-    else
-      return this->ranges ()[0].start ();
+    return default_entry_pc () + m_entry_pc_offset;
+  }
+
+  /* Set this block's entry-pc to ADDR, which must lie between start() and
+     end().  The entry-pc is stored as the signed offset from the
+     default_entry_pc() address.
+
+     Note that block sub-ranges can be out of order, as such the offset of
+     the entry-pc might be negative.  */
+
+  void set_entry_pc (CORE_ADDR addr)
+  {
+    CORE_ADDR start = default_entry_pc ();
+
+    gdb_assert (addr >= this->start () && addr < this->end ());
+    gdb_assert (start >= this->start () && start < this->end ());
+
+    m_entry_pc_offset = addr - start;
   }
 
   /* Return the objfile of this block.  */
@@ -227,7 +236,7 @@ struct block : public allocate_on_obstack<block>
   /* This returns the using directives list associated with this
      block, if any.  */
 
-  struct using_direct *get_using () const;
+  next_range<using_direct> get_using () const;
 
   /* Set this block's using member to USING; if needed, allocate
      memory via OBSTACK.  (It won't make a copy of USING, however, so
@@ -308,6 +317,26 @@ struct block : public allocate_on_obstack<block>
 
 private:
 
+  /* Return the default entry-pc of this block.  The default is the address
+     we use if the debug information hasn't specifically set a different
+     entry-pc value.  This is the lowest address for the block when all
+     addresses within the block are contiguous.  If non-contiguous, then
+     use the start address for the first range in the block.
+
+     This almost matches what DWARF specifies as the entry pc, except that
+     the final case, using the first address of the first range, is a GDB
+     extension.  However, the DWARF reader sets the specific entry-pc
+     wherever possible, so this non-standard fallback case is only used as
+     a last resort.  */
+
+  CORE_ADDR default_entry_pc () const
+  {
+    if (this->is_contiguous ())
+      return this->start ();
+    else
+      return this->ranges ()[0].start ();
+  }
+
   /* If the namespace_info is NULL, allocate it via OBSTACK and
      initialize its members to zero.  */
   void initialize_namespace (struct obstack *obstack);
@@ -344,6 +373,21 @@ private:
      startaddr and endaddr above.  */
 
   struct blockranges *m_ranges = nullptr;
+
+  /* The offset of the actual entry-pc value from the default entry-pc
+     value.  If space was no object then we'd store an actual address along
+     with a flag to indicate if the address has been set or not.  But we'd
+     like to keep the size of block low, so we'd like to use a single
+     member variable.
+
+     We would also like to avoid using 0 as a special address; some targets
+     do allow for accesses to address 0.
+
+     So instead we store the offset of the defined entry-pc from the
+     default entry-pc.  See default_entry_pc() for the definition of the
+     default entry-pc.  See entry_pc() for how this offset is used.  */
+
+  LONGEST m_entry_pc_offset = 0;
 };
 
 /* The global block is singled out so that we can provide a back-link
@@ -376,41 +420,48 @@ private:
 
 struct blockvector
 {
+  explicit blockvector (int nblocks)
+    : m_blocks (nblocks, nullptr)
+  {}
+
+  ~blockvector ();
+
+  DISABLE_COPY_AND_ASSIGN (blockvector);
+
   /* Return a view on the blocks of this blockvector.  */
   gdb::array_view<struct block *> blocks ()
   {
-    return gdb::array_view<struct block *> (m_blocks, m_num_blocks);
+    return gdb::array_view<struct block *> (m_blocks.data (),
+					    m_blocks.size ());
   }
 
   /* Const version of the above.  */
   gdb::array_view<const struct block *const> blocks () const
   {
-    const struct block **blocks = (const struct block **) m_blocks;
-    return gdb::array_view<const struct block *const> (blocks, m_num_blocks);
+    const struct block **blocks = (const struct block **) m_blocks.data ();
+    return gdb::array_view<const struct block *const> (blocks,
+						       m_blocks.size ());
   }
 
   /* Return the block at index I.  */
   struct block *block (size_t i)
-  { return this->blocks ()[i]; }
+  { return m_blocks[i]; }
 
   /* Const version of the above.  */
   const struct block *block (size_t i) const
-  { return this->blocks ()[i]; }
+  { return m_blocks[i]; }
 
   /* Set the block at index I.  */
   void set_block (int i, struct block *block)
   { m_blocks[i] = block; }
 
-  /* Set the number of blocks of this blockvector.
-
-     The storage of blocks is done using a flexible array member, so the number
-     of blocks set here must agree with what was effectively allocated.  */
+  /* Set the number of blocks of this blockvector.  */
   void set_num_blocks (int num_blocks)
-  { m_num_blocks = num_blocks; }
+  { m_blocks.resize (num_blocks, nullptr); }
 
   /* Return the number of blocks in this blockvector.  */
   int num_blocks () const
-  { return m_num_blocks; }
+  { return m_blocks.size (); }
 
   /* Return the global block of this blockvector.  */
   struct global_block *global_block ()
@@ -443,18 +494,32 @@ struct blockvector
   void set_map (addrmap_fixed *map)
   { m_map = map; }
 
+  /* Block comparison function.  Returns true if B1 must be ordered before 
+     B2 in a blockvector, false otherwise.  */
+  static bool block_less_than (const struct block *b1, const struct block *b2);
+
+  /* Append BLOCK at the end of blockvector.  The caller has to make sure that
+     blocks are appended in correct order.  */
+  void append_block (struct block *block);
+
+  /* Lookup the innermost lexical block containing ADDR.  Returns the block
+     if there is one, NULL otherwise.  */
+  const struct block *lookup (CORE_ADDR addr) const;
+
+  /* Return true if the blockvector contains ADDR, false otherwise.  */
+  bool contains (CORE_ADDR addr) const;
+
 private:
   /* An address map mapping addresses to blocks in this blockvector.
      This pointer is zero if the blocks' start and end addresses are
      enough.  */
-  addrmap_fixed *m_map;
-
-  /* Number of blocks in the list.  */
-  int m_num_blocks;
+  addrmap_fixed *m_map = nullptr;
 
   /* The blocks themselves.  */
-  struct block *m_blocks[1];
+  std::vector<struct block *> m_blocks;
 };
+
+using blockvector_up = std::unique_ptr<blockvector>;
 
 extern const struct blockvector *blockvector_for_pc (CORE_ADDR,
 					       const struct block **);
@@ -462,8 +527,6 @@ extern const struct blockvector *blockvector_for_pc (CORE_ADDR,
 extern const struct blockvector *
   blockvector_for_pc_sect (CORE_ADDR, struct obj_section *,
 			   const struct block **, struct compunit_symtab *);
-
-extern int blockvector_contains_pc (const struct blockvector *bv, CORE_ADDR pc);
 
 extern struct call_site *call_site_for_pc (struct gdbarch *gdbarch,
 					   CORE_ADDR pc);
@@ -570,9 +633,16 @@ private:
   struct block_iterator m_iter;
 };
 
-/* An iterator range for block_iterator_wrapper.  */
+/* Return an iterator range for block_iterator_wrapper.  */
 
-typedef iterator_range<block_iterator_wrapper> block_iterator_range;
+inline iterator_range<block_iterator_wrapper>
+block_iterator_range (const block *block,
+		      const lookup_name_info *name = nullptr)
+{
+  block_iterator_wrapper begin (block, name);
+
+  return iterator_range<block_iterator_wrapper> (std::move (begin));
+}
 
 /* Return true if symbol A is the best match possible for DOMAIN.  */
 
@@ -590,14 +660,27 @@ extern struct symbol *block_lookup_symbol (const struct block *block,
 					   const lookup_name_info &name,
 					   const domain_search_flags domain);
 
-/* Search BLOCK for symbol NAME in DOMAIN but only in primary symbol table of
-   BLOCK.  BLOCK must be STATIC_BLOCK or GLOBAL_BLOCK.  Function is useful if
-   one iterates all global/static blocks of an objfile.  */
+/* When searching for a symbol, the "best" symbol is preferred over
+   one that is merely acceptable.  See 'best_symbol'.  This class
+   keeps track of this distinction while searching.  */
 
-extern struct symbol *block_lookup_symbol_primary
-     (const struct block *block,
-      const char *name,
-      const domain_search_flags domain);
+struct best_symbol_tracker
+{
+  /* The symtab in which the currently best symbol appears.  */
+  compunit_symtab *best_symtab = nullptr;
+
+  /* The currently best (really "better") symbol.  */
+  block_symbol currently_best {};
+
+  /* Search BLOCK (which must have come from SYMTAB) for a symbol
+     matching NAME and DOMAIN.  When a symbol is found, update
+     'currently_best'.  If a best symbol is found, return true.
+     Otherwise, return false.  SYMTAB can be nullptr if the caller
+     does not care about this tracking.  */
+  bool search (compunit_symtab *symtab,
+	       const block *block, const lookup_name_info &name,
+	       domain_search_flags domain);
+};
 
 /* Find symbol NAME in BLOCK and in DOMAIN.  This will return a
    matching symbol whose type is not a "opaque", see TYPE_IS_OPAQUE.
@@ -614,4 +697,4 @@ extern struct symbol *block_find_symbol (const struct block *block,
 struct blockranges *make_blockranges (struct objfile *objfile,
 				      const std::vector<blockrange> &rangevec);
 
-#endif /* BLOCK_H */
+#endif /* GDB_BLOCK_H */

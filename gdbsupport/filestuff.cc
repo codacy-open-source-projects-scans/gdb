@@ -1,5 +1,5 @@
 /* Low-level file-handling.
-   Copyright (C) 2012-2024 Free Software Foundation, Inc.
+   Copyright (C) 2012-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -17,7 +17,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "filestuff.h"
-#include "gdb_vecs.h"
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -334,14 +333,10 @@ gdb_fopen_cloexec (const char *filename, const char *opentype)
 
   if (!fopen_e_ever_failed_einval)
     {
-      char *copy;
-
-      copy = (char *) alloca (strlen (opentype) + 2);
-      strcpy (copy, opentype);
       /* This is a glibc extension but we try it unconditionally on
 	 this path.  */
-      strcat (copy, "e");
-      result = fopen (filename, copy);
+      auto opentype_e = std::string (opentype) + 'e';
+      result = fopen (filename, opentype_e.c_str ());
 
       if (result == NULL && errno == EINVAL)
 	{
@@ -465,6 +460,13 @@ mkdir_recursive (const char *dir)
   char * const start = holder.get ();
   char *component_start = start;
   char *component_end = start;
+
+#ifdef WIN32
+  /* If we're making an absolute path on windows, need to skip the drive
+     letter, which is the form 'C:/'.  */
+  if (dir[0] != '\0' && dir[1] == ':' && dir[2] == '/')
+    component_start += 3;
+#endif
 
   while (1)
     {

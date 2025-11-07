@@ -1,5 +1,5 @@
 /* Helper routines for C++ support in GDB.
-   Copyright (C) 2002-2024 Free Software Foundation, Inc.
+   Copyright (C) 2002-2025 Free Software Foundation, Inc.
 
    Contributed by MontaVista Software.
 
@@ -35,7 +35,6 @@
 #include "namespace.h"
 #include <signal.h>
 #include "gdbsupport/gdb_setjmp.h"
-#include "gdbsupport/gdb-safe-ctype.h"
 #include "gdbsupport/selftest.h"
 #include "gdbsupport/gdb-sigmask.h"
 #include <atomic>
@@ -105,7 +104,7 @@ static int
 cp_already_canonical (const char *string)
 {
   /* Identifier start character [a-zA-Z_].  */
-  if (!ISIDST (string[0]))
+  if (!c_isalpha (string[0]) || string[0] == '_')
     return 0;
 
   /* These are the only two identifiers which canonicalize to other
@@ -117,7 +116,7 @@ cp_already_canonical (const char *string)
     return 0;
 
   /* Identifier character [a-zA-Z0-9_].  */
-  while (ISIDNUM (string[1]))
+  while (c_isalpha (string[1]) || c_isdigit (string[1]) || string[1] == '_')
     string++;
 
   if (string[1] == '\0')
@@ -150,7 +149,8 @@ inspect_type (struct demangle_parse_info *info,
 
   try
     {
-      sym = lookup_symbol (name, 0, SEARCH_VFT, 0).symbol;
+      sym = lookup_symbol (name, 0, (SEARCH_TYPE_DOMAIN
+				     | SEARCH_STRUCT_DOMAIN), 0).symbol;
     }
   catch (const gdb_exception &except)
     {
@@ -165,7 +165,7 @@ inspect_type (struct demangle_parse_info *info,
 	{
 	  const char *new_name = (*finder) (otype, data);
 
-	  if (new_name != NULL)
+	  if (new_name != nullptr && strcmp (new_name, name) != 0)
 	    {
 	      ret_comp->u.s_name.s = new_name;
 	      ret_comp->u.s_name.len = strlen (new_name);
@@ -378,9 +378,10 @@ replace_typedefs_qualified_name (struct demangle_parse_info *info,
 	  struct demangle_component newobj;
 
 	  buf.write (d_left (comp)->u.s_name.s, d_left (comp)->u.s_name.len);
-	  newobj.type = DEMANGLE_COMPONENT_NAME;
-	  newobj.u.s_name.s = obstack_strdup (&info->obstack, buf.string ());
-	  newobj.u.s_name.len = buf.size ();
+	  cplus_demangle_fill_name (&newobj,
+				    obstack_strdup (&info->obstack,
+						    buf.string ()),
+				    buf.size ());
 	  if (inspect_type (info, &newobj, finder, data))
 	    {
 	      char *s;
@@ -504,7 +505,8 @@ replace_typedefs (struct demangle_parse_info *info,
 	      try
 		{
 		  sym = lookup_symbol (local_name.get (), 0,
-				       SEARCH_VFT, 0).symbol;
+				       (SEARCH_TYPE_DOMAIN
+					| SEARCH_STRUCT_DOMAIN), 0).symbol;
 		}
 	      catch (const gdb_exception &except)
 		{
@@ -573,6 +575,17 @@ replace_typedefs (struct demangle_parse_info *info,
     }
 }
 
+/* A helper to strip a trailing "()" from PTR.  The string is modified
+   in place.  */
+
+static void
+maybe_strip_parens (char *ptr)
+{
+  size_t len = strlen (ptr);
+  if (len > 2 && ptr[len - 2] == '(' && ptr[len - 1] == ')')
+    ptr[len - 2] = '\0';
+}
+
 /* Parse STRING and convert it to canonical form, resolving any
    typedefs.  If parsing fails, or if STRING is already canonical,
    return nullptr.  Otherwise return the canonical form.  If
@@ -598,6 +611,9 @@ cp_canonicalize_string_full (const char *string,
       gdb::unique_xmalloc_ptr<char> us = cp_comp_to_string (info->tree,
 							    estimated_len);
       gdb_assert (us);
+
+      if (info->added_parens)
+	maybe_strip_parens (us.get ());
 
       /* Finally, compare the original string with the computed
 	 name, returning NULL if they are the same.  */
@@ -647,6 +663,9 @@ cp_canonicalize_string (const char *string)
       return nullptr;
     }
 
+  if (info->added_parens)
+    maybe_strip_parens (us.get ());
+
   if (strcmp (us.get (), string) == 0)
     return nullptr;
 
@@ -687,7 +706,7 @@ mangled_name_to_comp (const char *mangled_name, int options,
 							       options);
   if (demangled_name == NULL)
    return NULL;
-  
+
   /* If we could demangle the name, parse it to build the component
      tree.  */
   std::unique_ptr<demangle_parse_info> info
@@ -1118,7 +1137,7 @@ cp_find_first_component_aux (const char *name, int permissive)
 	      && startswith (name + index, CP_OPERATOR_STR))
 	    {
 	      index += CP_OPERATOR_LEN;
-	      while (ISSPACE(name[index]))
+	      while (c_isspace(name[index]))
 		++index;
 	      switch (name[index])
 		{
@@ -1390,7 +1409,6 @@ add_symbol_overload_list_using (const char *func_name,
 				const char *the_namespace,
 				std::vector<symbol *> *overload_list)
 {
-  struct using_direct *current;
   const struct block *block;
 
   /* First, go through the using directives.  If any of them apply,
@@ -1400,9 +1418,7 @@ add_symbol_overload_list_using (const char *func_name,
   for (block = get_selected_block (0);
        block != NULL;
        block = block->superblock ())
-    for (current = block->get_using ();
-	current != NULL;
-	current = current->next)
+    for (using_direct *current : block->get_using ())
       {
 	/* Prevent recursive calls.  */
 	if (current->searched)
@@ -1439,39 +1455,33 @@ static void
 add_symbol_overload_list_qualified (const char *func_name,
 				    std::vector<symbol *> *overload_list)
 {
-  const struct block *surrounding_static_block = 0;
-
-  /* Look through the partial symtabs for all symbols which begin by
-     matching FUNC_NAME.  Make sure we read that symbol table in.  */
-
-  for (objfile *objf : current_program_space->objfiles ())
-    objf->expand_symtabs_for_function (func_name);
+  const block *selected_block = get_selected_block (0);
 
   /* Search upwards from currently selected frame (so that we can
      complete on local vars.  */
 
-  for (const block *b = get_selected_block (0);
-       b != nullptr;
-       b = b->superblock ())
+  for (const block *b = selected_block; b != nullptr; b = b->superblock ())
     add_symbol_overload_list_block (func_name, b, overload_list);
 
-  surrounding_static_block = get_selected_block (0);
-  surrounding_static_block = (surrounding_static_block == nullptr
-			      ? nullptr
-			      : surrounding_static_block->static_block ());
+  const block *surrounding_static_block = (selected_block == nullptr
+					   ? nullptr
+					   : selected_block->static_block ());
 
   /* Go through the symtabs and check the externs and statics for
      symbols which match.  */
 
-  const block *block = get_selected_block (0);
-  struct objfile *current_objfile = block ? block->objfile () : nullptr;
+  struct objfile *current_objfile = (selected_block
+				     ? selected_block->objfile ()
+				     : nullptr);
 
-  gdbarch_iterate_over_objfiles_in_search_order
-    (current_objfile ? current_objfile->arch () : current_inferior ()->arch (),
-     [func_name, surrounding_static_block, &overload_list]
+  lookup_name_info base_lookup (func_name, symbol_name_match_type::FULL);
+  lookup_name_info lookup_name = base_lookup.make_ignore_params ();
+
+  current_program_space->iterate_over_objfiles_in_search_order
+    ([func_name, surrounding_static_block, &overload_list, lookup_name]
      (struct objfile *obj)
        {
-	 for (compunit_symtab *cust : obj->compunits ())
+	 auto callback = [&] (compunit_symtab *cust)
 	   {
 	     QUIT;
 	     const struct block *b = cust->blockvector ()->global_block ();
@@ -1479,11 +1489,17 @@ add_symbol_overload_list_qualified (const char *func_name,
 
 	     b = cust->blockvector ()->static_block ();
 	     /* Don't do this block twice.  */
-	     if (b == surrounding_static_block)
-	       continue;
+	     if (b != surrounding_static_block)
+	       add_symbol_overload_list_block (func_name, b, overload_list);
+	     return true;
+	   };
 
-	     add_symbol_overload_list_block (func_name, b, overload_list);
-	   }
+	 /* Look through the partial symtabs for all symbols which
+	    begin by matching FUNC_NAME.  Make sure we read that
+	    symbol table in.  */
+	 obj->search (nullptr, &lookup_name, nullptr, callback,
+		      SEARCH_GLOBAL_BLOCK | SEARCH_STATIC_BLOCK,
+		      SEARCH_FUNCTION_DOMAIN);
 
 	 return 0;
        }, current_objfile);
@@ -1507,7 +1523,7 @@ cp_lookup_rtti_type (const char *name, const struct block *block)
       return NULL;
     }
 
-  if (rtti_sym->aclass () != LOC_TYPEDEF)
+  if (rtti_sym->loc_class () != LOC_TYPEDEF)
     {
       warning (_("RTTI symbol for class '%s' is not a type"), name);
       return NULL;
@@ -1709,10 +1725,49 @@ cp_search_name_hash (const char *search_name)
   unsigned int hash = 0;
   for (const char *string = search_name; *string != '\0'; ++string)
     {
+      const char *before_skip = string;
       string = skip_spaces (string);
 
       if (*string == '(')
 	break;
+
+      /* Could it be the beginning of a function name?
+	 If yes, does it begin with the keyword "operator"?  */
+      if ((string != before_skip || string == search_name)
+	  && (string[0] == 'o' && startswith (string, CP_OPERATOR_STR)))
+	{
+	  /* Hash the "operator" part.  */
+	  for (size_t i = 0; i < CP_OPERATOR_LEN; ++i)
+	    hash = SYMBOL_HASH_NEXT (hash, *string++);
+
+	  string = skip_spaces (string);
+
+	  /* If no more data to process, stop right now.  This is specially
+	     intended for SEARCH_NAMEs that end with "operator".  In such
+	     cases, the whole string is processed and STRING is pointing to a
+	     null-byte.  Letting the loop body resume naturally would lead to
+	     a "++string" that causes STRING to point past the null-byte.  */
+	  if (string[0] == '\0')
+	    break;
+
+	  /* "<" and "<<" are sequences of interest here.  This covers
+	     "operator{<,<<,<=,<=>}".  In the last 2 cases, the "=" and "=>"
+	     parts are handled by the next iterations of the loop like other
+	     input chars.  The goal is to process all the operator-related '<'
+	     chars, so that later if a '<' is visited it can be inferred for
+	     sure that it is the beginning of a template parameter list.
+
+	     STRING is a null-byte terminated string.  If string[0] is not
+	     a null-byte, according to the previous check, string[1] is not
+	     past the end of the allocation and can be referenced safely.  */
+	  if (string[0] == '<')
+	    {
+	      hash = SYMBOL_HASH_NEXT (hash, *string);
+	      if (string[1] == '<')
+		hash = SYMBOL_HASH_NEXT (hash, *++string);
+	      continue;
+	    }
+	}
 
       /* Ignore ABI tags such as "[abi:cxx11].  */
       if (*string == '['
@@ -1720,16 +1775,54 @@ cp_search_name_hash (const char *search_name)
 	  && string[5] != ':')
 	break;
 
-      /* Ignore template parameter lists.  */
-      if (string[0] == '<'
-	  && string[1] != '(' && string[1] != '<' && string[1] != '='
-	  && string[1] != ' ' && string[1] != '\0')
+      /* Ignore template parameter lists.  The likely "operator{<,<<,<=,<=>}"
+	 are already taken care of.  Therefore, any encounter of '<' character
+	 at this point is related to template lists.  */
+      if (*string == '<')
 	break;
 
       hash = SYMBOL_HASH_NEXT (hash, *string);
     }
   return hash;
 }
+
+#if GDB_SELF_TEST
+
+namespace selftests {
+
+static void
+test_cp_search_name_hash ()
+{
+   SELF_CHECK (cp_search_name_hash ("void func<(enum_test)0>(int*, int)")
+	       == cp_search_name_hash ("void func"));
+   SELF_CHECK (cp_search_name_hash ("operator")
+	       != cp_search_name_hash ("operator<"));
+   SELF_CHECK (cp_search_name_hash ("operator")
+	       != cp_search_name_hash ("operator<<"));
+   SELF_CHECK (cp_search_name_hash ("operator<")
+	       != cp_search_name_hash ("operator<<"));
+   SELF_CHECK (cp_search_name_hash ("operator<")
+	       == cp_search_name_hash ("operator <"));
+   SELF_CHECK (cp_search_name_hash ("operator")
+	       != cp_search_name_hash ("foo_operator"));
+   SELF_CHECK (cp_search_name_hash ("operator")
+	       != cp_search_name_hash ("operator_foo"));
+   SELF_CHECK (cp_search_name_hash ("operator<")
+	       != cp_search_name_hash ("foo_operator"));
+   SELF_CHECK (cp_search_name_hash ("operator<")
+	       != cp_search_name_hash ("operator_foo"));
+   SELF_CHECK (cp_search_name_hash ("operator<<")
+	       != cp_search_name_hash ("foo_operator"));
+   SELF_CHECK (cp_search_name_hash ("operator<<")
+	       != cp_search_name_hash ("operator_foo"));
+
+   SELF_CHECK (cp_search_name_hash ("func")
+	       == cp_search_name_hash ("func[abi:cxx11]"));
+}
+
+} /* namespace selftests */
+
+#endif /* GDB_SELF_TEST */
 
 /* Helper for cp_symbol_name_matches (i.e., symbol_name_matcher_ftype
    implementation for symbol_name_match_type::WILD matching).  Split
@@ -2196,7 +2289,7 @@ test_cp_remove_params ()
 #undef CHECK_INCOMPL
 }
 
-} // namespace selftests
+} /* namespace selftests */
 
 #endif /* GDB_SELF_CHECK */
 
@@ -2261,7 +2354,7 @@ find_toplevel_char (const char *s, char c)
 	      scan += CP_OPERATOR_LEN;
 	      if (*scan == c)
 		return scan;
-	      while (ISSPACE (*scan))
+	      while (c_isspace (*scan))
 		{
 		  ++scan;
 		  if (*scan == c)
@@ -2299,9 +2392,7 @@ find_toplevel_char (const char *s, char c)
   return 0;
 }
 
-void _initialize_cp_support ();
-void
-_initialize_cp_support ()
+INIT_GDB_FILE (cp_support)
 {
   cmd_list_element *maintenance_cplus
     = add_basic_prefix_cmd ("cplus", class_maintenance,
@@ -2343,5 +2434,7 @@ display the offending symbol."),
 			    selftests::test_cp_symbol_name_matches);
   selftests::register_test ("cp_remove_params",
 			    selftests::test_cp_remove_params);
+  selftests::register_test ("cp_search_name_hash",
+			    selftests::test_cp_search_name_hash);
 #endif
 }

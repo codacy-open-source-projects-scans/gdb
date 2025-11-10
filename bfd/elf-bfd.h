@@ -2916,8 +2916,8 @@ extern Elf_Internal_Phdr * _bfd_elf_find_segment_containing_section
   (bfd * abfd, asection * section) ATTRIBUTE_HIDDEN;
 
 /* PowerPC @tls opcode transform/validate.  */
-extern unsigned int _bfd_elf_ppc_at_tls_transform
-  (unsigned int, unsigned int) ATTRIBUTE_HIDDEN;
+extern unsigned int bfd_elf_ppc_at_tls_transform
+  (unsigned int, unsigned int);
 /* PowerPC @tprel opcode transform/validate.  */
 extern unsigned int _bfd_elf_ppc_at_tprel_transform
   (unsigned int, unsigned int) ATTRIBUTE_HIDDEN;
@@ -3186,6 +3186,9 @@ extern bfd_vma elf64_r_info (bfd_vma, bfd_vma);
 extern bfd_vma elf64_r_sym (bfd_vma);
 extern bfd_vma elf32_r_info (bfd_vma, bfd_vma);
 extern bfd_vma elf32_r_sym (bfd_vma);
+
+extern bool is_debuginfo_file (bfd *);
+
 
 extern bool _bfd_elf_init_secondary_reloc_section
   (bfd *, Elf_Internal_Shdr *, const char *, unsigned int) ATTRIBUTE_HIDDEN;

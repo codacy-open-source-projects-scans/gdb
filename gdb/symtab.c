@@ -505,6 +505,14 @@ compunit_symtab::forget_cached_source_info ()
 
 /* See symtab.h.  */
 
+struct symbol *
+compunit_symtab::symbol_at_address (CORE_ADDR addr) const
+{
+  return blockvector ()->symbol_at_address (addr);
+}
+
+/* See symtab.h.  */
+
 compunit_symtab::compunit_symtab (struct objfile *objfile,
 				  const char *name_)
   : m_objfile (objfile),
@@ -2831,50 +2839,11 @@ find_compunit_symtab_for_pc (CORE_ADDR pc)
 struct symbol *
 find_symbol_at_address (CORE_ADDR address)
 {
-  /* A helper function to search a given symtab for a symbol matching
-     ADDR.  */
-  auto search_symtab = [] (compunit_symtab *symtab, CORE_ADDR addr) -> symbol *
-    {
-      const struct blockvector *bv = symtab->blockvector ();
-
-      for (int i = GLOBAL_BLOCK; i <= STATIC_BLOCK; ++i)
-	{
-	  const struct block *b = bv->block (i);
-
-	  for (struct symbol *sym : block_iterator_range (b))
-	    {
-	      if (sym->loc_class () == LOC_STATIC
-		  && sym->value_address () == addr)
-		return sym;
-	    }
-	}
-      return nullptr;
-    };
-
   for (objfile &objfile : current_program_space->objfiles ())
     {
-      /* If this objfile was read with -readnow, then we need to
-	 search the symtabs directly.  */
-      if ((objfile.flags & OBJF_READNOW) != 0)
-	{
-	  for (compunit_symtab &symtab : objfile.compunits ())
-	    {
-	      struct symbol *sym = search_symtab (&symtab, address);
-	      if (sym != nullptr)
-		return sym;
-	    }
-	}
-      else
-	{
-	  struct compunit_symtab *symtab
-	    = objfile.find_compunit_symtab_by_address (address);
-	  if (symtab != NULL)
-	    {
-	      struct symbol *sym = search_symtab (symtab, address);
-	      if (sym != nullptr)
-		return sym;
-	    }
-	}
+      struct symbol *sym = objfile.find_symbol_by_address (address);
+      if (sym != nullptr)
+	return sym;
     }
 
   return NULL;
@@ -4568,7 +4537,7 @@ info_sources_command (const char *args, int from_tty)
 {
   if (!have_full_symbols (current_program_space)
       && !have_partial_symbols (current_program_space))
-    error (_ ("No symbol table is loaded.  Use the \"file\" command."));
+    error (_("No symbol table is loaded.  Use the \"file\" command."));
 
   filename_partial_match_opts match_opts;
   auto group = make_info_sources_options_def_group (&match_opts);

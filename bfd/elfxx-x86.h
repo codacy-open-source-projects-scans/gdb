@@ -673,9 +673,8 @@ struct elf_x86_link_hash_table
   /* TRUE if inputs call ___tls_get_addr.  This is only used for i386.  */
   unsigned int has_tls_get_addr_call : 1;
 
-   /* Value used to fill the unused bytes of the first PLT entry.  This
-      is only used for i386.  */
-  bfd_byte plt0_pad_byte;
+  /* TRUE if loc_hash_table is used.  */
+  unsigned int has_loc_hash_table : 1;
 
   /* TRUE if GOT is referenced.  */
   unsigned int got_referenced : 1;
@@ -687,6 +686,10 @@ struct elf_x86_link_hash_table
      be used as function address.  PIC PLT in PIE can't be used as
      function address.  */
   unsigned int pcrel_plt : 1;
+
+   /* Value used to fill the unused bytes of the first PLT entry.  This
+      is only used for i386.  */
+  bfd_byte plt0_pad_byte;
 
   bfd_vma (*r_info) (bfd_vma, bfd_vma);
   bfd_vma (*r_sym) (bfd_vma);
@@ -952,6 +955,11 @@ extern void _bfd_x86_elf_link_report_tls_invalid_section_error
   (bfd *, asection *, Elf_Internal_Shdr *, struct elf_link_hash_entry *,
    Elf_Internal_Sym *, reloc_howto_type *) ATTRIBUTE_HIDDEN;
 
+extern bool
+_bfd_elf_x86_copy_special_section_fields
+  (const bfd *, bfd *, const Elf_Internal_Shdr *,
+   Elf_Internal_Shdr *) ATTRIBUTE_HIDDEN;
+
 #define bfd_elf64_mkobject \
   _bfd_x86_elf_mkobject
 #define bfd_elf32_mkobject \
@@ -999,6 +1007,8 @@ extern void _bfd_x86_elf_link_report_tls_invalid_section_error
   _bfd_elf_x86_finish_relative_relocs
 #define elf_backend_get_reloc_section \
   _bfd_elf_x86_get_reloc_section
+#define elf_backend_copy_special_section_fields \
+  _bfd_elf_x86_copy_special_section_fields
 #define elf_backend_use_mmap true
 
 #define ELF_P_ALIGN ELF_MINPAGESIZE

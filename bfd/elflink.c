@@ -169,7 +169,7 @@ _bfd_elf_section_for_symbol (struct elf_reloc_cookie *cookie,
   struct elf_link_hash_entry *h;
 
   h = get_ext_sym_hash_from_cookie (cookie, r_symndx);
-  
+
   if (h != NULL)
     {
       if (h->root.type == bfd_link_hash_defined
@@ -596,7 +596,7 @@ bfd_elf_link_record_dynamic_symbol (struct bfd_link_info *info,
   if (h->dynindx == -1)
     {
       struct elf_strtab_hash *dynstr;
-      char *p;
+      const char *p;
       const char *name;
       size_t indx;
 
@@ -726,7 +726,7 @@ bfd_elf_record_link_assignment (bfd *output_bfd,
   if (h->versioned == unknown)
     {
       /* Set versioned if symbol version is unknown.  */
-      char *version = strrchr (name, ELF_VER_CHR);
+      const char *version = strrchr (name, ELF_VER_CHR);
       if (version)
 	{
 	  if (version > name && version[-1] != ELF_VER_CHR)
@@ -1064,9 +1064,10 @@ _bfd_elf_link_renumber_dynsyms (bfd *output_bfd,
   if (do_sec)
     *section_sym_count = dynsymcount;
 
-  elf_link_hash_traverse (elf_hash_table (info),
-			  elf_link_renumber_local_hash_table_dynsyms,
-			  &dynsymcount);
+  if (elf_hash_table (info)->has_local_dynsyms)
+    elf_link_hash_traverse (elf_hash_table (info),
+			    elf_link_renumber_local_hash_table_dynsyms,
+			    &dynsymcount);
 
   if (elf_hash_table (info)->dynlocal)
     {
@@ -1160,7 +1161,7 @@ _bfd_elf_merge_symbol (bfd *abfd,
   bool newdyn, olddyn, olddef, newdef, newdyncommon, olddyncommon;
   bool newweak, oldweak, newfunc, oldfunc;
   const struct elf_backend_data *bed;
-  char *new_version;
+  const char *new_version;
   bool default_sym = *matched;
   struct elf_link_hash_table *htab;
 
@@ -1181,6 +1182,8 @@ _bfd_elf_merge_symbol (bfd *abfd,
 
   bed = get_elf_backend_data (abfd);
 
+  htab = elf_hash_table (info);
+
   /* NEW_VERSION is the symbol version of the new symbol.  */
   if (h->versioned != unversioned)
     {
@@ -1190,6 +1193,12 @@ _bfd_elf_merge_symbol (bfd *abfd,
 	{
 	  if (h->versioned == unknown)
 	    {
+	      /* The base symbol has an empty version.  */
+	      if (new_version[1] == '\0')
+		{
+		  htab->has_base_symbols = true;
+		  h->base_symbol = 1;
+		}
 	      if (new_version > name && new_version[-1] != ELF_VER_CHR)
 		h->versioned = versioned_hidden;
 	      else
@@ -1232,7 +1241,7 @@ _bfd_elf_merge_symbol (bfd *abfd,
 	    {
 	      /* OLD_VERSION is the symbol version of the existing
 		 symbol. */
-	      char *old_version;
+	      const char *old_version;
 
 	      if (h->versioned >= versioned)
 		old_version = strrchr (h->root.root.string,
@@ -1292,8 +1301,6 @@ _bfd_elf_merge_symbol (bfd *abfd,
      references and not all compilers emit symbol type for undefined
      symbols.  */
   bfd_elf_link_mark_dynamic_symbol (info, h, sym);
-
-  htab = elf_hash_table (info);
 
   /* NEWDYN and OLDDYN indicate whether the new or old symbol,
      respectively, is from a dynamic object.  */
@@ -1958,7 +1965,7 @@ _bfd_elf_add_default_symbol (bfd *abfd,
   bool collect;
   bool dynamic;
   bfd *override;
-  char *p;
+  const char *p;
   size_t len, shortlen;
   asection *tmp_sec;
   bool matched;
@@ -2650,7 +2657,7 @@ _bfd_elf_link_assign_sym_version (struct elf_link_hash_entry *h, void *data)
   struct bfd_link_info *info;
   const struct elf_backend_data *bed;
   struct elf_info_failed eif;
-  char *p;
+  const char *p;
   bool hide;
 
   sinfo = (struct elf_info_failed *) data;
@@ -3269,6 +3276,10 @@ _bfd_elf_adjust_dynamic_symbol (struct elf_link_hash_entry *h, void *data)
   if (! is_elf_hash_table (eif->info->hash))
     return false;
 
+  htab = elf_hash_table (eif->info);
+  if (h->forced_local && h->dynindx != -1)
+    htab->has_local_dynsyms = true;
+
   /* Ignore indirect symbols.  These are added by the versioning code.  */
   if (h->root.type == bfd_link_hash_indirect)
     return true;
@@ -3277,7 +3288,6 @@ _bfd_elf_adjust_dynamic_symbol (struct elf_link_hash_entry *h, void *data)
   if (! _bfd_elf_fix_symbol_flags (h, eif))
     return false;
 
-  htab = elf_hash_table (eif->info);
   bed = get_elf_backend_data (htab->dynobj);
 
   if (h->root.type == bfd_link_hash_undefweak)
@@ -5655,7 +5665,7 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
 	      && !dynamic
 	      && (abfd->flags & BFD_PLUGIN) == 0)
 	    {
-	      char *p = strchr (name, ELF_VER_CHR);
+	      const char *p = strchr (name, ELF_VER_CHR);
 	      if (p != NULL && p[1] != ELF_VER_CHR)
 		{
 		  /* Queue non-default versions so that .symver x, x@FOO
@@ -5905,7 +5915,8 @@ elf_link_add_object_symbols (bfd *abfd, struct bfd_link_info *info)
       for (cnt = 0; cnt < nondeflt_vers_cnt; ++cnt)
 	{
 	  struct elf_link_hash_entry *h = nondeflt_vers[cnt], *hi;
-	  char *shortname, *p;
+	  char *shortname;
+	  const char *p;
 	  size_t amt;
 
 	  p = strchr (h->root.root.string, ELF_VER_CHR);
@@ -6177,7 +6188,8 @@ _bfd_elf_archive_symbol_lookup (bfd *abfd,
 				const char *name)
 {
   struct bfd_link_hash_entry *h;
-  char *p, *copy;
+  const char *p;
+  char *copy;
   size_t len, first;
 
   h = bfd_link_hash_lookup (info->hash, name, false, false, true);
@@ -6472,7 +6484,7 @@ elf_collect_hash_codes (struct elf_link_hash_entry *h, void *data)
   name = h->root.root.string;
   if (h->versioned >= versioned)
     {
-      char *p = strchr (name, ELF_VER_CHR);
+      const char *p = strchr (name, ELF_VER_CHR);
       if (p != NULL)
 	{
 	  alc = (char *) bfd_malloc (p - name + 1);
@@ -6521,6 +6533,7 @@ struct collect_gnu_hash_codes
   long int shift1, shift2;
   unsigned long int mask;
   bool error;
+  bool base_symbol;
 };
 
 /* This function will be called though elf_link_hash_traverse to store
@@ -6545,7 +6558,7 @@ elf_collect_gnu_hash_codes (struct elf_link_hash_entry *h, void *data)
   name = h->root.root.string;
   if (h->versioned >= versioned)
     {
-      char *p = strchr (name, ELF_VER_CHR);
+      const char *p = strchr (name, ELF_VER_CHR);
       if (p != NULL)
 	{
 	  alc = (char *) bfd_malloc (p - name + 1);
@@ -6589,6 +6602,10 @@ elf_gnu_hash_process_symidx (struct elf_link_hash_entry *h, void *data)
 
   /* Ignore indirect symbols.  */
   if (h->dynindx == -1)
+    return true;
+
+  /* Skip if base symbol doesn't match.  */
+  if (s->base_symbol != !!h->base_symbol)
     return true;
 
   /* Ignore also local symbols and undefined symbols.  */
@@ -8144,8 +8161,23 @@ bfd_elf_size_dynsym_hash_dynstr (bfd *output_bfd, struct bfd_link_info *info)
 	      cinfo.contents = contents;
 
 	      cinfo.xlat = contents + cinfo.nsyms * 4 - s->contents;
-	      /* Renumber dynamic symbols, if populating .gnu.hash section.
-		 If using .MIPS.xhash, populate the translation table.  */
+
+	      if (elf_hash_table (info)->has_base_symbols)
+		{
+		  /* Output base symbols first in DT_GNU_HASH so that
+		     they will be picked before non-base symbols at
+		     run-time.  */
+		  cinfo.base_symbol = true;
+
+		  /* Renumber dynamic symbols, if populating .gnu.hash
+		     section.  If using .MIPS.xhash, populate the
+		     translation table.  */
+		  elf_link_hash_traverse (elf_hash_table (info),
+					  elf_gnu_hash_process_symidx, &cinfo);
+		}
+
+	      /* Output non-base symbols last.  */
+	      cinfo.base_symbol = false;
 	      elf_link_hash_traverse (elf_hash_table (info),
 				      elf_gnu_hash_process_symidx, &cinfo);
 
@@ -8336,14 +8368,12 @@ _bfd_elf_link_hide_symbol (bfd *output_bfd,
 {
   if (is_elf_hash_table (info->hash))
     {
-      const struct elf_backend_data *bed
-	= get_elf_backend_data (output_bfd);
-      struct elf_link_hash_entry *eh
-	= (struct elf_link_hash_entry *) h;
-      bed->elf_backend_hide_symbol (info, eh, true);
+      const struct elf_backend_data *bed = get_elf_backend_data (output_bfd);
+      struct elf_link_hash_entry *eh = (struct elf_link_hash_entry *) h;
       eh->def_dynamic = 0;
       eh->ref_dynamic = 0;
       eh->dynamic_def = 0;
+      bed->elf_backend_hide_symbol (info, eh, true);
     }
 }
 
@@ -9072,6 +9102,7 @@ struct elf_outext_info
   bool failed;
   bool localsyms;
   bool file_sym_done;
+  bool base_symbol;
   struct elf_final_link_info *flinfo;
 };
 
@@ -10342,8 +10373,8 @@ elf_link_output_symstrtab (void *finf,
 	    {
 	      /* Keep only one '@' for versioned symbols defined in
 	         shared objects.  */
-	      char *version = strrchr (name, ELF_VER_CHR);
-	      char *base_end = strchr (name, ELF_VER_CHR);
+	      const char *version = strrchr (name, ELF_VER_CHR);
+	      const char *base_end = strchr (name, ELF_VER_CHR);
 	      if (version != base_end)
 		{
 		  size_t base_len;
@@ -10719,6 +10750,10 @@ elf_link_output_extsym (struct bfd_hash_entry *bh, void *data)
   int ret;
   unsigned int type;
 
+  /* Skip if base symbol doesn't match.  */
+  if (eoinfo->base_symbol != !!h->base_symbol)
+    return true;
+
   if (h->root.type == bfd_link_hash_warning)
     {
       h = (struct elf_link_hash_entry *) h->root.u.i.link;
@@ -11082,7 +11117,7 @@ elf_link_output_extsym (struct bfd_hash_entry *bh, void *data)
 	      || h->ref_dynamic
 	      || !h->def_regular))
 	{
-	  char *p = strrchr (h->root.root.string, ELF_VER_CHR);
+	  const char *p = strrchr (h->root.root.string, ELF_VER_CHR);
 
 	  if (p && p [1] != '\0')
 	    {
@@ -11138,7 +11173,6 @@ elf_link_output_extsym (struct bfd_hash_entry *bh, void *data)
 	{
 	  Elf_Internal_Versym iversym;
 	  Elf_External_Versym *eversym;
-	  bool noversion = false;
 
 	  if (!h->def_regular && !ELF_COMMON_DEF_P (h))
 	    {
@@ -11150,7 +11184,7 @@ elf_link_output_extsym (struct bfd_hash_entry *bh, void *data)
 		  if (strchr (h->root.root.string, ELF_VER_CHR) == NULL)
 		    /* Referenced symbol without ELF_VER_CHR has no
 		       version.  */
-		    noversion = true;
+		    iversym.vs_vers = 0;
 		}
 	      else
 		iversym.vs_vers = h->verinfo.verdef->vd_exp_refno + 1;
@@ -11163,22 +11197,16 @@ elf_link_output_extsym (struct bfd_hash_entry *bh, void *data)
 		iversym.vs_vers = h->verinfo.vertree->vernum + 1;
 	      if (flinfo->info->create_default_symver)
 		iversym.vs_vers++;
-	    }
 
-	  /* Don't set its DT_VERSYM entry for unversioned symbol.  */
-	  if (!noversion)
-	    {
 	      /* Turn on VERSYM_HIDDEN only if the hidden versioned
 		 symbol is defined locally.  */
 	      if (h->versioned == versioned_hidden && h->def_regular)
 		iversym.vs_vers |= VERSYM_HIDDEN;
-
-	      eversym
-		= (Elf_External_Versym *) flinfo->symver_sec->contents;
-	      eversym += h->dynindx;
-	      _bfd_elf_swap_versym_out (flinfo->output_bfd, &iversym,
-					eversym);
 	    }
+
+	  eversym = (Elf_External_Versym *) flinfo->symver_sec->contents;
+	  eversym += h->dynindx;
+	  _bfd_elf_swap_versym_out (flinfo->output_bfd, &iversym, eversym);
 	}
     }
 
@@ -11648,7 +11676,7 @@ elf_link_input_bfd (struct elf_final_link_info *flinfo, bfd *input_bfd)
 		     input_bfd);
 		  bfd_set_error (bfd_error_bad_value);
 		  return false;
-		}	      
+		}
 
 	      /* Arrange for symbol to be output.  */
 	      h->indx = -2;
@@ -13265,6 +13293,8 @@ _bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
   eoinfo.flinfo = &flinfo;
   eoinfo.localsyms = true;
   eoinfo.file_sym_done = false;
+  /* Output non-base symbols first.  */
+  eoinfo.base_symbol = false;
   bfd_hash_traverse (&info->hash->table, elf_link_output_extsym, &eoinfo);
   if (eoinfo.failed)
     goto error_return;
@@ -13384,6 +13414,17 @@ _bfd_elf_final_link (bfd *abfd, struct bfd_link_info *info)
   bfd_hash_traverse (&info->hash->table, elf_link_output_extsym, &eoinfo);
   if (eoinfo.failed)
     goto error_return;
+
+  if (htab->has_base_symbols)
+    {
+      /* Output base symbols last in DT_HASH so that they will be picked
+	 before non-base symbols at run-time.  */
+      eoinfo.base_symbol = true;
+      bfd_hash_traverse (&info->hash->table, elf_link_output_extsym,
+			 &eoinfo);
+      if (eoinfo.failed)
+	goto error_return;
+    }
 
   /* If backend needs to output some symbols not present in the hash
      table, do it now.  */
@@ -15111,7 +15152,7 @@ bfd_elf_reloc_symbol_deleted_p (bfd_vma offset, void *cookie)
       struct elf_link_hash_entry *h;
 
       h = get_ext_sym_hash_from_cookie (rcookie, r_symndx);
-      
+
       if (h != NULL)
 	{
 	  if ((h->root.type == bfd_link_hash_defined

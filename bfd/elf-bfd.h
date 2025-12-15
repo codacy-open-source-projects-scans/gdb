@@ -204,6 +204,8 @@ struct elf_link_hash_entry
   unsigned int non_elf : 1;
   /* Symbol version information.  */
   ENUM_BITFIELD (elf_symbol_version) versioned : 2;
+  /* Symbol is a base symbol.  */
+  unsigned int base_symbol : 1;
   /* Symbol was forced to local scope due to a version script file.  */
   unsigned int forced_local : 1;
   /* Symbol was forced to be dynamic due to a version script file.  */
@@ -637,6 +639,9 @@ struct elf_link_hash_table
   /* Whether dynamic relocations are present.  */
   bool dynamic_relocs;
 
+  /* TRUE if there are local dynamic symbols.  */
+  bool has_local_dynsyms;
+
   /* True if this target has relocatable executables, so needs dynamic
      section symbols.  */
   bool is_relocatable_executable;
@@ -652,6 +657,9 @@ struct elf_link_hash_table
 
   /* TRUE when we are handling DT_NEEDED entries.  */
   bool handling_dt_needed;
+
+  /* TRUE if there are base symbols.  */
+  bool has_base_symbols;
 
   /* The BFD used to hold special sections created by the linker.
      This will be the first BFD found which requires these sections to
@@ -2964,6 +2972,8 @@ extern char *elfcore_write_prfpreg
 extern char *elfcore_write_prxfpreg
   (bfd *, char *, int *, const void *, int);
 extern char *elfcore_write_xstatereg
+  (bfd *, char *, int *, const void *, int);
+extern char *elfcore_write_xsave_layout
   (bfd *, char *, int *, const void *, int);
 extern char *elfcore_write_x86_segbases
   (bfd *, char *, int *, const void *, int);

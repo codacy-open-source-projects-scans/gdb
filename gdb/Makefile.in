@@ -451,6 +451,7 @@ SUBDIR_PYTHON_LDFLAGS =
 SUBDIR_PYTHON_CFLAGS =
 
 SELFTESTS_SRCS = \
+	block-selftests.c \
 	disasm-selftests.c \
 	gdbarch-selftests.c \
 	selftest-arch.c \
@@ -2704,7 +2705,8 @@ $(PACKAGE).pot: po/$(PACKAGE).pot
 po/$(PACKAGE).pot: force
 	-test -d po || mkdir po
 	sh -e $(srcdir)/po/gdbtext $(XGETTEXT) $(PACKAGE) . $(srcdir) \
-	  $(srcdir)/../gdbsupport $(srcdir)/../gdbserver
+	  $(srcdir)/../gdbsupport $(srcdir)/../gdbserver \
+	  $(addprefix $(srcdir)/,$(CONFIG_SRC_SUBDIR))
 
 
 #

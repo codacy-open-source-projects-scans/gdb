@@ -1794,7 +1794,7 @@ update_all_relocations (size_t nentries)
   if (!all_relocations_root)
     {
       sz = nentries * sizeof (elf_relocation);
-      all_relocations_root = (elf_relocation *) xmalloc (sz);
+      all_relocations_root = xmalloc (sz);
       all_relocations = all_relocations_root;
       all_relocations_count = nentries;
     }
@@ -1802,11 +1802,11 @@ update_all_relocations (size_t nentries)
     {
       size_t orig_count = all_relocations_count;
       sz = (orig_count + nentries) * sizeof (elf_relocation);
-      all_relocations_root = (elf_relocation *)
-	xrealloc (all_relocations_root, sz);
+      all_relocations_root = xrealloc (all_relocations_root, sz);
       all_relocations = all_relocations_root + orig_count;
       all_relocations_count += nentries;
     }
+  memset (all_relocations, 0, nentries * sizeof (elf_relocation));
 }
 
 static uint64_t
@@ -3082,12 +3082,14 @@ get_solaris_section_type (unsigned long type)
 {
   switch (type)
     {
-    case SHT_SUNW_symtabnsort:
-      return "SUNW_symtabnsort";
-    case SHT_SUNW_ancillary:
-      return "SUNW_ancillary";
+    case SHT_SUNW_ctf:
+      return "SUNW_ctf";
+    case SHT_SUNW_symnsort:
+      return "SUNW_symnsort";
     case SHT_SUNW_phname:
       return "SUNW_phname";
+    case SHT_SUNW_ancillary:
+      return "SUNW_ancillary";
     case SHT_SUNW_capchain:
       return "SUNW_capchain";
     case SHT_SUNW_capinfo:
@@ -10046,13 +10048,11 @@ process_relocs (Filedata * filedata)
       size_t i;
       bool found = false;
 
-      for (i = 0, section = filedata->section_headers;
-	   i < filedata->file_header.e_shnum;
-	   i++, section++)
-	{
+      section = filedata->section_headers;
+      if (section != NULL)
+	for (i = 0; i < filedata->file_header.e_shnum; i++, section++)
 	  if (display_relocations (section, filedata, do_reloc))
 	    found = true;
-	}
 
       if (do_reloc && ! found)
 	{
@@ -14665,6 +14665,18 @@ print_symbol_size (uint64_t vma, int base)
     }
 }
 
+/* The AArch64, ARM and RISC-V architectures define mapping
+   symbols (eg $d, $x, $t) which sometime should be ignored.  */
+
+static bool
+is_mapping_symbol (const char * name)
+{
+  return name[0] == '$'
+    && name [1] != 0
+    /* FIXME: Check that name[1] is lower case ASCII ?  */
+    && name [2] == 0;
+}
+
 /* Print information on a single symbol.  */
 
 static void
@@ -14739,6 +14751,8 @@ print_symbol (Filedata *           filedata,
 	}
     }
 
+  bool is_valid = false;
+
   /* Get the symbol's name.  For section symbols without a
      specific name use the (already computed) section name.  */
   if (ELF_ST_TYPE (psym->st_info) == STT_SECTION
@@ -14749,8 +14763,6 @@ print_symbol (Filedata *           filedata,
     }
   else
     {
-      bool is_valid;
-
       is_valid = valid_symbol_name (strtab, strtab_size, psym->st_name);
       sstr = is_valid  ? strtab + psym->st_name : _("<corrupt>");
     }
@@ -14798,6 +14810,26 @@ print_symbol (Filedata *           filedata,
       && filedata->file_header.e_ident[EI_OSABI] != ELFOSABI_SOLARIS)
     warn (_("local symbol %" PRIu64 " found at index >= %s's sh_info value of %u\n"),
 	  symbol_index, printable_section_name (filedata, section), section->sh_info);
+
+  /* Local symbols (in objec files) whose value is larger than their section's
+     size are suspicious especially if that section is mergeable - and hence
+     might change offsets of the contents inside the section.   Note - for
+     some reason we can get mapping symbols that do not relate to their
+     section's contents - so we ignore those type of symbol as well.  */
+  if (ELF_ST_BIND (psym->st_info) == STB_LOCAL
+      && filedata->file_header.e_type == ET_REL
+      && ! is_special
+      && is_valid
+      && psym->st_shndx < filedata->file_header.e_shnum
+      && filedata->section_headers != NULL
+      && (filedata->section_headers[psym->st_shndx].sh_flags & SHF_MERGE)
+      && psym->st_value > filedata->section_headers[psym->st_shndx].sh_size
+      && ! is_mapping_symbol (strtab + psym->st_name))
+    warn (_("local symbol %s has a value (%#" PRIx64 ") which is larger than mergeable section %s's size (%#" PRIx64 ")\n"),
+	  strtab + psym->st_name,
+	  psym->st_value,
+	  printable_section_name_from_index (filedata, psym->st_shndx, NULL),
+	  filedata->section_headers[psym->st_shndx].sh_size);
 }
 
 static const char *
@@ -21379,6 +21411,8 @@ get_note_type (Filedata * filedata, unsigned e_type)
 	return _("NT_386_IOPERM (x86 I/O permissions)");
       case NT_X86_XSTATE:
 	return _("NT_X86_XSTATE (x86 XSAVE extended state)");
+      case NT_X86_XSAVE_LAYOUT:
+	return _("NT_X86_XSAVE_LAYOUT (x86 XSAVE Layout description)");
       case NT_X86_CET:
 	return _("NT_X86_CET (x86 CET state)");
       case NT_X86_SHSTK:
@@ -23015,9 +23049,7 @@ get_symbol_for_build_attribute (Filedata *filedata,
 
 	/* The AArch64, ARM and RISC-V architectures define mapping symbols
 	   (eg $d, $x, $t) which we want to ignore.  */
-	if (ba_cache.strtab[sym->st_name] == '$'
-	    && ba_cache.strtab[sym->st_name + 1] != 0
-	    && ba_cache.strtab[sym->st_name + 2] == 0)
+	if (is_mapping_symbol (ba_cache.strtab + sym->st_name))
 	  continue;
 
 	if (is_open_attr)

@@ -71,7 +71,7 @@ repos:
     rev: v2.4.1
     hooks:
     - id: codespell
-      files: '^(gdbsupport|gdbserver|gdb/(tui|target|data-directory|po|system-gdbinit|mi|syscalls|arch|regformats|compile|python|guile|config|unittests|cli|testsuite/gdb.(ctf|dap|debuginfod|gdb|go|guile|mi|modula2|objc|opencl|opt|pascal|perf|replay|reverse|rocm|server|stabs|testsuite|tui|xml)))/'
+      files: '^(gdbsupport|gdbserver|gdb/(dwarf2|tui|target|data-directory|po|system-gdbinit|mi|syscalls|arch|regformats|compile|python|guile|config|unittests|cli|testsuite/gdb.(ctf|dap|debuginfod|gdb|go|guile|mi|modula2|objc|opencl|opt|pascal|perf|replay|reverse|rocm|server|stabs|testsuite|tui|xml)))/'
       args: [--config, gdb/contrib/setup.cfg]
   - repo: local
     hooks:
@@ -100,14 +100,20 @@ repos:
     - id: check-whitespace
       name: check-whitespace
       language: script
-      entry: gdb/contrib/check-whitespace-pre-commit.sh
+      entry: gdb/contrib/check-whitespace-pre-commit.py
       files: '^(gdb(support|server)?)/.*$'
       pass_filenames: true
       stages: [pre-commit]
+    - id: pre-commit-setup
+      name: pre-commit-setup
+      language: script
+      entry: gdb/contrib/pre-commit-setup.py
+      always_run: true
+      require_serial: true
   - repo: https://github.com/nmoroze/tclint
-    rev: v0.6.1
+    rev: v0.6.2
     hooks:
     - id: tclint
-      args: [--config, gdb/tclint.toml]
+      args: [--config, gdb/tclint.toml, --commands, gdb/testsuite/tclint-plugin.py]
       types_or: [file]
       files: '^gdb/testsuite/.*\.(exp|tcl)$'

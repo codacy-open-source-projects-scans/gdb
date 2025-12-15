@@ -613,6 +613,7 @@ _bfd_elf_x86_get_local_sym_hash (struct elf_x86_link_hash_table *htab,
       ret->elf.dynindx = -1;
       ret->plt_got.offset = (bfd_vma) -1;
       *slot = ret;
+      htab->has_loc_hash_table = 1;
     }
   return &ret->elf;
 }
@@ -891,7 +892,8 @@ _bfd_x86_elf_link_check_relocs (bfd *abfd, struct bfd_link_info *info)
 		  elf_x86_hash_entry (h)->tls_get_addr = 1;
 		}
 
-	      htab->has_tls_get_addr_call = 1;
+	      if (h->ref_regular)
+		htab->has_tls_get_addr_call = 1;
 	    }
 
 	  /* Pass NULL for __ehdr_start which will be defined by
@@ -2425,9 +2427,11 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
   elf_link_hash_traverse (&htab->elf, elf_x86_allocate_dynrelocs,
 			  info);
 
-  /* Allocate .plt and .got entries, and space for local symbols.  */
-  htab_traverse (htab->loc_hash_table, elf_x86_allocate_local_dynreloc,
-		 info);
+  /* Allocate .plt and .got entries, and space for local symbols if
+     needed.  */
+  if (htab->has_loc_hash_table)
+    htab_traverse (htab->loc_hash_table, elf_x86_allocate_local_dynreloc,
+		   info);
 
   /* For every jump slot reserved in the sgotplt, reloc_count is
      incremented.  However, when we reserve space for TLS descriptors,
@@ -4247,7 +4251,7 @@ report_isa_level (struct bfd_link_info *info, bfd *abfd,
 	  info->callbacks->einfo ("x86-64-v4");
 	  break;
 	default:
-	  info->callbacks->einfo (_("<unknown: %x>"), bit);
+	  info->callbacks->einfo (_("<unknown: %#x>"), bit);
 	  break;
 	}
       if (bitmask)
@@ -4965,6 +4969,17 @@ _bfd_x86_elf_link_fixup_gnu_properties
 	  break;
 	}
     }
+}
+
+bool
+_bfd_elf_x86_copy_special_section_fields
+  (const bfd *ibfd, bfd *obfd ATTRIBUTE_UNUSED,
+   const Elf_Internal_Shdr *isection ATTRIBUTE_UNUSED,
+   Elf_Internal_Shdr *osection ATTRIBUTE_UNUSED)
+{
+  /* Return false for Solaris binary to properly set the sh_info and
+     sh_link fields of Solaris specific sections.  */
+  return elf_elfheader (ibfd)->e_ident[EI_OSABI] != ELFOSABI_SOLARIS;
 }
 
 void

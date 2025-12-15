@@ -1908,7 +1908,7 @@ struct compunit_symtab : intrusive_list_node<compunit_symtab>
 
   /* Set m_blockvector.  */
   void set_blockvector (std::unique_ptr<struct blockvector> blockvector);
-  
+
   bool locations_valid () const
   {
     return m_locations_valid;
@@ -1963,6 +1963,9 @@ struct compunit_symtab : intrusive_list_node<compunit_symtab>
   /* Return symbol at ADDR or NULL if no symbol is found.  Only exact matches
      for ADDR are considered.  */
   struct symbol *symbol_at_address (CORE_ADDR addr) const;
+
+  /* True if ADDR is in this compunit_symtab, false otherwise.  */
+  bool contains (CORE_ADDR addr) const;
 
   /* Object file from which this symtab information was read.  */
   struct objfile *m_objfile;

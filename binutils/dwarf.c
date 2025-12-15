@@ -51,6 +51,9 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
+#define DO_LOC     0x1
+#define DO_TYPES   0x2
+
 static const char *regname (unsigned int regno, int row);
 static const char *regname_internal_by_table_only (unsigned int regno);
 
@@ -1725,7 +1728,7 @@ decode_location_expression (unsigned char * data,
    This is used for DWARF package files.  */
 
 static struct cu_tu_set *
-find_cu_tu_set_v2 (uint64_t cu_offset, int do_types)
+find_cu_tu_set_v2 (uint64_t cu_offset, bool do_types)
 {
   struct cu_tu_set *p;
   unsigned int nsets;
@@ -1820,6 +1823,74 @@ get_AT_name (unsigned long attribute)
     }
 
   return name;
+}
+
+static const char *
+get_AT_language_name (unsigned long value)
+{
+  /* Libiberty does not (yet) provide a get_DW_AT_language_name()
+     function so we define our own.  */
+
+  switch (value)
+    {
+    case DW_LNAME_Ada: return "Ada";
+    case DW_LNAME_BLISS: return "BLISS";
+    case DW_LNAME_C: return "C";
+    case DW_LNAME_C_plus_plus: return "C_plus_plus";
+    case DW_LNAME_Cobol: return "Cobol";
+    case DW_LNAME_Crystal: return "Crystal";
+    case DW_LNAME_D: return "D";
+    case DW_LNAME_Dylan: return "Dylan";
+    case DW_LNAME_Fortran: return "Fortran";
+    case DW_LNAME_Go: return "Go";
+    case DW_LNAME_Haskell: return "Haskell";
+    case DW_LNAME_Java: return "Java";
+    case DW_LNAME_Julia: return "Julia";
+    case DW_LNAME_Kotlin: return "Kotlin";
+    case DW_LNAME_Modula2: return "Modula2";
+    case DW_LNAME_Modula3: return "Modula3";
+    case DW_LNAME_ObjC: return "ObjC";
+    case DW_LNAME_ObjC_plus_plus: return "ObjC_plus_plus";
+    case DW_LNAME_OCaml: return "OCaml";
+    case DW_LNAME_OpenCL_C: return "OpenCL_C";
+    case DW_LNAME_Pascal: return "Pascal";
+    case DW_LNAME_PLI: return "PLI";
+    case DW_LNAME_Python: return "Python";
+    case DW_LNAME_RenderScript: return "RenderScript";
+    case DW_LNAME_Rust: return "Rust";
+    case DW_LNAME_Swift: return "Swift";
+    case DW_LNAME_UPC: return "UPC";
+    case DW_LNAME_Zig: return "Zig";
+    case DW_LNAME_Assembly: return "Assembly";
+    case DW_LNAME_C_sharp: return "C_sharp";
+    case DW_LNAME_Mojo: return "Mojo";
+    case DW_LNAME_GLSL: return "GLSL";
+    case DW_LNAME_GLSL_ES: return "GLSL_ES";
+    case DW_LNAME_HLSL: return "HLSL";
+    case DW_LNAME_OpenCL_CPP: return "OpenCL_CPP";
+    case DW_LNAME_CPP_for_OpenCL: return "CPP_for_OpenCL";
+    case DW_LNAME_SYCL: return "SYCL";
+    case DW_LNAME_Ruby: return "Ruby";
+    case DW_LNAME_Move: return "Move";
+    case DW_LNAME_Hylo: return "Hylo";
+    case DW_LNAME_HIP: return "HIP";
+    case DW_LNAME_Odin: return "Odin";
+    case DW_LNAME_P4: return "P4";
+    case DW_LNAME_Metal: return "Metal";
+    case DW_LNAME_Algol68: return "Algol68";
+    default: break;
+    }
+
+  static char buffer[100];
+
+  if (value >= DW_LNAME_lo_user && value <= DW_LNAME_hi_user)
+    snprintf (buffer, sizeof (buffer), _("Implementation specific AT_language_name value: %lx"),
+	      value);
+  else
+    snprintf (buffer, sizeof (buffer), _("Unknown AT_language_name value: %lx"),
+	      value);
+
+  return buffer;
 }
 
 static void
@@ -3144,6 +3215,14 @@ read_and_display_attr_value (unsigned long attribute,
   /* For some attributes we can display further information.  */
   switch (attribute)
     {
+    case DW_AT_language_name:
+      printf ("\t(%s)", get_AT_language_name (uvalue));
+      break;
+
+    case DW_AT_language_version:
+      printf ("\t(%lu)", (unsigned long) uvalue);
+      break;
+
     case DW_AT_type:
       if (level >= 0 && level < MAX_CU_NESTING
 	  && uvalue < (size_t) (end - start))
@@ -3744,21 +3823,20 @@ read_bases (abbrev_entry *   entry,
 }
 
 /* Process the contents of a .debug_info section.
-   If do_loc is TRUE then we are scanning for location lists and dwo tags
-   and we do not want to display anything to the user.
-   If do_types is TRUE, we are processing a .debug_types section instead of
-   a .debug_info section.
-   The information displayed is restricted by the values in DWARF_START_DIE
-   and DWARF_CUTOFF_LEVEL.
-   Returns TRUE upon success.  Otherwise an error or warning message is
-   printed and FALSE is returned.  */
+   If do_flags & DO_LOC then we are scanning for location lists and
+   dwo tags and we do not want to display anything to the user.
+   If do_flags & DO_TYPES, we are processing a .debug_types section
+   instead of a .debug_info section.
+   The information displayed is restricted by the values in
+   DWARF_START_DIE and DWARF_CUTOFF_LEVEL.
+   Returns TRUE upon success.  Otherwise an error or warning message
+   is printed and FALSE is returned.  */
 
 static bool
 process_debug_info (struct dwarf_section * section,
 		    void *file,
 		    enum dwarf_section_display_enum abbrev_sec,
-		    bool do_loc,
-		    bool do_types)
+		    unsigned int do_flags)
 {
   unsigned char *start = section->start;
   unsigned char *end = start + section->size;
@@ -3806,9 +3884,9 @@ process_debug_info (struct dwarf_section * section,
       return false;
     }
 
-  if ((do_loc || do_debug_loc || do_debug_ranges || do_debug_info)
+  if (((do_flags & DO_LOC) || do_debug_loc || do_debug_ranges || do_debug_info)
       && alloc_num_debug_info_entries == 0
-      && !do_types)
+      && !(do_flags & DO_TYPES))
     {
       /* Then allocate an array to hold the information.  */
       debug_information = cmalloc (num_units, sizeof (*debug_information));
@@ -3830,7 +3908,7 @@ process_debug_info (struct dwarf_section * section,
       alloc_num_debug_info_entries = num_units;
     }
 
-  if (!do_loc)
+  if (!(do_flags & DO_LOC))
     {
       load_debug_section_with_follow (str, file);
       load_debug_section_with_follow (line_str, file);
@@ -3853,7 +3931,7 @@ process_debug_info (struct dwarf_section * section,
       return false;
     }
 
-  if (!do_loc && dwarf_start_die == 0)
+  if (!(do_flags & DO_LOC) && dwarf_start_die == 0)
     introduce (section, false);
 
   free_all_abbrevs ();
@@ -3889,8 +3967,6 @@ process_debug_info (struct dwarf_section * section,
 
       SAFE_BYTE_GET_AND_INC (compunit.cu_version, hdrptr, 2, end_cu);
 
-      this_set = find_cu_tu_set_v2 (cu_offset, do_types);
-
       if (compunit.cu_version < 5)
 	{
 	  compunit.cu_unit_type = DW_UT_compile;
@@ -3900,8 +3976,6 @@ process_debug_info (struct dwarf_section * section,
       else
 	{
 	  SAFE_BYTE_GET_AND_INC (compunit.cu_unit_type, hdrptr, 1, end_cu);
-	  do_types = (compunit.cu_unit_type == DW_UT_type);
-
 	  SAFE_BYTE_GET_AND_INC (compunit.cu_pointer_size, hdrptr, 1, end_cu);
 	}
 
@@ -3915,6 +3989,7 @@ process_debug_info (struct dwarf_section * section,
 	  SAFE_BYTE_GET_AND_INC (dwo_id, hdrptr, 8, end_cu);
 	}
 
+      this_set = find_cu_tu_set_v2 (cu_offset, (do_flags & DO_TYPES));
       if (this_set == NULL)
 	{
 	  abbrev_base = 0;
@@ -3971,8 +4046,6 @@ process_debug_info (struct dwarf_section * section,
 
       SAFE_BYTE_GET_AND_INC (compunit.cu_version, hdrptr, 2, end_cu);
 
-      this_set = find_cu_tu_set_v2 (cu_offset, do_types);
-
       if (compunit.cu_version < 5)
 	{
 	  compunit.cu_unit_type = DW_UT_compile;
@@ -3982,13 +4055,12 @@ process_debug_info (struct dwarf_section * section,
       else
 	{
 	  SAFE_BYTE_GET_AND_INC (compunit.cu_unit_type, hdrptr, 1, end_cu);
-	  do_types = (compunit.cu_unit_type == DW_UT_type);
-
 	  SAFE_BYTE_GET_AND_INC (compunit.cu_pointer_size, hdrptr, 1, end_cu);
 	}
 
       SAFE_BYTE_GET_AND_INC (compunit.cu_abbrev_offset, hdrptr, offset_size, end_cu);
 
+      this_set = find_cu_tu_set_v2 (cu_offset, (do_flags & DO_TYPES));
       if (this_set == NULL)
 	{
 	  abbrev_base = 0;
@@ -4020,7 +4092,7 @@ process_debug_info (struct dwarf_section * section,
 	  compunit.cu_pointer_size = offset_size;
 	}
 
-      if (do_types)
+      if ((do_flags & DO_TYPES) || compunit.cu_unit_type == DW_UT_type)
 	{
 	  SAFE_BYTE_GET_AND_INC (signature, hdrptr, 8, end_cu);
 	  SAFE_BYTE_GET_AND_INC (type_offset, hdrptr, offset_size, end_cu);
@@ -4032,10 +4104,11 @@ process_debug_info (struct dwarf_section * section,
 	  continue;
 	}
 
-      if ((do_loc || do_debug_loc || do_debug_ranges || do_debug_info)
+      if (((do_flags & DO_LOC) || do_debug_loc
+	  || do_debug_ranges || do_debug_info)
 	  && num_debug_info_entries == 0
 	  && alloc_num_debug_info_entries > unit
-	  && ! do_types)
+	  && !(do_flags & DO_TYPES))
 	{
 	  free_debug_information (&debug_information[unit]);
 	  memset (&debug_information[unit], 0, sizeof (*debug_information));
@@ -4047,7 +4120,7 @@ process_debug_info (struct dwarf_section * section,
 	  debug_information[unit].ranges_base = DEBUG_INFO_UNAVAILABLE;
 	}
 
-      if (!do_loc && dwarf_start_die == 0)
+      if (!(do_flags & DO_LOC) && dwarf_start_die == 0)
 	{
 	  printf (_("  Compilation Unit @ offset %#" PRIx64 ":\n"),
 		  cu_offset);
@@ -4066,7 +4139,7 @@ process_debug_info (struct dwarf_section * section,
 	  printf (_("   Abbrev Offset: %#" PRIx64 "\n"),
 		  compunit.cu_abbrev_offset);
 	  printf (_("   Pointer Size:  %d\n"), compunit.cu_pointer_size);
-	  if (do_types)
+	  if ((do_flags & DO_TYPES) || compunit.cu_unit_type == DW_UT_type)
 	    {
 	      printf (_("   Signature:     %#" PRIx64 "\n"), signature);
 	      printf (_("   Type Offset:   %#" PRIx64 "\n"), type_offset);
@@ -4127,7 +4200,7 @@ process_debug_info (struct dwarf_section * section,
 	  unsigned long die_offset;
 	  abbrev_entry *entry;
 	  abbrev_attr *attr;
-	  int do_printing = 1;
+	  bool do_printing;
 
 	  die_offset = tags - section_begin;
 
@@ -4149,7 +4222,7 @@ process_debug_info (struct dwarf_section * section,
 		    break;
 		}
 
-	      if (!do_loc && die_offset >= dwarf_start_die
+	      if (!(do_flags & DO_LOC) && die_offset >= dwarf_start_die
 		  && (dwarf_cutoff_level == -1
 		      || level < dwarf_cutoff_level))
 		printf (_(" <%d><%lx>: Abbrev Number: 0\n"),
@@ -4178,24 +4251,22 @@ process_debug_info (struct dwarf_section * section,
 	      continue;
 	    }
 
-	  if (!do_loc)
+	  if ((do_flags & DO_LOC)
+	      || (dwarf_start_die != 0 && die_offset < dwarf_start_die))
+	    do_printing = false;
+	  else
 	    {
-	      if (dwarf_start_die != 0 && die_offset < dwarf_start_die)
-		do_printing = 0;
-	      else
-		{
-		  if (dwarf_start_die != 0 && die_offset == dwarf_start_die)
-		    saved_level = level;
-		  do_printing = (dwarf_cutoff_level == -1
-				 || level < dwarf_cutoff_level);
-		  if (do_printing)
-		    printf (_(" <%d><%lx>: Abbrev Number: %lu"),
-			    level, die_offset, abbrev_number);
-		  else if (dwarf_cutoff_level == -1
-			   || last_level < dwarf_cutoff_level)
-		    printf (_(" <%d><%lx>: ...\n"), level, die_offset);
-		  last_level = level;
-		}
+	      if (dwarf_start_die != 0 && die_offset == dwarf_start_die)
+		saved_level = level;
+	      do_printing = (dwarf_cutoff_level == -1
+			     || level < dwarf_cutoff_level);
+	      if (do_printing)
+		printf (_(" <%d><%lx>: Abbrev Number: %lu"),
+			level, die_offset, abbrev_number);
+	      else if (dwarf_cutoff_level == -1
+		       || last_level < dwarf_cutoff_level)
+		printf (_(" <%d><%lx>: ...\n"), level, die_offset);
+	      last_level = level;
 	    }
 
 	  /* Scan through the abbreviation list until we reach the
@@ -4208,7 +4279,7 @@ process_debug_info (struct dwarf_section * section,
 
 	  if (entry == NULL)
 	    {
-	      if (!do_loc && do_printing)
+	      if (do_printing)
 		{
 		  printf ("\n");
 		  fflush (stdout);
@@ -4220,7 +4291,7 @@ process_debug_info (struct dwarf_section * section,
 	      return false;
 	    }
 
-	  if (!do_loc && do_printing)
+	  if (do_printing)
 	    printf (" (%s)\n", get_TAG_name (entry->tag));
 
 	  switch (entry->tag)
@@ -4231,7 +4302,7 @@ process_debug_info (struct dwarf_section * section,
 	    case DW_TAG_compile_unit:
 	    case DW_TAG_skeleton_unit:
 	      need_base_address = 1;
-	      need_dwo_info = do_loc;
+	      need_dwo_info = do_flags & DO_LOC;
 	      break;
 	    case DW_TAG_entry_point:
 	      need_base_address = 0;
@@ -4246,9 +4317,11 @@ process_debug_info (struct dwarf_section * section,
 	      break;
 	    }
 
-	  debug_info *debug_info_p = ((debug_information
-				       && unit < alloc_num_debug_info_entries)
-				      ? debug_information + unit : NULL);
+	  debug_info *debug_info_p = NULL;
+	  if (debug_information
+	      && num_debug_info_entries != DEBUG_INFO_UNAVAILABLE
+	      && unit < alloc_num_debug_info_entries)
+	    debug_info_p = debug_information + unit;
 
 	  assert (!debug_info_p
 		  || (debug_info_p->num_loc_offsets
@@ -4287,7 +4360,7 @@ process_debug_info (struct dwarf_section * section,
 	       attr && attr->attribute;
 	       attr = attr->next)
 	    {
-	      if (! do_loc && do_printing)
+	      if (do_printing)
 		/* Show the offset from where the tag was extracted.  */
 		printf ("    <%tx>", tags - section_begin);
 	      tags = read_and_display_attr (attr->attribute,
@@ -4301,7 +4374,7 @@ process_debug_info (struct dwarf_section * section,
 					    offset_size,
 					    compunit.cu_version,
 					    debug_info_p,
-					    do_loc || ! do_printing,
+					    !do_printing,
 					    section,
 					    this_set,
 					    level);
@@ -4341,9 +4414,9 @@ process_debug_info (struct dwarf_section * section,
 
   /* Set num_debug_info_entries here so that it can be used to check if
      we need to process .debug_loc and .debug_ranges sections.  */
-  if ((do_loc || do_debug_loc || do_debug_ranges || do_debug_info)
+  if (((do_flags & DO_LOC) || do_debug_loc || do_debug_ranges || do_debug_info)
       && num_debug_info_entries == 0
-      && ! do_types)
+      && !(do_flags & DO_TYPES))
     {
       if (num_units > alloc_num_debug_info_entries)
 	num_debug_info_entries = alloc_num_debug_info_entries;
@@ -4351,7 +4424,7 @@ process_debug_info (struct dwarf_section * section,
 	num_debug_info_entries = num_units;
     }
 
-  if (!do_loc)
+  if (!(do_flags & DO_LOC))
     printf ("\n");
 
   return true;
@@ -4379,12 +4452,13 @@ load_debug_info (void * file)
   (void) load_cu_tu_indexes (file);
 
   if (load_debug_section_with_follow (info, file)
-      && process_debug_info (&debug_displays [info].section, file, abbrev, true, false))
+      && process_debug_info (&debug_displays [info].section, file,
+			     abbrev, DO_LOC))
     return num_debug_info_entries;
 
   if (load_debug_section_with_follow (info_dwo, file)
       && process_debug_info (&debug_displays [info_dwo].section, file,
-			     abbrev_dwo, true, false))
+			     abbrev_dwo, DO_LOC))
     return num_debug_info_entries;
 
   num_debug_info_entries = DEBUG_INFO_UNAVAILABLE;
@@ -7681,19 +7755,19 @@ display_debug_str (struct dwarf_section *section,
 static int
 display_debug_info (struct dwarf_section *section, void *file)
 {
-  return process_debug_info (section, file, section->abbrev_sec, false, false);
+  return process_debug_info (section, file, section->abbrev_sec, 0);
 }
 
 static int
 display_debug_types (struct dwarf_section *section, void *file)
 {
-  return process_debug_info (section, file, section->abbrev_sec, false, true);
+  return process_debug_info (section, file, section->abbrev_sec, DO_TYPES);
 }
 
 static int
 display_trace_info (struct dwarf_section *section, void *file)
 {
-  return process_debug_info (section, file, section->abbrev_sec, false, true);
+  return process_debug_info (section, file, section->abbrev_sec, DO_TYPES);
 }
 
 static int
@@ -12566,7 +12640,7 @@ load_separate_debug_files (void * file, const char * filename)
       free_dwo_info ();
 
       if (process_debug_info (& debug_displays[info].section, file, abbrev,
-			      true, false))
+			      DO_LOC))
 	{
 	  bool introduced = false;
 	  dwo_info *dwinfo;

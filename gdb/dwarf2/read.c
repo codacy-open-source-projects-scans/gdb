@@ -2396,7 +2396,7 @@ dwarf2_initialize_objfile (struct objfile *objfile,
   /* Was a GDB index already read when we processed an objfile sharing
      PER_BFD?  */
   else if (per_bfd->index_table != nullptr)
-    dwarf_read_debug_printf ("re-using symbols");
+    dwarf_read_debug_printf ("reusing symbols");
   else if (dwarf2_read_debug_names (per_objfile))
     dwarf_read_debug_printf ("found debug names");
   else if (dwarf2_read_gdb_index (per_objfile,
@@ -2707,7 +2707,7 @@ cutu_reader::init_cu_die_reader (dwarf2_cu *cu, dwarf2_section_info *section,
 				 struct dwo_file *dwo_file,
 				 const struct abbrev_table *abbrev_table)
 {
-  gdb_assert (section->readin && section->buffer != NULL);
+  gdb_assert (section->read_in && section->buffer != NULL);
   m_abfd = section->get_bfd_owner ();
   m_cu = cu;
   m_dwo_file = dwo_file;
@@ -2855,6 +2855,14 @@ cutu_reader::read_cutu_die_from_dwo (dwarf2_cu *cu, dwo_unit *dwo_unit,
 	 until now.  */
       dwo_unit->length = cu->header.get_length_with_initial ();
     }
+
+  /* Record some information found in the header.  This will be needed when
+     evaluating DWARF expressions in the context of this unit, for instance.  */
+  per_cu->set_addr_size (cu->header.addr_size);
+  per_cu->set_offset_size (cu->header.offset_size);
+  per_cu->set_ref_addr_size (cu->header.version == 2
+			     ? cu->header.addr_size
+			     : cu->header.offset_size);
 
   dwo_abbrev_section->read (objfile);
   m_dwo_abbrev_table
@@ -3099,6 +3107,15 @@ cutu_reader::cutu_reader (dwarf2_per_cu &this_cu,
 	  gdb_assert (this_cu.sect_off () == cu->header.sect_off);
 	  this_cu.set_length (cu->header.get_length_with_initial ());
 	}
+
+	/* Record some information found in the header.  This will be needed
+	   when evaluating DWARF expressions in the context of this unit, for
+	   instance.  */
+	this_cu.set_addr_size (cu->header.addr_size);
+	this_cu.set_offset_size (cu->header.offset_size);
+	this_cu.set_ref_addr_size (cu->header.version == 2
+				   ? cu->header.addr_size
+				   : cu->header.offset_size);
     }
 
   /* Skip dummy compilation units.  */
@@ -3873,12 +3890,7 @@ cutu_reader::skip_one_attribute (dwarf_form form, const gdb_byte *info_ptr)
   switch (form)
     {
     case DW_FORM_ref_addr:
-      /* In DWARF 2, DW_FORM_ref_addr is address sized; in DWARF 3
-	       and later it is offset sized.  */
-      if (m_cu->header.version == 2)
-	return info_ptr + m_cu->header.addr_size;
-      else
-	return info_ptr + m_cu->header.offset_size;
+      return info_ptr + m_cu->per_cu->ref_addr_size ();
 
     case DW_FORM_GNU_ref_alt:
       return info_ptr + m_cu->header.offset_size;
@@ -7137,8 +7149,8 @@ create_dwp_v2_or_v5_section (dwarf2_per_bfd *per_bfd,
 
   result.virtual_offset = offset;
   result.size = size;
-  gdb_assert (section->readin);
-  result.readin = true;
+  gdb_assert (section->read_in);
+  result.read_in = true;
   result.buffer = section->buffer + offset;
   return result;
 }
@@ -7721,7 +7733,7 @@ cutu_reader::locate_dwo_sections (objfile *objfile, dwo_file &dwo_file)
 	{
 	  /* Make sure we don't overwrite a section info that has been filled in
 	 already.  */
-	  gdb_assert (!dw_sect->readin);
+	  gdb_assert (!dw_sect->read_in);
 
 	  dw_sect->s.section = sec;
 	  dw_sect->size = bfd_section_size (sec);
@@ -7798,7 +7810,7 @@ dwarf2_locate_common_dwp_sections (struct objfile *objfile, bfd *abfd,
     {
       /* Make sure we don't overwrite a section info that has been filled in
 	 already.  */
-      gdb_assert (!dw_sect->readin);
+      gdb_assert (!dw_sect->read_in);
 
       dw_sect->s.section = sectp;
       dw_sect->size = bfd_section_size (sectp);
@@ -7847,7 +7859,7 @@ dwarf2_locate_v2_dwp_sections (struct objfile *objfile, bfd *abfd,
     {
       /* Make sure we don't overwrite a section info that has been filled in
 	 already.  */
-      gdb_assert (!dw_sect->readin);
+      gdb_assert (!dw_sect->read_in);
 
       dw_sect->s.section = sectp;
       dw_sect->size = bfd_section_size (sectp);
@@ -7894,7 +7906,7 @@ dwarf2_locate_v5_dwp_sections (struct objfile *objfile, bfd *abfd,
     {
       /* Make sure we don't overwrite a section info that has been filled in
 	 already.  */
-      gdb_assert (!dw_sect->readin);
+      gdb_assert (!dw_sect->read_in);
 
       dw_sect->s.section = sectp;
       dw_sect->size = bfd_section_size (sectp);
@@ -11689,11 +11701,11 @@ die_byte_order (die_info *die, dwarf2_cu *cu, enum bfd_endian *byte_order)
   attribute *attr = dwarf2_attr (die, DW_AT_endianity, cu);
   if (attr != nullptr && attr->form_is_constant ())
     {
-      std::optional<ULONGEST> endianity = attr->unsigned_constant ();
+      std::optional<ULONGEST> endianness = attr->unsigned_constant ();
 
-      if (endianity.has_value ())
+      if (endianness.has_value ())
 	{
-	  switch (*endianity)
+	  switch (*endianness)
 	    {
 	    case DW_END_default:
 	      /* Nothing.  */
@@ -11706,7 +11718,7 @@ die_byte_order (die_info *die, dwarf2_cu *cu, enum bfd_endian *byte_order)
 	      break;
 	    default:
 	      complaint (_("DW_AT_endianity has unrecognized value %s"),
-			 pulongest (*endianity));
+			 pulongest (*endianness));
 	      break;
 	    }
 	}
@@ -18638,53 +18650,6 @@ dwarf2_symbol_mark_computed (const struct attribute *attr, struct symbol *sym,
 			      : dwarf2_locexpr_index));
       SYMBOL_LOCATION_BATON (sym) = baton;
     }
-}
-
-/* See read.h.  */
-
-const unit_head *
-dwarf2_per_cu::get_header () const
-{
-  if (!m_header_read_in)
-    {
-      const gdb_byte *info_ptr
-	= this->section ()->buffer + to_underlying (this->sect_off ());
-
-      read_unit_head (&m_header, info_ptr, this->section (), ruh_kind::COMPILE);
-
-      m_header_read_in = true;
-    }
-
-  return &m_header;
-}
-
-/* See read.h.  */
-
-int
-dwarf2_per_cu::addr_size () const
-{
-  return this->get_header ()->addr_size;
-}
-
-/* See read.h.  */
-
-int
-dwarf2_per_cu::offset_size () const
-{
-  return this->get_header ()->offset_size;
-}
-
-/* See read.h.  */
-
-int
-dwarf2_per_cu::ref_addr_size () const
-{
-  const unit_head *header = this->get_header ();
-
-  if (header->version == 2)
-    return header->addr_size;
-  else
-    return header->offset_size;
 }
 
 /* See read.h.  */

@@ -233,7 +233,7 @@ static const struct elf_reloc_map x86_64_reloc_map[] =
   { BFD_RELOC_64,		R_X86_64_64,   },
   { BFD_RELOC_32_PCREL,		R_X86_64_PC32, },
   { BFD_RELOC_X86_64_GOT32,	R_X86_64_GOT32,},
-  { BFD_RELOC_X86_64_PLT32,	R_X86_64_PLT32,},
+  { BFD_RELOC_32_PLT_PCREL,	R_X86_64_PLT32,},
   { BFD_RELOC_X86_64_COPY,	R_X86_64_COPY, },
   { BFD_RELOC_X86_64_GLOB_DAT,	R_X86_64_GLOB_DAT, },
   { BFD_RELOC_X86_64_JUMP_SLOT, R_X86_64_JUMP_SLOT, },
@@ -260,7 +260,7 @@ static const struct elf_reloc_map x86_64_reloc_map[] =
   { BFD_RELOC_X86_64_GOTPCREL64,R_X86_64_GOTPCREL64, },
   { BFD_RELOC_X86_64_GOTPC64,	R_X86_64_GOTPC64, },
   { BFD_RELOC_X86_64_GOTPLT64,	R_X86_64_GOTPLT64, },
-  { BFD_RELOC_X86_64_PLTOFF64,	R_X86_64_PLTOFF64, },
+  { BFD_RELOC_64_PLTOFF,	R_X86_64_PLTOFF64, },
   { BFD_RELOC_SIZE32,		R_X86_64_SIZE32, },
   { BFD_RELOC_SIZE64,		R_X86_64_SIZE64, },
   { BFD_RELOC_X86_64_GOTPC32_TLSDESC, R_X86_64_GOTPC32_TLSDESC, },
@@ -5777,10 +5777,12 @@ elf_x86_64_output_arch_local_syms
   if (htab == NULL)
     return false;
 
-  /* Fill PLT and GOT entries for local STT_GNU_IFUNC symbols.  */
-  htab_traverse (htab->loc_hash_table,
-		 elf_x86_64_finish_local_dynamic_symbol,
-		 info);
+  /* Fill PLT and GOT entries for local STT_GNU_IFUNC symbols if
+     needed.  */
+  if (htab->has_loc_hash_table)
+    htab_traverse (htab->loc_hash_table,
+		   elf_x86_64_finish_local_dynamic_symbol,
+		   info);
 
   return true;
 }
@@ -6465,20 +6467,6 @@ elf_x86_64_special_sections[]=
 #undef  elf_backend_strtab_flags
 #define elf_backend_strtab_flags	SHF_STRINGS
 
-static bool
-elf64_x86_64_copy_solaris_special_section_fields (const bfd *ibfd ATTRIBUTE_UNUSED,
-						  bfd *obfd ATTRIBUTE_UNUSED,
-						  const Elf_Internal_Shdr *isection ATTRIBUTE_UNUSED,
-						  Elf_Internal_Shdr *osection ATTRIBUTE_UNUSED)
-{
-  /* PR 19938: FIXME: Need to add code for setting the sh_info
-     and sh_link fields of Solaris specific section types.  */
-  return false;
-}
-
-#undef  elf_backend_copy_special_section_fields
-#define elf_backend_copy_special_section_fields elf64_x86_64_copy_solaris_special_section_fields
-
 #include "elf64-target.h"
 
 /* Restore defaults.  */
@@ -6487,7 +6475,6 @@ elf64_x86_64_copy_solaris_special_section_fields (const bfd *ibfd ATTRIBUTE_UNUS
 #undef	elf_backend_want_plt_sym
 #define elf_backend_want_plt_sym	0
 #undef  elf_backend_strtab_flags
-#undef  elf_backend_copy_special_section_fields
 
 /* 32bit x86-64 support.  */
 

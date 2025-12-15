@@ -263,6 +263,8 @@ enum aarch64_feature_bit {
   AARCH64_FEATURE_SME_TMOP,
   /* SME MOP4 instructions.  */
   AARCH64_FEATURE_SME_MOP4,
+  /* LSCP instructions.  */
+  AARCH64_FEATURE_LSCP,
 
   /* Virtual features.  These are used to gate instructions that are enabled
      by either of two (or more) sets of command line flags.  */
@@ -1785,7 +1787,9 @@ struct aarch64_opnd_info
 	  /* The encoding of the system register.  */
 	  aarch64_insn value;
 
-	  /* The system register flags.  */
+	  /* The system register flags.  During assembly this contains the
+	     flags from aarch64-sys-regs.def.  During disassembly this stores
+	     either F_REG_READ or F_REG_WRITE, depending upon the opcode.  */
 	  uint32_t flags;
 	} sysreg;
 

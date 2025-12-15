@@ -575,9 +575,10 @@
 #define SHT_CHECKSUM	             0x6ffffff8	/* Checksum for DSO content.  */
 #define SHT_GNU_OBJECT_ONLY	     0x6ffffff9	/* Object only */
 
-#define SHT_SUNW_symtabnsort         0x6fffffec
-#define SHT_SUNW_ancillary           0x6fffffee
+#define SHT_SUNW_ctf                 0x6fffffeb
+#define SHT_SUNW_symnsort            0x6fffffec
 #define SHT_SUNW_phname              0x6fffffed
+#define SHT_SUNW_ancillary           0x6fffffee
 #define SHT_SUNW_capchain            0x6fffffef
 #define SHT_SUNW_capinfo             0x6ffffff0
 #define SHT_SUNW_symsort             0x6ffffff1
@@ -695,6 +696,8 @@
 					/*   note name must be "LINUX".  */
 #define NT_X86_SHSTK	0x204		/* x86 SHSTK state.  */
 					/* This replaces NT_X86_CET (0x203).  */
+					/*   note name must be "LINUX".  */
+#define NT_X86_XSAVE_LAYOUT	0x205	/* XSAVE layout description */
 					/*   note name must be "LINUX".  */
 #define NT_S390_HIGH_GPRS 0x300		/* S/390 upper halves of GPRs  */
 					/*   note name must be "LINUX".  */

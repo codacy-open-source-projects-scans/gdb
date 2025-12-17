@@ -8401,7 +8401,7 @@ default, ten instructions are disassembled.  This can be changed using
 the @code{set record instruction-history-size} command.  Instructions
 are printed in execution order.
 
-It can also print mixed source+disassembly if you specify the the
+It can also print mixed source+disassembly if you specify the
 @code{/m} or @code{/s} modifier, and print the raw instructions in hex
 as well as in symbolic form by specifying the @code{/r} or @code{/b}
 modifier.  The behavior of the @code{/m}, @code{/s}, @code{/r}, and
@@ -51353,8 +51353,8 @@ Show the current verbosity setting.
 @cindex progress bars, disabling
 @item set progress-bars enabled @r{[}on@r{|}off@r{]}
 Set whether @value{GDBN} can display a progress bar when downloading a
-file from debuginfod.  When @value{off}, @value{GDBN} will not display
-a progress bar.  When @value{on}, @value{GDBN} will display a progress
+file from debuginfod.  When @samp{off}, @value{GDBN} will not display
+a progress bar.  When @samp{on}, @value{GDBN} will display a progress
 bar if @value{GDBN}'s output console supports it.
 
 @kindex show progress-bars enabled

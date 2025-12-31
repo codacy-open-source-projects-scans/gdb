@@ -212,8 +212,6 @@ typedef struct sframe_func_desc_entry_v2
   uint16_t sfde_func_padding2;
 } ATTRIBUTE_PACKED sframe_func_desc_entry_v2;
 
-typedef sframe_func_desc_entry_v2 sframe_func_desc_entry;
-
 /* Macros to compose and decompose function info in FDE.  */
 
 /* Note: Set PAC auth key to SFRAME_AARCH64_PAUTH_KEY_A by default.  */
@@ -228,6 +226,18 @@ typedef sframe_func_desc_entry_v2 sframe_func_desc_entry;
 /* Set the pauth key as indicated.  */
 #define SFRAME_V1_FUNC_INFO_UPDATE_PAUTH_KEY(pauth_key, fde_info) \
   ((((pauth_key) & 0x1) << 5) | ((fde_info) & 0xdf))
+
+/* SFrame V2 has similar SFrame FDE representation as SFrame V1.  */
+
+#define SFRAME_V2_FUNC_INFO(fde_type, fre_enc_type) \
+  (SFRAME_V1_FUNC_INFO (fde_type, fre_enc_type))
+
+#define SFRAME_V2_FUNC_FRE_TYPE(data)    (SFRAME_V1_FUNC_FRE_TYPE (data))
+#define SFRAME_V2_FUNC_PC_TYPE(data)     (SFRAME_V1_FUNC_FDE_TYPE (data))
+#define SFRAME_V2_FUNC_PAUTH_KEY(data)   (SFRAME_V1_FUNC_PAUTH_KEY (data))
+
+#define SFRAME_V2_FUNC_INFO_UPDATE_PAUTH_KEY(pauth_key, fde_info) \
+  SFRAME_V1_FUNC_INFO_UPDATE_PAUTH_KEY (pauth_key, fde_info)
 
 /* Size of stack frame offsets in an SFrame Frame Row Entry.  A single
    SFrame FRE has all offsets of the same size.  Offset size may vary

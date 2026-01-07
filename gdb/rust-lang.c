@@ -1,6 +1,6 @@
 /* Rust language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 2016-2025 Free Software Foundation, Inc.
+   Copyright (C) 2016-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -1749,7 +1749,7 @@ rust_language::language_arch_info (struct gdbarch *gdbarch,
   add (init_float_type (alloc, 64, "f64", floatformats_ieee_double));
   add (init_integer_type (alloc, 0, 1, "()"));
 
-  struct type *tem = make_cv_type (1, 0, u8_type, NULL);
+  struct type *tem = make_cv_type (1, 0, u8_type);
   add (rust_slice_type ("&str", tem, usize_type));
 
   lai->set_bool_type (bool_type);

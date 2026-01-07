@@ -1,5 +1,5 @@
 /* Multi-process/thread control defs for GDB, the GNU debugger.
-   Copyright (C) 1987-2025 Free Software Foundation, Inc.
+   Copyright (C) 1987-2026 Free Software Foundation, Inc.
    Contributed by Lynx Real-Time Systems, Inc.  Los Gatos, CA.
 
 
@@ -858,11 +858,6 @@ extern bool threads_are_executing (process_stratum_target *targ);
 
    Notifications are only emitted if the thread state did change.  */
 extern void finish_thread_state (process_stratum_target *targ, ptid_t ptid);
-
-/* Calls finish_thread_state on scope exit, unless release() is called
-   to disengage.  */
-using scoped_finish_thread_state
-  = FORWARD_SCOPE_EXIT (finish_thread_state);
 
 /* Commands with a prefix of `thread'.  */
 extern struct cmd_list_element *thread_cmd_list;

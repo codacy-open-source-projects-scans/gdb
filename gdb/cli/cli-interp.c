@@ -1,6 +1,6 @@
 /* CLI Definitions for GDB, the GNU debugger.
 
-   Copyright (C) 2002-2025 Free Software Foundation, Inc.
+   Copyright (C) 2002-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -46,7 +46,6 @@ class cli_interp final : public cli_interp_base
   explicit cli_interp (const char *name);
   ~cli_interp () = default;
 
-  void init (bool top_level) override;
   void resume () override;
   void suspend () override;
   void exec (const char *command_str) override;
@@ -178,13 +177,6 @@ void
 cli_interp_base::pre_command_loop ()
 {
   display_gdb_prompt (0);
-}
-
-/* These implement the cli out interpreter: */
-
-void
-cli_interp::init (bool top_level)
-{
 }
 
 void

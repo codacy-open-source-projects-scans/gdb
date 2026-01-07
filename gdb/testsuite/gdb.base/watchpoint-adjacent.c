@@ -1,6 +1,6 @@
 /* This testcase is part of GDB, the GNU debugger.
 
-   Copyright 2025 Free Software Foundation, Inc.
+   Copyright 2025-2026 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -24,18 +24,15 @@ typedef unsigned long long type_ll;
 #  error "VAR_TYPE not defined"
 #endif
 
-/* Place A and B within this wrapper struct.  FIRST ensures that A is
-   (usually) going to start at an 8-byte boundary.  The goal here is
-   that, when VAR_TYPE is less than 8 bytes, both A and B are placed
-   within the same 8-byte region, and that the region starts at an
-   8-byte boundary.  */
+/* Place A and B within this wrapper struct.  Ensure that A is going to start
+   at an 8-byte boundary.  The goal here is that, when VAR_TYPE is less than 8
+   bytes, both A and B are placed within the same 8-byte region, and that the
+   region starts at an 8-byte boundary.  */
 
 struct wrapper
 {
-  unsigned long long first;
-
   VAR_TYPE a, b;
-};
+} __attribute__((aligned(8)));
 
 volatile struct wrapper obj;
 

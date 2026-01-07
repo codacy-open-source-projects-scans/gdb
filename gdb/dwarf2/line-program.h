@@ -1,6 +1,6 @@
 /* DWARF 2 debugging format support for GDB.
 
-   Copyright (C) 1994-2025 Free Software Foundation, Inc.
+   Copyright (C) 1994-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -20,12 +20,7 @@
 #ifndef GDB_DWARF2_LINE_PROGRAM_H
 #define GDB_DWARF2_LINE_PROGRAM_H
 
-/* Decode the Line Number Program (LNP) for the given line_header
-   structure and CU.  The actual information extracted and the type
-   of structures created from the LNP depends on the value of PST.
-
-   FND holds the CU file name and directory, if known.
-   It is used for relative paths in the line table.
+/* Decode the Line Number Program (LNP) for CU::line_header.
 
    NOTE: It is important that psymtabs have the same file name (via
    strcmp) as the corresponding symtab.  Since the directory is not
@@ -40,8 +35,7 @@
    for its PC<->lines mapping information.  Otherwise only the filename
    table is read in.  */
 
-extern void dwarf_decode_lines (struct line_header *lh,
-				struct dwarf2_cu *cu,
+extern void dwarf_decode_lines (struct dwarf2_cu *cu,
 				unrelocated_addr lowpc, bool decode_mapping);
 
 #endif /* GDB_DWARF2_LINE_PROGRAM_H */

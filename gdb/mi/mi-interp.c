@@ -1,6 +1,6 @@
 /* MI Interpreter Definitions and Commands for GDB, the GNU debugger.
 
-   Copyright (C) 2002-2025 Free Software Foundation, Inc.
+   Copyright (C) 2002-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -78,7 +78,7 @@ mi_interp::on_command_error ()
 }
 
 void
-mi_interp::init (bool top_level)
+mi_interp::do_init (bool top_level)
 {
   mi_interp *mi = this;
 

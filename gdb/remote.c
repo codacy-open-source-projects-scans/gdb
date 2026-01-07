@@ -1,6 +1,6 @@
 /* Remote target communications for serial-line targets in custom GDB protocol
 
-   Copyright (C) 1988-2025 Free Software Foundation, Inc.
+   Copyright (C) 1988-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -84,6 +84,7 @@
 #include "cli/cli-style.h"
 #include "gdbsupport/remote-args.h"
 #include "gdbsupport/gdb_argv_vec.h"
+#include "finish-thread-state.h"
 
 /* The remote target.  */
 

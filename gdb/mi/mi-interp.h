@@ -1,6 +1,6 @@
 /* MI Interpreter Definitions and Commands for GDB, the GNU debugger.
 
-   Copyright (C) 2017-2025 Free Software Foundation, Inc.
+   Copyright (C) 2017-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -33,7 +33,7 @@ public:
     : interp (name)
   {}
 
-  void init (bool top_level) override;
+  void do_init (bool top_level) override;
   void resume () override;
   void suspend () override;
   void exec (const char *command_str) override;

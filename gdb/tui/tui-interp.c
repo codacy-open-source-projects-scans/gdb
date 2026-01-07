@@ -1,6 +1,6 @@
 /* TUI Interpreter definitions for GDB, the GNU debugger.
 
-   Copyright (C) 2003-2025 Free Software Foundation, Inc.
+   Copyright (C) 2003-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -40,7 +40,7 @@ public:
     : cli_interp_base (name)
   {}
 
-  void init (bool top_level) override;
+  void do_init (bool top_level) override;
   void resume () override;
   void suspend () override;
   void exec (const char *command_str) override;
@@ -63,7 +63,7 @@ tui_exit (void)
 /* These implement the TUI interpreter.  */
 
 void
-tui_interp::init (bool top_level)
+tui_interp::do_init (bool top_level)
 {
   /* Install exit handler to leave the screen in a good shape.  */
   atexit (tui_exit);

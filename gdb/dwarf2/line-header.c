@@ -1,6 +1,6 @@
 /* DWARF 2 debugging format support for GDB.
 
-   Copyright (C) 1994-2025 Free Software Foundation, Inc.
+   Copyright (C) 1994-2026 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -420,4 +420,27 @@ dwarf_decode_line_header (sect_offset sect_off, bool is_dwz,
 	     " not match actual length"));
 
   return lh;
+}
+
+/* See dwarf2/line-header.h.  */
+
+struct symtab *
+file_entry::symtab (dwarf2_cu &cu)
+{
+  if (m_symtab == nullptr)
+    {
+      buildsym_compunit *builder = cu.get_builder ();
+      compunit_symtab *cust = builder->get_compunit_symtab ();
+
+      cu.start_subfile (*this);
+
+      subfile *sf = builder->get_current_subfile ();
+      if (sf->symtab == nullptr)
+	sf->symtab = allocate_symtab (cust, sf->name.c_str (),
+				      sf->name_for_id.c_str ());
+
+      m_symtab = sf->symtab;
+    }
+
+  return m_symtab;
 }

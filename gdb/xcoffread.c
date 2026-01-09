@@ -21,82 +21,23 @@
 #include "bfd.h"
 #include "event-top.h"
 
-#include <sys/types.h>
-#include <fcntl.h>
-#ifdef HAVE_SYS_FILE_H
-#include <sys/file.h>
-#endif
-#include <sys/stat.h>
-#include <algorithm>
-
 #include "coff/internal.h"
 #include "libcoff.h"
 #include "coff/xcoff.h"
-#include "libxcoff.h"
 #include "coff/rs6000.h"
 #include "xcoffread.h"
 
 #include "symtab.h"
 #include "gdbtypes.h"
-/* FIXME: ezannoni/2004-02-13 Verify if the include below is really needed.  */
 #include "symfile.h"
 #include "objfiles.h"
-#include "buildsym-legacy.h"
-#include "expression.h"
 #include "complaints.h"
-#include "psymtab.h"
 #include "dwarf2/sect-names.h"
 #include "dwarf2/public.h"
 
 
-/* We put a pointer to this structure in the read_symtab_private field
-   of the psymtab.  */
-
-struct xcoff_symloc
-  {
-
-    /* First symbol number for this file.  */
-
-    int first_symnum;
-
-    /* Number of symbols in the section of the symbol table devoted to
-       this file's symbols (actually, the section bracketed may contain
-       more than just this file's symbols).  If numsyms is 0, the only
-       reason for this thing's existence is the dependency list.  Nothing
-       else will happen when it is read in.  */
-
-    int numsyms;
-
-    /* Position of the start of the line number information for this
-       psymtab.  */
-    unsigned int lineno_off;
-  };
-
-
-/* Simplified internal version of coff symbol table information.  */
-
-struct xcoff_symbol
-  {
-    char *c_name;
-    int c_symnum;		/* Symbol number of this entry.  */
-    int c_naux;			/* 0 if syment only, 1 if syment + auxent.  */
-    CORE_ADDR c_value;
-    unsigned char c_sclass;
-    int c_secnum;
-    unsigned int c_type;
-  };
-
-static bfd *symfile_bfd;
-
-/* Initial symbol-table-debug-string vector length.  */
-
-#define	INITIAL_STABVECTOR_LENGTH	40
-
 struct xcoff_symfile_info
   {
-    file_ptr min_lineno_offset {};	/* Where in file lowest line#s are.  */
-    file_ptr max_lineno_offset {};	/* 1+last byte of line#s in file.  */
-
     /* Pointer to the string table.  */
     char *strtbl = nullptr;
 
@@ -156,10 +97,6 @@ static void scan_xcoff_symtab (struct objfile *);
 
 static void xcoff_symfile_init (struct objfile *);
 
-static void xcoff_new_init (struct objfile *);
-
-static void xcoff_symfile_finish (struct objfile *);
-
 /* Search all BFD sections for the section whose target_index is
    equal to N_SCNUM.  Set *BFD_SECT to that section.  The section's
    associated index in the objfile's section_offset table is also
@@ -191,82 +128,6 @@ xcoff_secnum_to_sections (int n_scnum, struct objfile *objfile,
     }
 }
 
-/* include file support: C_BINCL/C_EINCL pairs will be kept in the
-   following `IncludeChain'.  At the end of each symtab (end_compunit_symtab),
-   we will determine if we should create additional symtab's to
-   represent if (the include files.  */
-
-
-typedef struct _inclTable
-{
-  char *name;			/* include filename */
-
-  /* Offsets to the line table.  end points to the last entry which is
-     part of this include file.  */
-  int begin, end;
-
-  struct subfile *subfile;
-  unsigned funStartLine;	/* Start line # of its function.  */
-}
-InclTable;
-
-#define	INITIAL_INCLUDE_TABLE_LENGTH	20
-static InclTable *inclTable;	/* global include table */
-static int inclIndx;		/* last entry to table */
-static int inclLength;		/* table length */
-static int inclDepth;		/* nested include depth */
-
-/* subfile structure for the main compilation unit.  */
-static subfile *main_subfile;
-
-/* Global variable to pass the psymtab down to all the routines involved
-   in psymtab to symtab processing.  */
-static legacy_psymtab *this_symtab_psymtab;
-
-static void
-aix_process_linenos (struct objfile *objfile)
-{
-  /* There is no linenos to read if there are only dwarf info.  */
-  if (this_symtab_psymtab == NULL)
-    return;
-}
-
-
-/* Support for line number handling.  */
-
-/* This function is called for every section; it finds the outer limits
- * of the line table (minimum and maximum file offset) so that the
- * mainline code can read the whole thing for efficiency.
- */
-static void
-find_linenos (struct bfd *abfd, struct bfd_section *asect, void *vpinfo)
-{
-  struct xcoff_symfile_info *info;
-  int size, count;
-  file_ptr offset, maxoff;
-
-  count = asect->lineno_count;
-
-  if (strcmp (asect->name, ".text") != 0 || count == 0)
-    return;
-
-  size = count * coff_data (abfd)->local_linesz;
-  info = (struct xcoff_symfile_info *) vpinfo;
-  offset = asect->line_filepos;
-  maxoff = offset + size;
-
-  if (offset < info->min_lineno_offset || info->min_lineno_offset == 0)
-    info->min_lineno_offset = offset;
-
-  if (maxoff > info->max_lineno_offset)
-    info->max_lineno_offset = maxoff;
-}
-
-static void
-xcoff_new_init (struct objfile *objfile)
-{
-}
-
 /* Do initialization in preparation for reading symbols from OBJFILE.
 
    We will only be called if this is an XCOFF or XCOFF-like file.
@@ -278,24 +139,6 @@ xcoff_symfile_init (struct objfile *objfile)
 {
   /* Allocate struct to keep track of the symfile.  */
   xcoff_objfile_data_key.emplace (objfile);
-}
-
-/* Perform any local cleanups required when we are done with a particular
-   objfile.  I.E, we are in the process of discarding all symbol information
-   for an objfile, freeing up all memory held for it, and unlinking the
-   objfile struct from the global list of known objfiles.  */
-
-static void
-xcoff_symfile_finish (struct objfile *objfile)
-{
-  /* Start with a fresh include table for the next objfile.  */
-  if (inclTable)
-    {
-      xfree (inclTable);
-      inclTable = NULL;
-      delete main_subfile;
-    }
-  inclIndx = inclLength = inclDepth = 0;
 }
 
 /* Swap raw symbol at *RAW and put the name in *NAME, the symbol in
@@ -359,8 +202,6 @@ scan_xcoff_symtab (struct objfile *objfile)
   struct internal_syment symbol;
   union internal_auxent main_aux[5];
   unsigned int ssymnum;
-
-  set_last_source_file (NULL);
 
   abfd = objfile->obfd.get ();
 
@@ -483,16 +324,11 @@ xcoff_initial_scan (struct objfile *objfile, symfile_add_flags symfile_flags)
   unsigned int size;
 
   info = XCOFF_DATA (objfile);
-  symfile_bfd = abfd = objfile->obfd.get ();
+  abfd = objfile->obfd.get ();
   name = objfile_name (objfile);
 
   num_symbols = bfd_get_symcount (abfd);	/* # of symbols */
   symtab_offset = obj_sym_filepos (abfd);	/* symbol table file offset */
-
-  info->min_lineno_offset = 0;
-  info->max_lineno_offset = 0;
-  for (asection *sec : gdb_bfd_sections (abfd))
-    find_linenos (abfd, sec, info);
 
   if (num_symbols > 0)
     {
@@ -600,13 +436,10 @@ static const struct sym_fns xcoff_sym_fns =
      xcoffread.c reads all the symbols and does in fact randomly access them
      (in C_BSTAT and line number processing).  */
 
-  xcoff_new_init,		/* init anything gbl to entire symtab */
   xcoff_symfile_init,		/* read initial info, setup for sym_read() */
   xcoff_initial_scan,		/* read a symbol file into symtab */
-  xcoff_symfile_finish,		/* finished with file, cleanup */
   xcoff_symfile_offsets,	/* xlate offsets ext->int form */
   default_symfile_segments,	/* Get segment information from a file.  */
-  aix_process_linenos,
   default_symfile_relocate,	/* Relocate a debug section.  */
   NULL,				/* sym_probe_fns */
 };

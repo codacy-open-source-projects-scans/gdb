@@ -935,8 +935,6 @@ syms_from_objfile_1 (struct objfile *objfile,
 	 If the user wants to get rid of them, they should do "symbol-file"
 	 without arguments first.  Not sure this is the best behavior
 	 (PR 2207).  */
-
-      (*objfile->sf->sym_new_init) (objfile);
     }
 
   /* Convert addr into an offset rather than an absolute address.
@@ -2554,11 +2552,6 @@ reread_symbols (int from_tty)
 
 	     Try to keep the freeing order compatible with free_objfile.  */
 
-	  if (objfile.sf != NULL)
-	    {
-	      (*objfile.sf->sym_finish) (&objfile);
-	    }
-
 	  objfile.registry_fields.clear_registry ();
 
 	  /* Clean up any state BFD has sitting around.  */
@@ -2617,14 +2610,6 @@ reread_symbols (int from_tty)
 	  objfile.qf.clear ();
 
 	  build_objfile_section_table (&objfile);
-
-	  /* What the hell is sym_new_init for, anyway?  The concept of
-	     distinguishing between the main file and additional files
-	     in this way seems rather dubious.  */
-	  if (&objfile == current_program_space->symfile_object_file)
-	    {
-	      (*objfile.sf->sym_new_init) (&objfile);
-	    }
 
 	  (*objfile.sf->sym_init) (&objfile);
 	  clear_complaints ();

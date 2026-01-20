@@ -152,7 +152,6 @@ struct buildsym_compunit
 		     const char *comp_dir_, enum language language_,
 		     CORE_ADDR last_addr, struct compunit_symtab *cust)
     : m_objfile (objfile_),
-      m_last_source_file (name == nullptr ? nullptr : xstrdup (name)),
       m_comp_dir (comp_dir_ == nullptr ? "" : comp_dir_),
       m_compunit_symtab (cust),
       m_language (language_),
@@ -164,33 +163,7 @@ struct buildsym_compunit
 
   DISABLE_COPY_AND_ASSIGN (buildsym_compunit);
 
-  void set_last_source_file (const char *name)
-  {
-    char *new_name = name == NULL ? NULL : xstrdup (name);
-    m_last_source_file.reset (new_name);
-  }
-
-  const char *get_last_source_file ()
-  {
-    return m_last_source_file.get ();
-  }
-
   struct macro_table *get_macro_table ();
-
-  struct macro_table *release_macros ()
-  {
-    struct macro_table *result = m_pending_macros;
-    m_pending_macros = nullptr;
-    return result;
-  }
-
-  /* This function is called to discard any pending blocks.  */
-
-  void free_pending_blocks ()
-  {
-    m_pending_block_obstack.clear ();
-    m_pending_blocks = nullptr;
-  }
 
   struct block *finish_block (struct symbol *symbol,
 			      struct pending_block *old_blocks,
@@ -210,35 +183,12 @@ struct buildsym_compunit
      existing subfiles).  It can be equal to NAME if NAME follows that rule.  */
   void start_subfile (const char *name, const char *name_for_id);
 
-  /* Same as above, but passes NAME for NAME_FOR_ID.  */
-
-  void start_subfile (const char *name)
-  {
-    return start_subfile (name, name);
-  }
-
-  void patch_subfile_names (struct subfile *subfile, const char *name);
-
-  void push_subfile ();
-
-  const char *pop_subfile ();
-
   void record_line (struct subfile *subfile, int line, unrelocated_addr pc,
 		    linetable_entry_flags flags);
 
   struct compunit_symtab *get_compunit_symtab ()
   {
     return m_compunit_symtab;
-  }
-
-  void set_last_source_start_addr (CORE_ADDR addr)
-  {
-    m_last_source_start_addr = addr;
-  }
-
-  CORE_ADDR get_last_source_start_addr ()
-  {
-    return m_last_source_start_addr;
   }
 
   struct using_direct **get_local_using_directives ()
@@ -341,11 +291,6 @@ private:
   /* The subfile of the main source file.  */
   struct subfile *m_main_subfile = nullptr;
 
-  /* Name of source file whose symbol data we are now processing.  This
-     comes from a symbol of type N_SO for stabs.  For DWARF it comes
-     from the DW_AT_name attribute of a DW_TAG_compile_unit DIE.  */
-  gdb::unique_xmalloc_ptr<char> m_last_source_file;
-
   /* E.g., DW_AT_comp_dir if DWARF.  Space for this is malloc'd.  */
   std::string m_comp_dir;
 
@@ -374,9 +319,9 @@ private:
      empty symtab from being tossed.  */
   bool m_have_line_numbers = false;
 
-  /* Core address of start of text of current source file.  This too
-     comes from the N_SO symbol.  For Dwarf it typically comes from the
-     DW_AT_low_pc attribute of a DW_TAG_compile_unit DIE.  */
+  /* Core address of start of text of current source file.  For DWARF it
+     typically comes from the DW_AT_low_pc attribute of a
+     DW_TAG_compile_unit DIE.  */
   CORE_ADDR m_last_source_start_addr;
 
   /* Stack of subfile names.  */
@@ -426,7 +371,10 @@ private:
 
 using buildsym_compunit_up = std::unique_ptr<buildsym_compunit>;
 
-extern void add_symbol_to_list (symbol *symbol,
-				std::vector<struct symbol *> &list);
+static inline
+void add_symbol_to_list (symbol *symbol, std::vector<struct symbol *> &list)
+{
+  list.push_back (symbol);
+}
 
 #endif /* GDB_BUILDSYM_H */

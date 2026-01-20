@@ -402,36 +402,35 @@ post_create_inferior (int from_tty, bool set_pspace_solib_ops)
       (gdbarch_make_solib_ops (current_inferior ()->arch (),
 			       current_program_space));
 
-  if (current_program_space->exec_bfd ())
-    {
-      const unsigned solib_add_generation
-	= current_program_space->solib_add_generation;
+  {
+    const unsigned solib_add_generation
+      = current_program_space->solib_add_generation;
 
-      scoped_restore restore_in_initial_library_scan
-	= make_scoped_restore (&current_inferior ()->in_initial_library_scan,
-			       true);
+    scoped_restore restore_in_initial_library_scan
+      = make_scoped_restore (&current_inferior ()->in_initial_library_scan,
+			     true);
 
-      /* Create the hooks to handle shared library load and unload
-	 events.  */
-      solib_create_inferior_hook (from_tty);
+    /* Create the hooks to handle shared library load and unload
+       events.  */
+    solib_create_inferior_hook (from_tty);
 
-      if (current_program_space->solib_add_generation == solib_add_generation)
-	{
-	  /* The platform-specific hook should load initial shared libraries,
-	     but didn't.  FROM_TTY will be incorrectly 0 but such solib
-	     targets should be fixed anyway.  Call it only after the solib
-	     target has been initialized by solib_create_inferior_hook.  */
+    if (current_program_space->solib_add_generation == solib_add_generation)
+      {
+	/* The platform-specific hook should load initial shared libraries,
+	   but didn't.  FROM_TTY will be incorrectly 0 but such solib
+	   targets should be fixed anyway.  Call it only after the solib
+	   target has been initialized by solib_create_inferior_hook.  */
 
-	  if (info_verbose)
-	    warning (_("platform-specific solib_create_inferior_hook did "
-		       "not load initial shared libraries."));
+	if (info_verbose)
+	  warning (_("platform-specific solib_create_inferior_hook did "
+		     "not load initial shared libraries."));
 
-	  /* If the solist is global across processes, there's no need to
-	     refetch it here.  */
-	  if (!gdbarch_has_global_solist (current_inferior ()->arch ()))
-	    solib_add (nullptr, 0, auto_solib_add);
-	}
-    }
+	/* If the solist is global across processes, there's no need to
+	   refetch it here.  */
+	if (!gdbarch_has_global_solist (current_inferior ()->arch ()))
+	  solib_add (nullptr, 0, auto_solib_add);
+      }
+  }
 
   /* If the user sets watchpoints before execution having started,
      then she gets software watchpoints, because GDB can't know which
@@ -1254,10 +1253,11 @@ jump_command (const char *arg, int from_tty)
 					  find_pc_mapped_section (sal.pc));
   if (fn != nullptr && sfn != fn)
     {
-      if (!query (_("Line %ps is not in `%s'.  Jump anyway? "),
+      if (!query (_("Line %ps is not in `%ps'.  Jump anyway? "),
 		  styled_string (line_number_style.style (),
 				 pulongest (sal.line)),
-		  fn->print_name ()))
+		  styled_string (function_name_style.style (),
+				 fn->print_name ())))
 	{
 	  error (_("Not confirmed."));
 	  /* NOTREACHED */
@@ -1286,7 +1286,8 @@ jump_command (const char *arg, int from_tty)
   if (from_tty)
     {
       gdb_printf (_("Continuing at "));
-      gdb_puts (paddress (gdbarch, addr));
+      fputs_styled (paddress (gdbarch, addr), address_style.style (),
+		    gdb_stdout);
       gdb_printf (".\n");
     }
 

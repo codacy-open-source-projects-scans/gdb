@@ -16,10 +16,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "buildsym-legacy.h"
-#include "bfd.h"
+#include "buildsym.h"
 #include "gdbsupport/gdb_obstack.h"
-#include "gdbsupport/pathstuff.h"
 #include "symtab.h"
 #include "symfile.h"
 #include "objfiles.h"
@@ -28,7 +26,6 @@
 #include "expression.h"
 #include "filenames.h"
 #include "macrotab.h"
-#include "demangle.h"
 #include "block.h"
 #include "cp-support.h"
 #include "dictionary.h"
@@ -50,7 +47,6 @@ buildsym_compunit::buildsym_compunit (struct objfile *objfile_,
 				      enum language language_,
 				      CORE_ADDR last_addr)
   : m_objfile (objfile_),
-    m_last_source_file (name == nullptr ? nullptr : xstrdup (name)),
     m_comp_dir (comp_dir_ == nullptr ? "" : comp_dir_),
     m_owned_compunit_symtab (std::make_unique<compunit_symtab> (m_objfile, name)),
     m_compunit_symtab (m_owned_compunit_symtab.get ()),
@@ -93,20 +89,6 @@ buildsym_compunit::get_macro_table ()
 					&m_objfile->per_bfd->string_cache,
 					m_compunit_symtab);
   return m_pending_macros;
-}
-
-/* Maintain the lists of symbols and blocks.  */
-
-/* Add a symbol to one of the lists of symbols.  */
-
-void
-add_symbol_to_list (symbol *symbol, std::vector<struct symbol *> &list)
-{
-  /* If this is an alias for another symbol, don't add it.  */
-  if (symbol->linkage_name () && symbol->linkage_name ()[0] == '#')
-    return;
-
-  list.push_back (symbol);
 }
 
 /* Record BLOCK on the list of all blocks in the file.  Put it after
@@ -377,7 +359,9 @@ buildsym_compunit::make_blockvector ()
   for (next = m_pending_blocks; next; next = next->next)
     blockvector->set_block (--i, next->block);
 
-  free_pending_blocks ();
+  /* Finished with the pending blocks now.  */
+  m_pending_block_obstack.clear ();
+  m_pending_blocks = nullptr;
 
   /* If we needed an address map for this symtab, record it in the
      blockvector.  */
@@ -482,74 +466,6 @@ buildsym_compunit::start_subfile (const char *name, const char *name_for_id)
   m_subfiles = subfile.release ();
 }
 
-/* For stabs readers, the first N_SO symbol is assumed to be the
-   source file name, and the subfile struct is initialized using that
-   assumption.  If another N_SO symbol is later seen, immediately
-   following the first one, then the first one is assumed to be the
-   directory name and the second one is really the source file name.
-
-   So we have to patch up the subfile struct by moving the old name
-   value to dirname and remembering the new name.  Some sanity
-   checking is performed to ensure that the state of the subfile
-   struct is reasonable and that the old name we are assuming to be a
-   directory name actually is (by checking for a trailing '/').  */
-
-void
-buildsym_compunit::patch_subfile_names (struct subfile *subfile,
-					const char *name)
-{
-  if (subfile != NULL
-      && m_comp_dir.empty ()
-      && !subfile->name.empty ()
-      && IS_DIR_SEPARATOR (subfile->name.back ()))
-    {
-      m_comp_dir = std::move (subfile->name);
-      subfile->name = name;
-      subfile->name_for_id = name;
-      set_last_source_file (name);
-
-      /* Default the source language to whatever can be deduced from
-	 the filename.  If nothing can be deduced (such as for a C/C++
-	 include file with a ".h" extension), then inherit whatever
-	 language the previous subfile had.  This kludgery is
-	 necessary because there is no standard way in some object
-	 formats to record the source language.  Also, when symtabs
-	 are allocated we try to deduce a language then as well, but
-	 it is too late for us to use that information while reading
-	 symbols, since symtabs aren't allocated until after all the
-	 symbols have been processed for a given source file.  */
-
-      subfile->language
-	= deduce_language_from_filename (subfile->name.c_str ());
-      if (subfile->language == language_unknown
-	  && subfile->next != NULL)
-	{
-	  subfile->language = subfile->next->language;
-	}
-    }
-}
-
-/* Handle the N_BINCL and N_EINCL symbol types that act like N_SOL for
-   switching source files (different subfiles, as we call them) within
-   one object file, but using a stack rather than in an arbitrary
-   order.  */
-
-void
-buildsym_compunit::push_subfile ()
-{
-  gdb_assert (m_current_subfile != NULL);
-  gdb_assert (!m_current_subfile->name.empty ());
-  m_subfile_stack.push_back (m_current_subfile->name.c_str ());
-}
-
-const char *
-buildsym_compunit::pop_subfile ()
-{
-  gdb_assert (!m_subfile_stack.empty ());
-  const char *name = m_subfile_stack.back ();
-  m_subfile_stack.pop_back ();
-  return name;
-}
 
 /* Add a linetable entry for line number LINE and address PC to the
    line vector for SUBFILE.  */
@@ -880,7 +796,8 @@ buildsym_compunit::end_compunit_symtab_from_static_block
 
   blockvector->global_block ()->set_compunit (cu);
 
-  cu->set_macro_table (release_macros ());
+  cu->set_macro_table (m_pending_macros);
+  m_pending_macros = nullptr;
 
   /* Default any symbols without a specified symtab to the primary symtab.  */
   {

@@ -1,11 +1,11 @@
-# name: EABI build attributes: some files missing Tag_Feature_BTI, but -z force-bti means that the output has Tag_Feature_BTI=0x1
+# name: EABI build attributes: unknown tag in one of the input files triggers a warning, and is discarded without impacting Tag_Feature_BTI marking
 # source: ba-aarch64-1-bti-1.s
 # source: ba-aarch64-1-unknown-tag.s
 # source: ba-aarch64-1-bti-via-gnu-props.s
 # source: ba-aarch64-1-bti-2.s
 # as: -defsym __property_bti__=1
 # ld: -shared -T bti-plt.ld
-#warning: \A[^\n]*ba-aarch64-1-unknown-tag\.o: warning: cannot merge unknown tag 'Tag_unknown_4' \(=0x1\) in subsection 'aeabi_feature_and_bits'\.
+#warning: \A[^\n]*ba-aarch64-1-unknown-tag\.o: warning: cannot merge unknown tag 'Tag_unknown_4' \(=0x1\) in subsection 'aeabi_feature_and_bits'
 # readelf: --arch-specific
 
 Subsections:

@@ -5075,6 +5075,7 @@ parse_sys_ins_reg (char **str, htab_t sys_ins_regs, bool sysreg128_p)
   char *p, *q;
   char buf[AARCH64_MAX_SYSREG_NAME_LEN];
   const aarch64_sys_ins_reg *o;
+  aarch64_feature_set set;
 
   p = buf;
   for (q = *str; ISALNUM (*q) || *q == '_'; q++)
@@ -5092,7 +5093,19 @@ parse_sys_ins_reg (char **str, htab_t sys_ins_regs, bool sysreg128_p)
   if (!o || (sysreg128_p && !aarch64_sys_reg_128bit_p (o->flags)))
     return NULL;
 
-  if (!aarch64_sys_ins_reg_supported_p (cpu_variant, o->name, &o->features))
+  set = o->features;
+  if (*q == '\0' && aarch64_sys_ins_reg_tlbid_xt (o))
+    {
+      aarch64_feature_set feat = AARCH64_FEATURE (TLBID);
+      AARCH64_CLEAR_FEATURES (set, set, feat);
+    }
+  if (!sysreg128_p && aarch64_sys_ins_reg_has_xt (o))
+    {
+      aarch64_feature_set feat = AARCH64_FEATURES (2, D128_TLBID, D128);
+      AARCH64_CLEAR_FEATURES (set, set, feat);
+    }
+
+  if (!aarch64_sys_ins_reg_supported_p (cpu_variant, o->name, &set))
     as_bad (_("selected processor does not support system register "
 	      "name '%s'"), buf);
   if (aarch64_sys_reg_deprecated_p (o->flags))
@@ -10884,6 +10897,7 @@ static const struct aarch64_arch_option_table aarch64_archs[] = {
   {"armv9.4-a",	AARCH64_ARCH_FEATURES (V9_4A)},
   {"armv9.5-a", AARCH64_ARCH_FEATURES (V9_5A)},
   {"armv9.6-a", AARCH64_ARCH_FEATURES (V9_6A)},
+  {"armv9.7-a", AARCH64_ARCH_FEATURES (V9_7A)},
   {NULL, AARCH64_NO_FEATURES}
 };
 
@@ -11022,13 +11036,14 @@ static const struct aarch64_option_cpu_value_table aarch64_features[] = {
   {"mops-go",		AARCH64_FEATURE (MOPS_GO),
 			AARCH64_FEATURES (2, MOPS, MEMTAG)},
   {"sve2p3",		AARCH64_FEATURE (SVE2p3), AARCH64_FEATURE (SVE2p2)},
-  {"sme2p3",		AARCH64_FEATURE (SME2p3), AARCH64_FEATURES (2, SME2p2, SME_LUTv2)},
-  {"f16f32dot",		AARCH64_FEATURE (F16F32DOT), AARCH64_FEATURE (SIMD)},
+  {"sme2p3",		AARCH64_FEATURE (SME2p3), AARCH64_FEATURE (SME2p2)},
+  {"f16f32dot",		AARCH64_FEATURE (F16F32DOT), AARCH64_FEATURES (2, SIMD, F16)},
   {"f16f32mm",		AARCH64_FEATURE (F16F32MM), AARCH64_FEATURES (2, SIMD, F16)},
   {"f16mm",		AARCH64_FEATURE (F16MM), AARCH64_FEATURES (2, SIMD, F16)},
   {"sve-b16mm",		AARCH64_FEATURE (SVE_B16MM), AARCH64_FEATURE (SVE)},
   {"mpamv2",		AARCH64_FEATURE (MPAMv2), AARCH64_NO_FEATURES},
   {"mtetc",		AARCH64_FEATURE (MTETC), AARCH64_FEATURE (MEMTAG)},
+  {"tlbid",		AARCH64_FEATURE (TLBID), AARCH64_NO_FEATURES},
   {NULL,		AARCH64_NO_FEATURES, AARCH64_NO_FEATURES},
 };
 
@@ -11064,6 +11079,8 @@ static const struct aarch64_virtual_dependency_table aarch64_dependencies[] = {
   {AARCH64_FEATURE (SME2p2), AARCH64_FEATURES (2, SVE_SME2p2, SVE2p2_SME2p2)},
   {AARCH64_FEATURE (SVE2p3), AARCH64_FEATURE (SVE2p3_SME2p3)},
   {AARCH64_FEATURE (SME2p3), AARCH64_FEATURE (SVE2p3_SME2p3)},
+  {AARCH64_FEATURE (D128), AARCH64_FEATURE (D128_TLBID)},
+  {AARCH64_FEATURE (TLBID), AARCH64_FEATURE (D128_TLBID)},
 };
 
 static aarch64_feature_set

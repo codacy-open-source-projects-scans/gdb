@@ -218,18 +218,29 @@ write_dependency_file (void)
 
   fclose (out);
 }
+
+static void
+free_dependency_files (void)
+{
+  struct dependency_file *dep, *next;
+
+  for (dep = dependency_files; dep != NULL; dep = next)
+    {
+      next = dep->next;
+      free (dep->name);
+      free (dep);
+    }
+  dependency_files = dependency_files_tail = NULL;
+}
 
 static void
 ld_cleanup (void)
 {
-  bfd *ibfd, *inext;
   if (link_info.output_bfd)
     bfd_close_all_done (link_info.output_bfd);
-  for (ibfd = link_info.input_bfds; ibfd; ibfd = inext)
-    {
-      inext = ibfd->link.next;
-      bfd_close_all_done (ibfd);
-    }
+
+  lang_cleanup ();
+
   /* Note - we do not call ld_plugin_start (PHASE_PLUGINS) here as this
      function is only called when the linker is exiting - ie after any
      stats may have been reported, and potentially in the middle of a
@@ -1010,6 +1021,7 @@ main (int argc, char **argv)
 
   if (config.dependency_file != NULL)
     write_dependency_file ();
+  free_dependency_files ();
 
   /* Even if we're producing relocatable output, some non-fatal errors should
      be reported in the exit status.  (What non-fatal errors, if any, do we

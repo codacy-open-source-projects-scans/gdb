@@ -426,7 +426,7 @@ initialize_block_iterator (const struct block *block,
      functions.  If there are no included symtabs, we only need to
      search a single block, so we might as well just do that
      directly.  */
-  if (cu->includes == NULL)
+  if (cu->includes.empty ())
     {
       iter->d.block = block;
       /* A signal value meaning that we're iterating over a single
@@ -440,15 +440,21 @@ initialize_block_iterator (const struct block *block,
     }
 }
 
-/* A helper function that finds the current compunit over whose static
-   or global block we should iterate.  */
+/* See block.h.  */
 
-static struct compunit_symtab *
-find_iterator_compunit_symtab (struct block_iterator *iterator)
+compunit_symtab *
+block_iterator::compunit_symtab () const
 {
-  if (iterator->idx == -1)
-    return iterator->d.compunit_symtab;
-  return iterator->d.compunit_symtab->includes[iterator->idx];
+  if (this->idx == -1)
+    return this->d.compunit_symtab;
+
+  auto &includes = this->d.compunit_symtab->includes;
+
+  if (this->idx < includes.size ())
+    return includes[this->idx];
+
+  /* Iteration is complete.  */
+  return nullptr;
 }
 
 /* Perform a single step for a plain block iterator, iterating across
@@ -456,7 +462,7 @@ find_iterator_compunit_symtab (struct block_iterator *iterator)
    iteration is complete.  */
 
 static struct symbol *
-block_iterator_step (struct block_iterator *iterator, int first)
+block_iterator_step (struct block_iterator *iterator, bool first)
 {
   struct symbol *sym;
 
@@ -466,8 +472,7 @@ block_iterator_step (struct block_iterator *iterator, int first)
     {
       if (first)
 	{
-	  struct compunit_symtab *cust
-	    = find_iterator_compunit_symtab (iterator);
+	  compunit_symtab *cust = iterator->compunit_symtab ();
 	  const struct block *block;
 
 	  /* Iteration is complete.  */
@@ -498,7 +503,7 @@ block_iterator_step (struct block_iterator *iterator, int first)
 
 static struct symbol *
 block_iter_match_step (struct block_iterator *iterator,
-		       int first)
+		       bool first)
 {
   struct symbol *sym;
 
@@ -508,8 +513,7 @@ block_iter_match_step (struct block_iterator *iterator,
     {
       if (first)
 	{
-	  struct compunit_symtab *cust
-	    = find_iterator_compunit_symtab (iterator);
+	  compunit_symtab *cust = iterator->compunit_symtab ();
 	  const struct block *block;
 
 	  /* Iteration is complete.  */
@@ -549,14 +553,14 @@ block_iterator_first (const struct block *block,
 	return mdict_iterator_first (block->multidict (),
 				     &iterator->mdict_iter);
 
-      return block_iterator_step (iterator, 1);
+      return block_iterator_step (iterator, true);
     }
 
   if (iterator->which == FIRST_LOCAL_BLOCK)
     return mdict_iter_match_first (block->multidict (), *name,
 				   &iterator->mdict_iter);
 
-  return block_iter_match_step (iterator, 1);
+  return block_iter_match_step (iterator, true);
 }
 
 /* See block.h.  */
@@ -569,13 +573,13 @@ block_iterator_next (struct block_iterator *iterator)
       if (iterator->which == FIRST_LOCAL_BLOCK)
 	return mdict_iterator_next (&iterator->mdict_iter);
 
-      return block_iterator_step (iterator, 0);
+      return block_iterator_step (iterator, false);
     }
 
   if (iterator->which == FIRST_LOCAL_BLOCK)
     return mdict_iter_match_next (*iterator->name, &iterator->mdict_iter);
 
-  return block_iter_match_step (iterator, 0);
+  return block_iter_match_step (iterator, false);
 }
 
 /* See block.h.  */

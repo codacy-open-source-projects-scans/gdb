@@ -1,6 +1,6 @@
-/* Copyright 2021-2026 Free Software Foundation, Inc.
+/* This testcase is part of GDB, the GNU debugger.
 
-   This file is part of GDB.
+   Copyright 2024-2026 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -20,16 +20,25 @@
 #include "rocm-test-utils.h"
 
 __global__ void
-kernel ()
+set_val (int *p, int v)
 {
-  int *p = nullptr;
-  *p = 1;
+  *p = v;
 }
 
 int
-main (int argc, char* argv[])
+main ()
 {
-  kernel<<<1, 1>>> ();
+  int *v;
+  CHECK (hipMalloc (&v, sizeof (*v)));
+
+  /* First dispatch to initialize the memory.  */
+  set_val<<<1, 1>>> (v, 64);
   CHECK (hipDeviceSynchronize ());
+
+  /* Break here.  */
+  set_val<<<1, 1>>> (v, 8);
+
+  CHECK (hipDeviceSynchronize ());
+
   return 0;
 }

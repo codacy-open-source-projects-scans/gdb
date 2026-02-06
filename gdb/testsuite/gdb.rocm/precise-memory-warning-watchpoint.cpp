@@ -1,6 +1,6 @@
-/* Copyright 2021-2026 Free Software Foundation, Inc.
+/* This testcase is part of GDB, the GNU debugger.
 
-   This file is part of GDB.
+   Copyright 2021-2026 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -20,16 +20,24 @@
 #include "rocm-test-utils.h"
 
 __global__ void
-kernel ()
+kernel (int *ptr)
 {
-  int *p = nullptr;
-  *p = 1;
+  for (int i = 0; i < 1000; ++i)
+    (*ptr)++;
 }
+
+int *global_ptr;
 
 int
 main (int argc, char* argv[])
 {
-  kernel<<<1, 1>>> ();
+  CHECK (hipMalloc (&global_ptr, sizeof (int)));
+  CHECK (hipMemset (global_ptr, 0, sizeof (int)));
+
+  /* Break here.  */
+  hipLaunchKernelGGL (kernel, dim3 (1), dim3 (1), 0, 0, global_ptr);
   CHECK (hipDeviceSynchronize ());
+
+  CHECK (hipFree (global_ptr));
   return 0;
 }

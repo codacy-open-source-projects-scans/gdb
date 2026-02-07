@@ -407,8 +407,6 @@ initialize_block_iterator (const struct block *block,
     which = STATIC_BLOCK;
   else
     {
-      iter->d.block = block;
-
       /* A signal value meaning that we're iterating over a single
 	 block.  */
       iter->which = FIRST_LOCAL_BLOCK;
@@ -428,14 +426,13 @@ initialize_block_iterator (const struct block *block,
      directly.  */
   if (cu->includes.empty ())
     {
-      iter->d.block = block;
       /* A signal value meaning that we're iterating over a single
 	 block.  */
       iter->which = FIRST_LOCAL_BLOCK;
     }
   else
     {
-      iter->d.compunit_symtab = cu;
+      iter->compunit_symtab_ = cu;
       iter->which = which;
     }
 }
@@ -445,10 +442,14 @@ initialize_block_iterator (const struct block *block,
 compunit_symtab *
 block_iterator::compunit_symtab () const
 {
-  if (this->idx == -1)
-    return this->d.compunit_symtab;
+  /* The compunit field is only used when iterating over global or static
+     blocks.  */
+  gdb_assert (this->which != FIRST_LOCAL_BLOCK);
 
-  auto &includes = this->d.compunit_symtab->includes;
+  if (this->idx == -1)
+    return this->compunit_symtab_;
+
+  auto &includes = this->compunit_symtab_->includes;
 
   if (this->idx < includes.size ())
     return includes[this->idx];

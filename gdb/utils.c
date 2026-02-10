@@ -1640,7 +1640,8 @@ pager_file::check_for_overfull_line (const unsigned int lines_allowed)
 	 this loop, so we must continue to check it here.  */
       if (pagination_enabled
 	  && !pagination_disabled_for_command
-	  && lines_printed >= lines_allowed)
+	  && lines_printed >= lines_allowed
+	  && m_stream->can_page ())
 	{
 	  prompt_for_continue ();
 	  did_paginate = true;
@@ -1670,6 +1671,13 @@ pager_file::check_for_overfull_line (const unsigned int lines_allowed)
       else if (did_paginate)
 	this->emit_style_escape (save_style);
     }
+}
+
+void
+pager_file::vprintf (const char *format, va_list args)
+{
+  ui_out_flags flags = disallow_ui_out_field;
+  cli_ui_out (this, flags).vmessage (m_applied_style, format, args);
 }
 
 void
@@ -1713,7 +1721,8 @@ pager_file::puts (const char *linebuffer)
 	 it here.  */
       if (pagination_enabled
 	  && !pagination_disabled_for_command
-	  && lines_printed >= lines_allowed)
+	  && lines_printed >= lines_allowed
+	  && m_stream->can_page ())
 	prompt_for_continue ();
 
       while (*linebuffer != '\0' && *linebuffer != '\n')
@@ -1838,7 +1847,7 @@ static void
 test_pager ()
 {
   string_file *strfile = new string_file ();
-  pager_file pager (strfile);
+  pager_file pager { ui_file_up (strfile) };
 
   /* Make sure the pager is disabled.  */
   scoped_restore save_enabled
@@ -1921,22 +1930,20 @@ fputs_highlighted (const char *str, const compiled_regex &highlight,
       size_t n_highlight = pmatch.rm_eo - pmatch.rm_so;
 
       /* Output the part before pmatch with current style.  */
-      while (pmatch.rm_so > 0)
+      if (pmatch.rm_so > 0)
 	{
-	  gdb_putc (*str, stream);
-	  pmatch.rm_so--;
-	  str++;
+	  stream->write (str, pmatch.rm_so);
+	  str += pmatch.rm_so;
 	}
 
       /* Output pmatch with the highlight style.  */
-      stream->emit_style_escape (highlight_style.style ());
-      while (n_highlight > 0)
+      if (n_highlight > 0)
 	{
-	  gdb_putc (*str, stream);
-	  n_highlight--;
-	  str++;
+	  stream->emit_style_escape (highlight_style.style ());
+	  stream->write (str, n_highlight);
+	  str += n_highlight;
+	  stream->emit_style_escape (ui_file_style ());
 	}
-      stream->emit_style_escape (ui_file_style ());
     }
 
   /* Output the trailing part of STR not matching HIGHLIGHT.  */

@@ -1,6 +1,4 @@
-/* Copyright (C) 2023-2026 Free Software Foundation, Inc.
-
-   This file is part of GDB.
+/* Copyright 2026 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,21 +13,32 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "gdbsupport/common-defs.h"
-#include "gdbsupport/remote-args.h"
-#include "gdbsupport/common-inferior.h"
-#include "gdbsupport/buildargv.h"
+volatile int global_var = 0;
 
-/* See remote-args.h.  */
-
-std::vector<std::string>
-gdb::remote_args::split (const std::string &args)
+void
+callee (void)
 {
-  std::vector<std::string> results;
+  asm ("callee_label: .globl callee_label");
+  ++global_var;
+}
 
-  gdb_argv argv (args.c_str ());
-  for (int i = 0; argv[i] != nullptr; i++)
-    results.emplace_back (argv[i]);
+/* When we generate the DWARF with the DWARF assembler, we split caller in
+   half.  Everything up to the 'callee ();' call is left as caller, and
+   everything after that becomes dummy_func.  */
 
-  return results;
+void
+caller (void)
+{
+  asm ("caller_label: .globl caller_label");
+  callee ();
+  ++global_var;
+  ++global_var;
+}
+
+int
+main (void)
+{
+  asm ("main_label: .globl main_label");
+  caller ();
+  return 0;
 }

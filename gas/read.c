@@ -3200,12 +3200,12 @@ do_repeat (size_t count, const char *start, const char *end,
 {
   sb one;
   sb many;
+  size_t total, limit;
+  unsigned int line;
+  const char *file = as_where_top (&line);
 
-  if (count > 0x7fffffff)
-    {
-      as_bad (_("excessive count %zu for %s - ignored"), count, start);
-      count = 0;
-    }
+  demand_empty_rest_of_line ();
+  --input_line_pointer;
 
   sb_new (&one);
   if (!buffer_and_nest (start, end, &one, get_non_macro_line_sb))
@@ -3216,6 +3216,14 @@ do_repeat (size_t count, const char *start, const char *end,
     }
 
   sb_terminate (&one);
+
+  limit = (size_t) LONG_MAX < 0xffffffff ? (size_t) LONG_MAX : 0xffffffff;
+  if (gas_mul_overflow (count, one.len, &total) || total > limit)
+    {
+      as_bad_where (file, line,
+		    _("excessive count %zu for %s - ignored"), count, start);
+      count = 1;
+    }
 
   if (expander != NULL && !*expander && strstr (one.ptr, "\\+") != NULL)
     {

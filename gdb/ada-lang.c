@@ -94,8 +94,6 @@ static struct type *desc_index_type (struct type *, int);
 
 static int desc_arity (struct type *);
 
-static int ada_args_match (struct symbol *, struct value **, int);
-
 static struct value *make_array_descriptor (struct type *, struct value *);
 
 static void ada_add_block_symbols (std::vector<struct block_symbol> &,
@@ -114,17 +112,9 @@ static void add_defn_to_vec (std::vector<struct block_symbol> &,
 			     struct symbol *,
 			     const struct block *);
 
-static int possible_user_operator_p (enum exp_opcode, struct value **);
+static bool possible_user_operator_p (enum exp_opcode, struct value **);
 
 static const char *ada_decoded_op_name (enum exp_opcode);
-
-static int numeric_type_p (struct type *);
-
-static int integer_type_p (struct type *);
-
-static int scalar_type_p (struct type *);
-
-static int discrete_type_p (struct type *);
 
 static struct type *ada_lookup_struct_elt_type (struct type *, const char *,
 						int, int);
@@ -155,7 +145,7 @@ static long decode_packed_array_bitsize (struct type *);
 
 static struct value *decode_constrained_packed_array (struct value *);
 
-static int ada_is_unconstrained_packed_array_type (struct type *);
+static bool ada_is_unconstrained_packed_array_type (struct type *);
 
 static struct value *value_subscript_packed (struct value *, int,
 					     struct value **);
@@ -2311,27 +2301,26 @@ ada_is_gnat_encoded_packed_array_type  (struct type *type)
     && strstr (ada_type_name (type), "___XP") != NULL;
 }
 
-/* Non-zero iff TYPE represents a standard GNAT constrained
-   packed-array type.  */
+/* See ada-lang.h.  */
 
-int
+bool
 ada_is_constrained_packed_array_type (struct type *type)
 {
-  return ada_is_gnat_encoded_packed_array_type (type)
-    && !ada_is_array_descriptor_type (type);
+  return (ada_is_gnat_encoded_packed_array_type (type)
+	  && !ada_is_array_descriptor_type (type));
 }
 
-/* Non-zero iff TYPE represents an array descriptor for a
-   unconstrained packed-array type.  */
+/* True iff TYPE represents an array descriptor for a unconstrained
+   packed-array type.  */
 
-static int
+static bool
 ada_is_unconstrained_packed_array_type (struct type *type)
 {
   if (!ada_is_array_descriptor_type (type))
-    return 0;
+    return false;
 
   if (ada_is_gnat_encoded_packed_array_type (type))
-    return 1;
+    return true;
 
   /* If we saw GNAT encodings, then the above code is sufficient.
      However, with minimal encodings, we will just have a thick
@@ -2349,7 +2338,7 @@ ada_is_unconstrained_packed_array_type (struct type *type)
       return type->field (0).bitsize () > 0;
     }
 
-  return 0;
+  return false;
 }
 
 /* Return true if TYPE is a (Gnat-encoded) constrained packed array
@@ -4063,12 +4052,12 @@ ada_type_match (struct type *ftype, struct type *atype)
     }
 }
 
-/* Return non-zero if the formals of FUNC "sufficiently match" the
+/* Return true if the formals of FUNC "sufficiently match" the
    vector of actual argument types ACTUALS of size N_ACTUALS.  FUNC
    may also be an enumeral, in which case it is treated as a 0-
    argument function.  */
 
-static int
+static bool
 ada_args_match (struct symbol *func, struct value **actuals, int n_actuals)
 {
   int i;
@@ -4078,46 +4067,46 @@ ada_args_match (struct symbol *func, struct value **actuals, int n_actuals)
       && func_type->code () == TYPE_CODE_ENUM)
     return (n_actuals == 0);
   else if (func_type == NULL || func_type->code () != TYPE_CODE_FUNC)
-    return 0;
+    return false;
 
   if (func_type->num_fields () != n_actuals)
-    return 0;
+    return false;
 
   for (i = 0; i < n_actuals; i += 1)
     {
       if (actuals[i] == NULL)
-	return 0;
+	return false;
       else
 	{
 	  struct type *ftype = ada_check_typedef (func_type->field (i).type ());
 	  struct type *atype = ada_check_typedef (actuals[i]->type ());
 
 	  if (!ada_type_match (ftype, atype))
-	    return 0;
+	    return false;
 	}
     }
-  return 1;
+  return true;
 }
 
 /* False iff function type FUNC_TYPE definitely does not produce a value
-   compatible with type CONTEXT_TYPE.  Conservatively returns 1 if
+   compatible with type CONTEXT_TYPE.  Conservatively returns true if
    FUNC_TYPE is not a valid function type with a non-null return type
    or an enumerated type.  A null CONTEXT_TYPE indicates any non-void type.  */
 
-static int
+static bool
 return_match (struct type *func_type, struct type *context_type)
 {
   struct type *return_type;
 
   if (func_type == NULL)
-    return 1;
+    return true;
 
   if (func_type->code () == TYPE_CODE_FUNC)
     return_type = get_base_type (func_type->target_type ());
   else
     return_type = get_base_type (func_type);
   if (return_type == NULL)
-    return 1;
+    return true;
 
   context_type = get_base_type (context_type);
 
@@ -4192,11 +4181,11 @@ ada_resolve_function (std::vector<struct block_symbol> &syms,
 /* True iff TYPE is numeric (i.e., an INT, RANGE (of numeric type),
    or FLOAT).  */
 
-static int
+static bool
 numeric_type_p (struct type *type)
 {
   if (type == NULL)
-    return 0;
+    return false;
   else
     {
       switch (type->code ())
@@ -4204,45 +4193,45 @@ numeric_type_p (struct type *type)
 	case TYPE_CODE_INT:
 	case TYPE_CODE_FLT:
 	case TYPE_CODE_FIXED_POINT:
-	  return 1;
+	  return true;
 	case TYPE_CODE_RANGE:
 	  return (type == type->target_type ()
 		  || numeric_type_p (type->target_type ()));
 	default:
-	  return 0;
+	  return false;
 	}
     }
 }
 
 /* True iff TYPE is integral (an INT or RANGE of INTs).  */
 
-static int
+static bool
 integer_type_p (struct type *type)
 {
   if (type == NULL)
-    return 0;
+    return false;
   else
     {
       switch (type->code ())
 	{
 	case TYPE_CODE_INT:
-	  return 1;
+	  return true;
 	case TYPE_CODE_RANGE:
 	  return (type == type->target_type ()
 		  || integer_type_p (type->target_type ()));
 	default:
-	  return 0;
+	  return false;
 	}
     }
 }
 
 /* True iff TYPE is scalar (INT, RANGE, FLOAT, ENUM).  */
 
-static int
+static bool
 scalar_type_p (struct type *type)
 {
   if (type == NULL)
-    return 0;
+    return false;
   else
     {
       switch (type->code ())
@@ -4252,9 +4241,9 @@ scalar_type_p (struct type *type)
 	case TYPE_CODE_ENUM:
 	case TYPE_CODE_FLT:
 	case TYPE_CODE_FIXED_POINT:
-	  return 1;
+	  return true;
 	default:
-	  return 0;
+	  return false;
 	}
     }
 }
@@ -4263,11 +4252,11 @@ scalar_type_p (struct type *type)
    This essentially means one of (INT, RANGE, ENUM) -- but note that
    "enum" includes character and boolean as well.  */
 
-static int
+static bool
 discrete_type_p (struct type *type)
 {
   if (type == NULL)
-    return 0;
+    return false;
   else
     {
       switch (type->code ())
@@ -4277,18 +4266,18 @@ discrete_type_p (struct type *type)
 	case TYPE_CODE_ENUM:
 	case TYPE_CODE_BOOL:
 	case TYPE_CODE_CHAR:
-	  return 1;
+	  return true;
 	default:
-	  return 0;
+	  return false;
 	}
     }
 }
 
-/* Returns non-zero if OP with operands in the vector ARGS could be
+/* Returns true if OP with operands in the vector ARGS could be
    a user-defined function.  Errs on the side of pre-defined operators
-   (i.e., result 0).  */
+   (i.e., result false).  */
 
-static int
+static bool
 possible_user_operator_p (enum exp_opcode op, struct value *args[])
 {
   struct type *type0 =
@@ -4297,12 +4286,12 @@ possible_user_operator_p (enum exp_opcode op, struct value *args[])
     (args[1] == NULL) ? NULL : ada_check_typedef (args[1]->type ());
 
   if (type0 == NULL)
-    return 0;
+    return false;
 
   switch (op)
     {
     default:
-      return 0;
+      return false;
 
     case BINOP_ADD:
     case BINOP_SUB:
@@ -8284,7 +8273,7 @@ to_fixed_array_type (struct type *type0, struct value *dval,
 {
   struct type *index_type_desc;
   struct type *result;
-  int constrained_packed_array_p;
+  bool constrained_packed_array_p;
   static const char *xa_suffix = "___XA";
 
   type0 = ada_check_typedef (type0);
@@ -13250,6 +13239,8 @@ ada_exceptions_list_1 (compiled_regex *preg)
      runtime units that have been compiled without debugging info.  */
 
   ada_add_standard_exceptions (preg, &result);
+  if (!result.empty ())
+    sort_remove_dups_ada_exceptions_list (&result, 0);
 
   /* Next, find all exceptions whose scope is local and accessible
      from the currently selected frame.  */

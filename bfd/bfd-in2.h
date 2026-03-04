@@ -158,6 +158,22 @@ struct orl;
    ? (((bfd_vma) (this) + ((boundary) - 1)) & ~ (bfd_vma) ((boundary)-1)) \
    : ~ (bfd_vma) 0)
 
+/* Detect whether we are compiling with -fsanitize=address.  */
+#ifndef BFD_ASAN
+/* gcc.  */
+# if defined __SANITIZE_ADDRESS__
+#  define BFD_ASAN 1
+/* clang.  */
+# elif defined __has_feature
+#  if __has_feature(address_sanitizer)
+#   define BFD_ASAN 1
+#  endif
+# endif
+# ifndef BFD_ASAN
+#  define BFD_ASAN 0
+# endif
+#endif
+
 /* Return TRUE if the start of STR matches PREFIX, FALSE otherwise.  */
 
 static inline bool

@@ -827,6 +827,7 @@ linux_info_proc (struct gdbarch *gdbarch, const char *args,
   long pid;
   int cmdline_f = (what == IP_MINIMAL || what == IP_CMDLINE || what == IP_ALL);
   int cwd_f = (what == IP_MINIMAL || what == IP_CWD || what == IP_ALL);
+  int environ_f = (what == IP_ENVIRON || what == IP_ALL);
   int exe_f = (what == IP_MINIMAL || what == IP_EXE || what == IP_ALL);
   int mappings_f = (what == IP_MAPPINGS || what == IP_ALL);
   int status_f = (what == IP_STATUS || what == IP_ALL);
@@ -887,6 +888,30 @@ linux_info_proc (struct gdbarch *gdbarch, const char *args,
 	gdb_printf ("cwd = '%s'\n", contents->c_str ());
       else
 	warning (_("unable to read link '%s'"), filename);
+    }
+  if (environ_f)
+    {
+      xsnprintf (filename, sizeof filename, "/proc/%ld/environ", pid);
+      gdb_byte *buffer;
+      LONGEST len = target_fileio_read_alloc (nullptr, filename, &buffer);
+
+      if (len > 0)
+	{
+	  gdb::unique_xmalloc_ptr<char> dealloc ((char *) buffer);
+	  gdb_printf (_("Environment variables:\n\n"));
+
+	  /* Entries are separated by the null character.
+	     Print each environment variable, line by line.  */
+	  gdb_byte *buffer_end = buffer + len;
+	  while (buffer < buffer_end)
+	    {
+	      gdb_printf ("  %s\n", buffer);
+	      /* +1 for the null character.  */
+	      buffer += strlen ((char *) buffer) + 1;
+	    }
+	}
+      else
+	warning (_("unable to open /proc file '%s'"), filename);
     }
   if (exe_f)
     {
@@ -1359,7 +1384,7 @@ typedef bool linux_dump_mapping_p_ftype (filter_flags filterflags,
 
 static std::vector<struct smaps_data>
 parse_smaps_data (const char *data,
-		  const std::string maps_filename)
+		  const std::string &maps_filename)
 {
   char *line, *t;
 
@@ -1608,7 +1633,7 @@ linux_find_memory_regions_full (struct gdbarch *gdbarch,
 
   /* Parse the contents of smaps into a vector.  */
   std::vector<struct smaps_data> smaps
-    = parse_smaps_data (data.get (), maps_filename.c_str ());
+    = parse_smaps_data (data.get (), maps_filename);
 
   for (const struct smaps_data &map : smaps)
     {
@@ -3075,7 +3100,7 @@ linux_address_in_shadow_stack_mem_range
     return false;
 
   const std::vector<smaps_data> smaps
-    = parse_smaps_data (data.get (), std::move (smaps_file));
+    = parse_smaps_data (data.get (), smaps_file);
 
   auto find_addr_mem_range = [&addr] (const smaps_data &map)
     {

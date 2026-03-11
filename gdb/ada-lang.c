@@ -106,7 +106,7 @@ static void ada_add_all_symbols (std::vector<struct block_symbol> &,
 				 const lookup_name_info &lookup_name,
 				 domain_search_flags, int, int *);
 
-static int is_nonfunction (const std::vector<struct block_symbol> &);
+static bool is_nonfunction (const std::vector<struct block_symbol> &);
 
 static void add_defn_to_vec (std::vector<struct block_symbol> &,
 			     struct symbol *,
@@ -153,13 +153,7 @@ static struct value *value_subscript_packed (struct value *, int,
 static struct value *coerce_unspec_val_to_type (struct value *,
 						struct type *);
 
-static int lesseq_defined_than (struct symbol *, struct symbol *);
-
-static int equiv_types (struct type *, struct type *);
-
-static int is_name_suffix (const char *);
-
-static int advance_wild_match (const char **, const char *, char);
+static bool equiv_types (struct type *, struct type *);
 
 static bool wild_match (const char *name, const char *patn);
 
@@ -179,8 +173,6 @@ static int ada_resolve_function (std::vector<struct block_symbol> &,
 				 struct value **, int, const char *,
 				 struct type *, bool);
 
-static int ada_is_direct_array_type (struct type *);
-
 static struct value *ada_index_struct_field (int, struct value *, int,
 					     struct type *);
 
@@ -189,7 +181,7 @@ static struct type *ada_find_any_type (const char *name);
 static symbol_name_matcher_ftype *ada_get_symbol_name_matcher
   (const lookup_name_info &lookup_name);
 
-static int symbols_are_identical_enums
+static bool symbols_are_identical_enums
   (const std::vector<struct block_symbol> &syms);
 
 static bool ada_identical_enum_types_p (struct type *type1,
@@ -515,19 +507,19 @@ ada_name_prefix_len (const char *name)
     }
 }
 
-/* Return non-zero if SUFFIX is a suffix of STR.
-   Return zero if STR is null.  */
+/* Return true if SUFFIX is a suffix of STR.
+   Return false if STR is null.  */
 
-static int
+static bool
 is_suffix (const char *str, const char *suffix)
 {
   int len1, len2;
 
-  if (str == NULL)
-    return 0;
+  if (str == nullptr)
+    return false;
   len1 = strlen (str);
   len2 = strlen (suffix);
-  return (len1 >= len2 && strcmp (str + len1 - len2, suffix) == 0);
+  return len1 >= len2 && strcmp (str + len1 - len2, suffix) == 0;
 }
 
 /* The contents of value VAL, treated as a value of type TYPE.  The
@@ -2085,40 +2077,40 @@ desc_arity (struct type *type)
   return 0;
 }
 
-/* Non-zero iff TYPE is a simple array type (not a pointer to one) or
+/* True iff TYPE is a simple array type (not a pointer to one) or
    an array descriptor type (representing an unconstrained array
    type).  */
 
-static int
+static bool
 ada_is_direct_array_type (struct type *type)
 {
-  if (type == NULL)
-    return 0;
+  if (type == nullptr)
+    return false;
   type = ada_check_typedef (type);
   return (type->code () == TYPE_CODE_ARRAY
 	  || ada_is_array_descriptor_type (type));
 }
 
-/* Non-zero iff TYPE represents any kind of array in Ada, or a pointer
- * to one.  */
+/* True iff TYPE represents any kind of array in Ada, or a pointer to
+   one.  */
 
-static int
+static bool
 ada_is_array_type (struct type *type)
 {
-  while (type != NULL
+  while (type != nullptr
 	 && (type->code () == TYPE_CODE_PTR
 	     || type->code () == TYPE_CODE_REF))
     type = type->target_type ();
   return ada_is_direct_array_type (type);
 }
 
-/* Non-zero iff TYPE is a simple array type or pointer to one.  */
+/* True iff TYPE is a simple array type or pointer to one.  */
 
-int
+bool
 ada_is_simple_array_type (struct type *type)
 {
-  if (type == NULL)
-    return 0;
+  if (type == nullptr)
+    return false;
   type = ada_check_typedef (type);
   return (type->code () == TYPE_CODE_ARRAY
 	  || (type->code () == TYPE_CODE_PTR
@@ -2126,17 +2118,17 @@ ada_is_simple_array_type (struct type *type)
 		  == TYPE_CODE_ARRAY)));
 }
 
-/* Non-zero iff TYPE belongs to a GNAT array descriptor.  */
+/* True iff TYPE belongs to a GNAT array descriptor.  */
 
-int
+bool
 ada_is_array_descriptor_type (struct type *type)
 {
   struct type *data_type = desc_data_target_type (type);
 
-  if (type == NULL)
-    return 0;
+  if (type == nullptr)
+    return false;
   type = ada_check_typedef (type);
-  return (data_type != NULL
+  return (data_type != nullptr
 	  && data_type->code () == TYPE_CODE_ARRAY
 	  && desc_arity (desc_bounds_type (type)) > 0);
 }
@@ -2287,18 +2279,17 @@ ada_coerce_to_simple_array_type (struct type *type)
   return type;
 }
 
-/* Non-zero iff TYPE represents a standard GNAT packed-array type.  */
+/* True iff TYPE represents a standard GNAT packed-array type.  */
 
-static int
+static bool
 ada_is_gnat_encoded_packed_array_type  (struct type *type)
 {
-  if (type == NULL)
-    return 0;
+  if (type == nullptr)
+    return false;
   type = desc_base_type (type);
   type = ada_check_typedef (type);
-  return
-    ada_type_name (type) != NULL
-    && strstr (ada_type_name (type), "___XP") != NULL;
+  return (ada_type_name (type) != nullptr
+	  && strstr (ada_type_name (type), "___XP") != nullptr);
 }
 
 /* See ada-lang.h.  */
@@ -2657,15 +2648,15 @@ value_subscript_packed (struct value *arr, int arity, struct value **ind)
   return v;
 }
 
-/* Non-zero iff TYPE includes negative integer values.  */
+/* True iff TYPE includes negative integer values.  */
 
-static int
+static bool
 has_negatives (struct type *type)
 {
   switch (type->code ())
     {
     default:
-      return 0;
+      return false;
     case TYPE_CODE_INT:
       return !type->is_unsigned ();
     case TYPE_CODE_RANGE:
@@ -4744,12 +4735,12 @@ ada_clear_symbol_cache (program_space *pspace)
 }
 
 /* Search the symbol cache for an entry matching NAME and DOMAIN.
-   Return 1 if found, 0 otherwise.
+   Return true if found, false otherwise.
 
    If an entry was found and SYM is not NULL, set *SYM to the entry's
    SYM.  Same principle for BLOCK if not NULL.  */
 
-static int
+static bool
 lookup_cached_symbol (const char *name, domain_search_flags domain,
 		      struct symbol **sym, const struct block **block)
 {
@@ -4760,12 +4751,12 @@ lookup_cached_symbol (const char *name, domain_search_flags domain,
 
   auto iter = htab.find (search);
   if (iter == htab.end ())
-    return 0;
+    return false;
   if (sym != nullptr)
     *sym = iter->sym;
   if (block != nullptr)
     *block = iter->block;
-  return 1;
+  return true;
 }
 
 /* Assuming that (SYM, BLOCK) is the result of the lookup of NAME
@@ -4830,57 +4821,57 @@ standard_lookup (const char *name, const struct block *block,
 }
 
 
-/* Non-zero iff there is at least one non-function/non-enumeral symbol
+/* True iff there is at least one non-function/non-enumeral symbol
    in the symbol fields of SYMS.  We treat enumerals as functions,
    since they contend in overloading in the same way.  */
-static int
+static bool
 is_nonfunction (const std::vector<struct block_symbol> &syms)
 {
   for (const block_symbol &sym : syms)
     if (sym.symbol->type ()->code () != TYPE_CODE_FUNC
 	&& (sym.symbol->type ()->code () != TYPE_CODE_ENUM
 	    || sym.symbol->loc_class () != LOC_CONST))
-      return 1;
+      return true;
 
-  return 0;
+  return false;
 }
 
-/* If true (non-zero), then TYPE0 and TYPE1 represent equivalent
-   struct types.  Otherwise, they may not.  */
+/* If true, then TYPE0 and TYPE1 represent equivalent struct types.
+   Otherwise, they may not.  */
 
-static int
+static bool
 equiv_types (struct type *type0, struct type *type1)
 {
   if (type0 == type1)
-    return 1;
+    return true;
   if (type0 == NULL || type1 == NULL
       || type0->code () != type1->code ())
-    return 0;
+    return false;
   if ((type0->code () == TYPE_CODE_STRUCT
        || type0->code () == TYPE_CODE_ENUM)
       && ada_type_name (type0) != NULL && ada_type_name (type1) != NULL
       && strcmp (ada_type_name (type0), ada_type_name (type1)) == 0)
-    return 1;
+    return true;
 
-  return 0;
+  return false;
 }
 
 /* True iff SYM0 represents the same entity as SYM1, or one that is
    no more defined than that of SYM1.  */
 
-static int
+static bool
 lesseq_defined_than (struct symbol *sym0, struct symbol *sym1)
 {
   if (sym0 == sym1)
-    return 1;
+    return true;
   if (sym0->domain () != sym1->domain ()
       || sym0->loc_class () != sym1->loc_class ())
-    return 0;
+    return false;
 
   switch (sym0->loc_class ())
     {
     case LOC_UNDEF:
-      return 1;
+      return true;
     case LOC_TYPEDEF:
       {
 	struct type *type0 = sym0->type ();
@@ -4908,7 +4899,7 @@ lesseq_defined_than (struct symbol *sym0, struct symbol *sym1)
       }
 
     default:
-      return 0;
+      return false;
     }
 }
 
@@ -4974,11 +4965,11 @@ ada_lookup_simple_minsym (const char *name, struct objfile *objfile)
 	       {
 		 result.minsym = msymbol;
 		 result.objfile = obj;
-		 return 1;
+		 return true;
 	       }
 	   }
 
-	 return 0;
+	 return false;
        }, objfile);
 
   return result;
@@ -4987,7 +4978,7 @@ ada_lookup_simple_minsym (const char *name, struct objfile *objfile)
 /* True if TYPE is definitely an artificial type supplied to a symbol
    for which no debugging information was given in the symbol file.  */
 
-static int
+static bool
 is_nondebugging_type (struct type *type)
 {
   const char *name = ada_type_name (type);
@@ -5035,7 +5026,7 @@ ada_identical_enum_types_p (struct type *type1, struct type *type2)
   return true;
 }
 
-/* Return nonzero if all the symbols in SYMS are all enumeral symbols
+/* Return true if all the symbols in SYMS are all enumeral symbols
    that are deemed "identical" for practical purposes.  Sometimes,
    enumerals are not strictly identical, but their types are so similar
    that they can be considered identical.
@@ -5055,7 +5046,7 @@ ada_identical_enum_types_p (struct type *type1, struct type *type2)
    what choice he makes, the outcome would always be the same.
    So, for practical purposes, we consider them as the same.  */
 
-static int
+static bool
 symbols_are_identical_enums (const std::vector<struct block_symbol> &syms)
 {
   int i;
@@ -5070,12 +5061,12 @@ symbols_are_identical_enums (const std::vector<struct block_symbol> &syms)
   /* Quick check: All symbols should have an enum type.  */
   for (i = 0; i < syms.size (); i++)
     if (syms[i].symbol->type ()->code () != TYPE_CODE_ENUM)
-      return 0;
+      return false;
 
   /* Quick check: They should all have the same value.  */
   for (i = 1; i < syms.size (); i++)
     if (syms[i].symbol->value_longest () != syms[0].symbol->value_longest ())
-      return 0;
+      return false;
 
   /* All the sanity checks passed, so we might have a set of
      identical enumeration types.  Perform a more complete
@@ -5083,9 +5074,9 @@ symbols_are_identical_enums (const std::vector<struct block_symbol> &syms)
   for (i = 1; i < syms.size (); i++)
     if (!ada_identical_enum_types_p (syms[i].symbol->type (),
 				     syms[0].symbol->type ()))
-      return 0;
+      return false;
 
-  return 1;
+  return true;
 }
 
 /* Remove any non-debugging symbols in SYMS that definitely
@@ -5197,9 +5188,9 @@ xget_renaming_scope (struct type *renaming_type)
   return std::string (name, last);
 }
 
-/* Return nonzero if NAME corresponds to a package name.  */
+/* Return true if NAME corresponds to a package name.  */
 
-static int
+static bool
 is_package_name (const char *name)
 {
   /* Here, We take advantage of the fact that no symbols are generated
@@ -5211,7 +5202,7 @@ is_package_name (const char *name)
   /* If it is a function that has not been defined at library level,
      then we should be able to look it up in the symbols.  */
   if (standard_lookup (name, NULL, SEARCH_VFT) != NULL)
-    return 0;
+    return false;
 
   /* Library-level function names start with "_ada_".  See if function
      "_ada_" followed by NAME can be found.  */
@@ -5219,27 +5210,27 @@ is_package_name (const char *name)
   /* Do a quick check that NAME does not contain "__", since library-level
      functions names cannot contain "__" in them.  */
   if (strstr (name, "__") != NULL)
-    return 0;
+    return false;
 
   std::string fun_name = string_printf ("_ada_%s", name);
 
   return (standard_lookup (fun_name.c_str (), NULL, SEARCH_VFT) == NULL);
 }
 
-/* Return nonzero if SYM corresponds to a renaming entity that is
+/* Return true if SYM corresponds to a renaming entity that is
    not visible from FUNCTION_NAME.  */
 
-static int
+static bool
 old_renaming_is_invisible (const struct symbol *sym, const char *function_name)
 {
   if (sym->loc_class () != LOC_TYPEDEF)
-    return 0;
+    return false;
 
   std::string scope = xget_renaming_scope (sym->type ());
 
   /* If the rename has been defined in a package, then it is visible.  */
   if (is_package_name (scope.c_str ()))
-    return 0;
+    return false;
 
   /* Check that the rename is in the current function scope by checking
      that its name starts with SCOPE.  */
@@ -5458,7 +5449,7 @@ match_data::operator() (struct block_symbol *bsym)
    targeted by renamings matching LOOKUP_NAME in BLOCK.  Add these
    symbols to RESULT.  Return whether we found such symbols.  */
 
-static int
+static bool
 ada_add_block_renamings (std::vector<struct block_symbol> &result,
 			 const struct block *block,
 			 const lookup_name_info &lookup_name,
@@ -5789,7 +5780,7 @@ ada_lookup_symbol (const char *name, const struct block *block0,
    match is performed.  This sequence is used to differentiate homonyms,
    is an optional part of a valid name suffix.  */
 
-static int
+static bool
 is_name_suffix (const char *str)
 {
   int k;
@@ -5813,7 +5804,7 @@ is_name_suffix (const char *str)
       while (c_isdigit (matching[0]))
 	matching += 1;
       if (matching[0] == '\0')
-	return 1;
+	return true;
     }
 
   /* ___[0-9]+ */
@@ -5824,13 +5815,13 @@ is_name_suffix (const char *str)
       while (c_isdigit (matching[0]))
 	matching += 1;
       if (matching[0] == '\0')
-	return 1;
+	return true;
     }
 
   /* "TKB" suffixes are used for subprograms implementing task bodies.  */
 
   if (strcmp (str, "TKB") == 0)
-    return 1;
+    return true;
 
 #if 0
   /* FIXME: brobecker/2005-09-23: Protected Object subprograms end
@@ -5846,7 +5837,7 @@ is_name_suffix (const char *str)
      the following check.  */
   /* Protected Object Subprograms */
   if (len == 1 && str [0] == 'N')
-    return 1;
+    return true;
 #endif
 
   /* _E[0-9]+[bs]$ */
@@ -5857,7 +5848,7 @@ is_name_suffix (const char *str)
 	matching += 1;
       if ((matching[0] == 'b' || matching[0] == 's')
 	  && matching [1] == '\0')
-	return 1;
+	return true;
     }
 
   /* ??? We should not modify STR directly, as we are doing below.  This
@@ -5871,82 +5862,81 @@ is_name_suffix (const char *str)
       while (str[0] != '_' && str[0] != '\0')
 	{
 	  if (str[0] != 'n' && str[0] != 'b')
-	    return 0;
+	    return false;
 	  str += 1;
 	}
     }
 
   if (str[0] == '\000')
-    return 1;
+    return true;
 
   if (str[0] == '_')
     {
       if (str[1] != '_' || str[2] == '\000')
-	return 0;
+	return false;
       if (str[2] == '_')
 	{
 	  if (strcmp (str + 3, "JM") == 0)
-	    return 1;
+	    return true;
 	  /* FIXME: brobecker/2004-09-30: GNAT will soon stop using
 	     the LJM suffix in favor of the JM one.  But we will
 	     still accept LJM as a valid suffix for a reasonable
 	     amount of time, just to allow ourselves to debug programs
 	     compiled using an older version of GNAT.  */
 	  if (strcmp (str + 3, "LJM") == 0)
-	    return 1;
+	    return true;
 	  if (str[3] != 'X')
-	    return 0;
+	    return false;
 	  if (str[4] == 'F' || str[4] == 'D' || str[4] == 'B'
 	      || str[4] == 'U' || str[4] == 'P')
-	    return 1;
+	    return true;
 	  if (str[4] == 'R' && str[5] != 'T')
-	    return 1;
-	  return 0;
+	    return true;
+	  return false;
 	}
       if (!c_isdigit (str[2]))
-	return 0;
+	return false;
       for (k = 3; str[k] != '\0'; k += 1)
 	if (!c_isdigit (str[k]) && str[k] != '_')
-	  return 0;
-      return 1;
+	  return false;
+      return true;
     }
   if (str[0] == '$' && c_isdigit (str[1]))
     {
       for (k = 2; str[k] != '\0'; k += 1)
 	if (!c_isdigit (str[k]) && str[k] != '_')
-	  return 0;
-      return 1;
+	  return false;
+      return true;
     }
-  return 0;
+  return false;
 }
 
-/* Return non-zero if the string starting at NAME and ending before
+/* Return true if the string starting at NAME and ending before
    NAME_END contains no capital letters.  */
 
-static int
+static bool
 is_valid_name_for_wild_match (const char *name0)
 {
   std::string decoded_name = ada_decode (name0);
-  int i;
 
   /* If the decoded name starts with an angle bracket, it means that
      NAME0 does not follow the GNAT encoding format.  It should then
      not be allowed as a possible wild match.  */
   if (decoded_name[0] == '<')
-    return 0;
+    return false;
 
-  for (i=0; decoded_name[i] != '\0'; i++)
+  for (int i = 0; decoded_name[i] != '\0'; i++)
     if (c_isalpha (decoded_name[i]) && !c_islower (decoded_name[i]))
-      return 0;
+      return false;
 
-  return 1;
+  return true;
 }
 
 /* Advance *NAMEP to next occurrence in the string NAME0 of the TARGET0
    character which could start a simple name.  Assumes that *NAMEP points
    somewhere inside the string beginning at NAME0.  */
 
-static int
+static bool
 advance_wild_match (const char **namep, const char *name0, char target0)
 {
   const char *name = *namep;
@@ -5981,16 +5971,16 @@ advance_wild_match (const char **namep, const char *name0, char target0)
 	      name += 4;
 	    }
 	  else
-	    return 0;
+	    return false;
 	}
       else if ((t0 >= 'a' && t0 <= 'z') || (t0 >= '0' && t0 <= '9'))
 	name += 1;
       else
-	return 0;
+	return false;
     }
 
   *namep = name;
-  return 1;
+  return true;
 }
 
 /* Return true iff NAME encodes a name of the form prefix.PATN.
@@ -6206,33 +6196,33 @@ ada_lookup_name_info::matches
 
 				/* Field Access */
 
-/* Return non-zero if TYPE is a pointer to the GNAT dispatch table used
+/* Return true if TYPE is a pointer to the GNAT dispatch table used
    for tagged types.  */
 
-static int
+static bool
 ada_is_dispatch_table_ptr_type (struct type *type)
 {
   const char *name;
 
   if (type->code () != TYPE_CODE_PTR)
-    return 0;
+    return false;
 
   name = type->target_type ()->name ();
   if (name == NULL)
-    return 0;
+    return false;
 
   return (strcmp (name, "ada__tags__dispatch_table") == 0);
 }
 
-/* Return non-zero if TYPE is an interface tag.  */
+/* Return true if TYPE is an interface tag.  */
 
-static int
+static bool
 ada_is_interface_tag (struct type *type)
 {
   const char *name = type->name ();
 
-  if (name == NULL)
-    return 0;
+  if (name == nullptr)
+    return false;
 
   return (strcmp (name, "ada__tags__interface_tag") == 0);
 }

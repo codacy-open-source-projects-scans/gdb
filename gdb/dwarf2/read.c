@@ -11484,10 +11484,14 @@ read_array_type (struct die_info *die, struct dwarf2_cu *cu)
   struct objfile *objfile = cu->per_objfile->objfile;
   struct type *type;
   struct type *element_type, *range_type, *index_type;
-  struct attribute *attr;
   const char *name;
-  struct dynamic_prop *byte_stride_prop = NULL;
   unsigned int bit_stride = 0;
+
+  /* If the stride is seen and used, byte_stride_prop will be
+     non-NULL.  In this case stride_storage will be used to store the
+     data locally.  */
+  dynamic_prop *byte_stride_prop = nullptr;
+  dynamic_prop stride_storage;
 
   element_type = die_type (die, cu);
 
@@ -11496,14 +11500,13 @@ read_array_type (struct die_info *die, struct dwarf2_cu *cu)
   if (type)
     return type;
 
-  attr = dwarf2_attr (die, DW_AT_byte_stride, cu);
-  if (attr != NULL)
+  if (attribute *attr = dwarf2_attr (die, DW_AT_byte_stride, cu);
+      attr != nullptr)
     {
       int stride_ok;
       struct type *prop_type = cu->addr_sized_int_type (false);
 
-      byte_stride_prop
-	= (struct dynamic_prop *) alloca (sizeof (struct dynamic_prop));
+      byte_stride_prop = &stride_storage;
       stride_ok = attr_to_dynamic_prop (attr, die, cu, byte_stride_prop,
 					prop_type);
       if (!stride_ok)
@@ -11519,8 +11522,8 @@ read_array_type (struct die_info *die, struct dwarf2_cu *cu)
 	}
     }
 
-  attr = dwarf2_attr (die, DW_AT_bit_stride, cu);
-  if (attr != NULL)
+  if (attribute *attr = dwarf2_attr (die, DW_AT_bit_stride, cu);
+      attr != nullptr)
     bit_stride = attr->unsigned_constant ().value_or (0);
 
   /* Irix 6.2 native cc creates array types without children for
@@ -11602,15 +11605,15 @@ read_array_type (struct die_info *die, struct dwarf2_cu *cu)
      custom vendor extension.  The main difference between a regular
      array and the vector variant is that vectors are passed by value
      to functions.  */
-  attr = dwarf2_attr (die, DW_AT_GNU_vector, cu);
-  if (attr != nullptr)
+  if (attribute *attr = dwarf2_attr (die, DW_AT_GNU_vector, cu);
+      attr != nullptr)
     make_vector_type (type);
 
   /* The DIE may have DW_AT_byte_size set.  For example an OpenCL
      implementation may choose to implement triple vectors using this
      attribute.  */
-  attr = dwarf2_attr (die, DW_AT_byte_size, cu);
-  if (attr != nullptr && attr->form_is_unsigned ())
+  if (attribute *attr = dwarf2_attr (die, DW_AT_byte_size, cu);
+      attr != nullptr && attr->form_is_unsigned ())
     {
       if (attr->as_unsigned () >= type->length ())
 	type->set_length (attr->as_unsigned ());

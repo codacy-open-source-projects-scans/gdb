@@ -590,16 +590,14 @@ static void dwarf2_frame_default_init_reg (struct gdbarch *gdbarch,
 struct dwarf2_frame_ops
 {
   /* Pre-initialize the register state REG for register REGNUM.  */
-  void (*init_reg) (struct gdbarch *, int, struct dwarf2_frame_state_reg *,
-		    const frame_info_ptr &)
-    = dwarf2_frame_default_init_reg;
+  init_reg_ftype *init_reg = dwarf2_frame_default_init_reg;
 
   /* Check whether the THIS_FRAME is a signal trampoline.  */
-  int (*signal_frame_p) (struct gdbarch *, const frame_info_ptr &) = nullptr;
+  signal_frame_p_ftype *signal_frame_p = nullptr;
 
   /* Convert .eh_frame register number to DWARF register number, or
      adjust .debug_frame register number.  */
-  int (*adjust_regnum) (struct gdbarch *, int, int) = nullptr;
+  adjust_regnum_ftype *adjust_regnum = nullptr;
 };
 
 /* Per-architecture data key.  */
@@ -656,14 +654,9 @@ dwarf2_frame_default_init_reg (struct gdbarch *gdbarch, int regnum,
    function for GDBARCH to INIT_REG.  */
 
 void
-dwarf2_frame_set_init_reg (struct gdbarch *gdbarch,
-			   void (*init_reg) (struct gdbarch *, int,
-					     struct dwarf2_frame_state_reg *,
-					     const frame_info_ptr &))
+dwarf2_frame_set_init_reg (gdbarch *gdbarch, init_reg_ftype *init_reg)
 {
-  struct dwarf2_frame_ops *ops = get_frame_ops (gdbarch);
-
-  ops->init_reg = init_reg;
+  get_frame_ops (gdbarch)->init_reg = init_reg;
 }
 
 /* Pre-initialize the register state REG for register REGNUM.  */
@@ -673,35 +666,31 @@ dwarf2_frame_init_reg (struct gdbarch *gdbarch, int regnum,
 		       struct dwarf2_frame_state_reg *reg,
 		       const frame_info_ptr &this_frame)
 {
-  struct dwarf2_frame_ops *ops = get_frame_ops (gdbarch);
-
-  ops->init_reg (gdbarch, regnum, reg, this_frame);
+  get_frame_ops (gdbarch)->init_reg (gdbarch, regnum, reg, this_frame);
 }
 
 /* Set the architecture-specific signal trampoline recognition
    function for GDBARCH to SIGNAL_FRAME_P.  */
 
 void
-dwarf2_frame_set_signal_frame_p (struct gdbarch *gdbarch,
-				 int (*signal_frame_p) (struct gdbarch *,
-							const frame_info_ptr &))
+dwarf2_frame_set_signal_frame_p (gdbarch *gdbarch,
+				 signal_frame_p_ftype *signal_frame_p)
 {
-  struct dwarf2_frame_ops *ops = get_frame_ops (gdbarch);
-
-  ops->signal_frame_p = signal_frame_p;
+  get_frame_ops (gdbarch)->signal_frame_p = signal_frame_p;
 }
 
 /* Query the architecture-specific signal frame recognizer for
    THIS_FRAME.  */
 
-static int
+static bool
 dwarf2_frame_signal_frame_p (struct gdbarch *gdbarch,
 			     const frame_info_ptr &this_frame)
 {
   struct dwarf2_frame_ops *ops = get_frame_ops (gdbarch);
 
   if (ops->signal_frame_p == NULL)
-    return 0;
+    return false;
+
   return ops->signal_frame_p (gdbarch, this_frame);
 }
 
@@ -709,13 +698,10 @@ dwarf2_frame_signal_frame_p (struct gdbarch *gdbarch,
    register numbers.  */
 
 void
-dwarf2_frame_set_adjust_regnum (struct gdbarch *gdbarch,
-				int (*adjust_regnum) (struct gdbarch *,
-						      int, int))
+dwarf2_frame_set_adjust_regnum (gdbarch *gdbarch,
+				adjust_regnum_ftype *adjust_regnum)
 {
-  struct dwarf2_frame_ops *ops = get_frame_ops (gdbarch);
-
-  ops->adjust_regnum = adjust_regnum;
+  get_frame_ops (gdbarch)->adjust_regnum = adjust_regnum;
 }
 
 /* Translate a .eh_frame register to DWARF register, or adjust a .debug_frame
@@ -729,6 +715,7 @@ dwarf2_frame_adjust_regnum (struct gdbarch *gdbarch,
 
   if (ops->adjust_regnum == NULL)
     return regnum;
+
   return ops->adjust_regnum (gdbarch, regnum, eh_frame_p);
 }
 
@@ -768,7 +755,7 @@ dwarf2_frame_find_quirks (struct dwarf2_frame_state *fs,
 
 /* See dwarf2/frame.h.  */
 
-int
+bool
 dwarf2_fetch_cfa_info (struct gdbarch *gdbarch, CORE_ADDR pc,
 		       dwarf2_per_cu *data, int *regnum_out,
 		       LONGEST *offset_out, CORE_ADDR *text_offset_out,
@@ -815,14 +802,15 @@ dwarf2_fetch_cfa_info (struct gdbarch *gdbarch, CORE_ADDR pc,
 	  *offset_out = -fs.regs.cfa_offset;
 	else
 	  *offset_out = fs.regs.cfa_offset;
-	return 1;
+
+	return true;
       }
 
     case CFA_EXP:
       *text_offset_out = per_objfile->objfile->text_section_offset ();
       *cfa_start_out = fs.regs.cfa_exp;
       *cfa_end_out = fs.regs.cfa_exp + fs.regs.cfa_exp_len;
-      return 0;
+      return false;
 
     default:
       internal_error (_("Unknown CFA rule."));
@@ -853,10 +841,10 @@ struct dwarf2_frame_cache
 
   /* Set if the return address column was marked as unavailable
      (required non-collected memory or registers to compute).  */
-  int unavailable_retaddr;
+  bool unavailable_retaddr;
 
   /* Set if the return address column was marked as undefined.  */
-  int undefined_retaddr;
+  bool undefined_retaddr;
 
   /* Saved registers, indexed by GDB register number, not by DWARF
      register number.  */
@@ -997,7 +985,7 @@ dwarf2_frame_cache (const frame_info_ptr &this_frame, void **this_cache)
     {
       if (ex.error == NOT_AVAILABLE_ERROR)
 	{
-	  cache->unavailable_retaddr = 1;
+	  cache->unavailable_retaddr = true;
 	  return cache;
 	}
 
@@ -1088,7 +1076,7 @@ incomplete CFI data; unspecified registers (e.g., %s) at %s"),
 
   if (fs.retaddr_column < fs.regs.reg.size ()
       && fs.regs.reg[fs.retaddr_column].how == DWARF2_FRAME_REG_UNDEFINED)
-    cache->undefined_retaddr = 1;
+    cache->undefined_retaddr = true;
 
   dwarf2_tailcall_sniffer_first (this_frame, &cache->tailcall_cache,
 				 (entry_cfa_sp_offset_p

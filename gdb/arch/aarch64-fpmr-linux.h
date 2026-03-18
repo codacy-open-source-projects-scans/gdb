@@ -1,4 +1,4 @@
-/* Common Linux target-dependent definitions for AArch64 GCS
+/* Common Linux target-dependent definitions for AArch64 FPMR.
 
    Copyright (C) 2025-2026 Free Software Foundation, Inc.
 
@@ -17,20 +17,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#ifndef GDB_ARCH_AARCH64_GCS_LINUX_H
-#define GDB_ARCH_AARCH64_GCS_LINUX_H
+#ifndef GDB_ARCH_AARCH64_FPMR_LINUX_H
+#define GDB_ARCH_AARCH64_FPMR_LINUX_H
 
-/* Feature check for Guarded Control Stack.  */
-#define AARCH64_HWCAP_GCS (1ULL << 32)
+/* Feature check for Floating Point Mode Register.  */
+#define AARCH64_HWCAP2_FPMR (1ULL << 48)
 
-#define AARCH64_SEGV_CPERR 10 /* Control protection error.  */
-
-/* Flag which enables shadow stack in PR_SET_SHADOW_STACK_STATUS prctl.  */
-#define AARCH64_PR_SHADOW_STACK_ENABLE (1UL << 0)
-#define AARCH64_PR_SHADOW_STACK_WRITE (1UL << 1)
-#define AARCH64_PR_SHADOW_STACK_PUSH (1UL << 2)
-
-/* The GCS regset consists of 3 64-bit registers.  */
-#define AARCH64_LINUX_SIZEOF_GCS_REGSET (3 * 8)
-
-#endif /* GDB_ARCH_AARCH64_GCS_LINUX_H */
+#endif /* GDB_ARCH_AARCH64_FPMR_LINUX_H */

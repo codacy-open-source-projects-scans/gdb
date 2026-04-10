@@ -52,6 +52,7 @@
 #include "target-float.h"
 #include "c-exp.h"
 #include "macroexp.h"
+#include "cli/cli-style.h"
 
 #define parse_type(ps) builtin_type (ps->gdbarch ())
 
@@ -1078,8 +1079,9 @@ block	:	block COLONCOLON name
 					     nullptr).symbol;
 
 			  if (tem == nullptr)
-			    error (_("No function \"%s\" in specified context."),
-				   copy.c_str ());
+			    error (_("No function \"%ps\" in specified context."),
+				   styled_string (function_name_style.style (),
+						  copy.c_str ()));
 			  $$ = tem->value_block (); }
 	;
 
@@ -1203,7 +1205,9 @@ variable:	name_not_typename
 				{
 				  if (!current_program_space->has_full_symbols ()
 				      && !current_program_space->has_partial_symbols ())
-				    error (_("No symbol table is loaded.  Use the \"file\" command."));
+				    error (_("No symbol table is loaded.  Use the \"%ps\" command."),
+					   styled_string (command_style.style (),
+							  "file"));
 				  else
 				    error (_("No symbol \"%s\" in current context."),
 					   arg.c_str ());

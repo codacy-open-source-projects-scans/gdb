@@ -1,6 +1,4 @@
-/* This testcase is part of GDB, the GNU debugger.
-
-   Copyright 2026 Free Software Foundation, Inc.
+/* Copyright 2026 Free Software Foundation, Inc.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -15,33 +13,10 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-extern void func1 (void);
-extern void func2 (void);
-extern void func3 (void);
-extern void func4 (void);
-
-static volatile int global_var;
-
-void
-func5 (void)
-{
-  /* Nothing.  */
-}
+extern int lib_var;
 
 int
-main (void)
+main ()
 {
-  /* Some filler before the real work starts.  */
-  ++global_var;
-
-  func1 ();	/* In aa/bb/file.c */
-  func2 ();	/* In cc/bb/file.c */
-  func3 ();	/* In dd/ee/file.c */
-  func4 ();	/* In dd/ee/ff/file.c */
-  func5 ();	/* Makes exp file simpler.  */
-
-  /* Some filler before the function ends.  */
-  ++global_var;
-
-  return 0;
+  return lib_var;
 }

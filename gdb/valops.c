@@ -1225,11 +1225,9 @@ value_assign (struct value *toval, struct value *fromval)
 					   &unavail))
 	      {
 		if (optim)
-		  throw_error (OPTIMIZED_OUT_ERROR,
-			       _("value has been optimized out"));
+		  error_value_optimized_out ();
 		if (unavail)
-		  throw_error (NOT_AVAILABLE_ERROR,
-			       _("value is not available"));
+		  error_value_not_available ();
 	      }
 
 	    modify_field (type, buffer, value_as_long (fromval),

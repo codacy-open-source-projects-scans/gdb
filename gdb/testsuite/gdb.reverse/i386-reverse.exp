@@ -28,7 +28,7 @@ set additional_flags [gdb_target_symbol_prefix_flags]
 
 if {[prepare_for_testing "failed to prepare" $testfile $srcfile \
 	 [list debug $additional_flags]]} {
-    return -1
+    return
 }
 
 set end_of_main          [gdb_get_line_number " end of main "]
@@ -41,8 +41,6 @@ if {[supports_process_record]} {
     gdb_test_no_output "record" "turn on process record"
 }
 
-global hex
-global decimal
 
 gdb_test "step" "inc .eax.*" "step to inc eax 1st time"
 send_gdb "info reg eax\n"

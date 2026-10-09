@@ -26,8 +26,8 @@ set allow_hw_watchpoint_tests_p [allow_hw_watchpoint_tests]
 standard_testfile
 
 if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable {debug}] != "" } {
-     untested "failed to compile"
-     return -1
+    untested "failed to compile"
+    return
 }
 
 # True if we're forcing no hardware watchpoints.
@@ -438,7 +438,7 @@ proc test_watchpoint_triggered_in_syscall {} {
     }
 }
 
-# Do a simple test of of watching through a pointer when the pointer
+# Do a simple test of watching through a pointer when the pointer
 # itself changes.  Should add some more complicated stuff here.
 
 proc test_complex_watchpoint {} {
@@ -613,7 +613,7 @@ proc test_disable_enable_software_watchpoint {} {
     gdb_test {watch $pc} "^(?:Hardware w|W)atchpoint $::decimal: .pc"
 
     gdb_test_no_output "disable \$bpnum" "disable watchpoint `\$pc'"
-    gdb_test_no_output "enable \$bpnum" "reenable watchpoint `\$pc'"
+    gdb_test_no_output "enable \$bpnum" "re-enable watchpoint `\$pc'"
 
     gdb_test "info watchpoint \$bpnum" \
 	".*watchpoint\[ \t\]+keep\[ \t\]+y\[ \t\]+.pc.*" \

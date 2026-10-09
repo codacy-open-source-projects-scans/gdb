@@ -56,7 +56,7 @@ mi_cmd_file_list_exec_source_file (const char *command,
   uiout->field_string ("fullname", symtab_to_fullname (st.symtab));
 
   uiout->field_signed ("macro-info",
-		       st.symtab->compunit ()->macro_table () != NULL);
+		       st.symtab->compunit ().macro_table () != NULL);
 }
 
 /* Implement -file-list-exec-source-files command.  */
@@ -168,7 +168,7 @@ mi_cmd_file_list_shared_libraries (const char *command,
       if (pattern != nullptr && !re_exec (so.name.c_str ()))
 	continue;
 
-      ui_out_emit_tuple tuple_emitter (uiout, NULL);
+      ui_out_emit_tuple tuple_emitter (uiout);
       mi_output_solib_attribs (uiout, so);
     }
 }

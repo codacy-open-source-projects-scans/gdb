@@ -53,6 +53,7 @@
 #include "cli/cli-style.h"
 #include "gdbsupport/forward-scope-exit.h"
 #include "gdbsupport/buildargv.h"
+#include "filesystem.h"
 
 #include <sys/types.h>
 #include <fcntl.h>
@@ -1706,7 +1707,7 @@ symfile_bfd_open (const char *name)
 	   styled_string (file_name_style.style (), name),
 	   bfd_errmsg (bfd_get_error ()));
 
-  if (!bfd_check_format (sym_bfd.get (), bfd_object))
+  if (!gdb_bfd_check_format (sym_bfd.get (), bfd_object))
     error (_("`%ps': can't read symbols: %s."),
 	   styled_string (file_name_style.style (), name),
 	   bfd_errmsg (bfd_get_error ()));
@@ -2018,7 +2019,7 @@ generic_load (const char *args, int from_tty)
   if (loadfile_bfd == NULL)
     perror_with_name (filename.get ());
 
-  if (!bfd_check_format (loadfile_bfd.get (), bfd_object))
+  if (!gdb_bfd_check_format (loadfile_bfd.get (), bfd_object))
     error (_("\"%ps\" is not an object file: %s"),
 	   styled_string (file_name_style.style (), filename.get ()),
 	   bfd_errmsg (bfd_get_error ()));
@@ -2564,7 +2565,7 @@ reread_symbols (int from_tty)
 	  std::string original_name = objfile.original_name;
 
 	  /* bfd_openr sets cacheable to true, which is what we want.  */
-	  if (!bfd_check_format (objfile.obfd.get (), bfd_object))
+	  if (!gdb_bfd_check_format (objfile.obfd.get (), bfd_object))
 	    error (_("Can't read symbols from %ps: %s."),
 		   styled_string (file_name_style.style (),
 				  objfile_name (&objfile)),
@@ -2809,9 +2810,12 @@ allocate_symtab (struct compunit_symtab *cust, const char *filename,
 		 const char *filename_for_id)
 {
   struct objfile *objfile = cust->objfile ();
+
+  scoped_normalized_path path_storage (&filename);
+
   struct symtab *symtab
     = obstack_new<struct symtab> (&objfile->objfile_obstack,
-				  cust,
+				  *cust,
 				  objfile->intern (filename),
 				  objfile->intern (filename_for_id),
 				  deduce_language_from_filename (filename));
@@ -2923,7 +2927,7 @@ clear_symtab_users (symfile_add_flags add_flags)
    sections_overlap(sec1, sec2):  true if mapped sec1 and sec2 ranges overlap
    overlay_mapped_address(...):   map an address from section's LMA to VMA
    overlay_unmapped_address(...): map an address from section's VMA to LMA
-   symbol_overlayed_address(...): Return a "current" address for symbol:
+   symbol_overlaid_address(...): Return a "current" address for symbol:
    either in VMA or LMA depending on whether
    the symbol's section is currently mapped.  */
 
@@ -3092,12 +3096,12 @@ overlay_mapped_address (CORE_ADDR pc, struct obj_section *section)
   return pc;
 }
 
-/* Function: symbol_overlayed_address
+/* Function: symbol_overlaid_address
    Return one of two addresses (relative to the VMA or to the LMA),
    depending on whether the section is mapped or not.  */
 
 CORE_ADDR
-symbol_overlayed_address (CORE_ADDR address, struct obj_section *section)
+symbol_overlaid_address (CORE_ADDR address, struct obj_section *section)
 {
   if (overlay_debugging)
     {

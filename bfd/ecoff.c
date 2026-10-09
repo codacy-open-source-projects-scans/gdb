@@ -117,11 +117,18 @@ _bfd_ecoff_bfd_free_cached_info (bfd *abfd)
   if (bfd_get_format (abfd) == bfd_object
       && (tdata = ecoff_data (abfd)) != NULL)
     {
-      while (tdata->mips_refhi_list != NULL)
+      for (asection *sec = abfd->sections; sec != NULL; sec = sec->next)
 	{
-	  struct mips_hi *ref = tdata->mips_refhi_list;
-	  tdata->mips_refhi_list = ref->next;
-	  free (ref);
+	  struct ecoff_section_tdata *sdata = ecoff_section_data (sec);
+	  if (sdata != NULL)
+	    {
+	      while (sdata->mips_refhi_list != NULL)
+		{
+		  struct mips_hi *ref = sdata->mips_refhi_list;
+		  sdata->mips_refhi_list = ref->next;
+		  free (ref);
+		}
+	    }
 	}
       _bfd_ecoff_free_ecoff_debug_info (&tdata->debug_info);
     }
@@ -2234,25 +2241,28 @@ _bfd_ecoff_set_section_contents (bfd *abfd,
       && ! ecoff_compute_section_file_positions (abfd))
     return false;
 
-  /* Handle the .lib section specially so that Irix 4 shared libraries
-     work out.  See coff_set_section_contents in coffcode.h.  */
-  if (streq (section->name, _LIB))
-    {
-      bfd_byte *rec, *recend;
-
-      rec = (bfd_byte *) location;
-      recend = rec + count;
-      while (rec < recend)
-	{
-	  ++section->lma;
-	  rec += bfd_get_32 (abfd, rec) * 4;
-	}
-
-      BFD_ASSERT (rec == recend);
-    }
-
   if (count == 0)
     return true;
+
+  /* Handle the .lib section specially so that Irix 4 shared libraries
+     work out.  See coff_set_section_contents in coffcode.h.  */
+  if (count >= 4 && strcmp (section->name, _LIB) == 0)
+    {
+      bfd_size_type off = 0;
+
+      while (off <= count - 4)
+	{
+	  uint32_t len = bfd_get_32 (abfd, (bfd_byte *) location + off);
+	  if (len == 0
+	      || len > (uint32_t) -1 / 4
+	      || len * 4 > count - off)
+	    break;
+	  off += len * 4;
+	  ++section->lma;
+	}
+
+      BFD_ASSERT (off == count);
+    }
 
   pos = section->filepos + offset;
   if (bfd_seek (abfd, pos, SEEK_SET) != 0
@@ -3108,6 +3118,7 @@ _bfd_ecoff_write_armap (bfd *abfd,
   bfd_byte *hashtable;
   bfd *current;
   bfd *last_elt;
+  unsigned int namidx = 0;
 
   /* Ultrix appears to use as a hash table size the least power of two
      greater than twice the number of entries.  */
@@ -3198,7 +3209,7 @@ _bfd_ecoff_write_armap (bfd *abfd,
 
       last_elt = current;
 
-      hash = ecoff_armap_hash (*map[i].name, &rehash, hashsize, hashlog);
+      hash = ecoff_armap_hash (map[i].name, &rehash, hashsize, hashlog);
       if (H_GET_32 (abfd, (hashtable + (hash * 8) + 4)) != 0)
 	{
 	  unsigned int srch;
@@ -3215,8 +3226,10 @@ _bfd_ecoff_write_armap (bfd *abfd,
 	  hash = srch;
 	}
 
-      H_PUT_32 (abfd, map[i].namidx, (hashtable + hash * 8));
-      H_PUT_32 (abfd, firstreal, (hashtable + hash * 8 + 4));
+      H_PUT_32 (abfd, namidx, hashtable + hash * 8);
+      H_PUT_32 (abfd, firstreal, hashtable + hash * 8 + 4);
+
+      namidx += strlen (map[i].name) + 1;
     }
 
   if (bfd_write (hashtable, symdefsize, abfd) != symdefsize)
@@ -3232,8 +3245,8 @@ _bfd_ecoff_write_armap (bfd *abfd,
     {
       bfd_size_type len;
 
-      len = strlen (*map[i].name) + 1;
-      if (bfd_write (*map[i].name, len, abfd) != len)
+      len = strlen (map[i].name) + 1;
+      if (bfd_write (map[i].name, len, abfd) != len)
 	return false;
     }
 

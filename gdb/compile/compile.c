@@ -257,9 +257,9 @@ compile_code_command_completer (struct cmd_list_element *ignore,
 void
 compile_print_value (struct value *val, void *data_voidp)
 {
-  const value_print_options *print_opts = (value_print_options *) data_voidp;
+  const value_print_options &print_opts = * (value_print_options *) data_voidp;
 
-  print_value (val, *print_opts);
+  print_value (val, print_opts);
 }
 
 /* Handle the input from the 'compile print' command.  The "compile
@@ -271,17 +271,16 @@ static void
 compile_print_command (const char *arg, int from_tty)
 {
   enum compile_i_scope_types scope = COMPILE_I_PRINT_ADDRESS_SCOPE;
-  value_print_options print_opts;
 
   scoped_restore save_async = make_scoped_restore (&current_ui->async, 0);
 
-  get_user_print_options (&print_opts);
+  value_print_options print_opts = get_user_print_options ();
   /* Override global settings with explicit options, if any.  */
   auto group = make_value_print_options_def_group (&print_opts);
   gdb::option::process_options
     (&arg, gdb::option::PROCESS_OPTIONS_REQUIRE_DELIMITER, group);
 
-  print_command_parse_format (&arg, "compile print", &print_opts);
+  print_command_parse_format (&arg, "compile print", print_opts);
 
   /* Passing &PRINT_OPTS as SCOPE_DATA is safe as do_module_cleanup
      will not touch the stale pointer if compile_object_run has
@@ -364,7 +363,7 @@ get_expr_block_and_pc (CORE_ADDR *pc)
 	= get_current_source_symtab_and_line (current_program_space);
 
       if (cursal.symtab)
-	block = cursal.symtab->compunit ()->blockvector ()->static_block ();
+	block = cursal.symtab->compunit ().blockvector ()->static_block ();
 
       if (block != NULL)
 	*pc = block->entry_pc ();
@@ -437,7 +436,7 @@ show_compile_gcc (struct ui_file *file, int from_tty,
 static const char *
 get_selected_pc_producer_options (void)
 {
-  CORE_ADDR pc = get_frame_pc (get_selected_frame (NULL));
+  CORE_ADDR pc = get_frame_pc (get_selected_frame ());
   struct compunit_symtab *symtab = find_compunit_symtab_for_pc (pc);
   const char *cs;
 
@@ -584,7 +583,7 @@ compile_to_object (struct command_line *cmd, const char *cmd_string,
 	     "work."));
 
   expr_block = get_expr_block_and_pc (&trash_pc);
-  expr_pc = get_frame_address_in_block (get_selected_frame (NULL));
+  expr_pc = get_frame_address_in_block (get_selected_frame ());
 
   /* Set up instance and context for the compiler.  */
   std::unique_ptr<compile_instance> compiler

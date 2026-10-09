@@ -30,7 +30,7 @@ if {![supports_reverse]} {
 standard_testfile
 
 if { [prepare_for_testing "failed to prepare" $testfile $srcfile] } {
-    return -1
+    return
 }
 
 proc test_print { has_history level test_name } {
@@ -46,7 +46,7 @@ proc test_print { has_history level test_name } {
 }
 
 if { ![runto_main] } {
-    return 0
+    return
 }
 
 #confirm that GDB doesn't go crazy if recording isn't enabled
@@ -73,3 +73,8 @@ test_print true "1" "print following after reversing"
 
 test_print false "-10" "trying to print too far back"
 test_print false "10" "trying to print too far forward"
+
+# Return to the beginning of history and print.
+# This used to cause an internal error.
+gdb_test "reverse-continue" ".*" "moving to start of history"
+test_print false "" "Print at the start of history"

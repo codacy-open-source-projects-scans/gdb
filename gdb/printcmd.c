@@ -287,7 +287,7 @@ decode_format (const char **string_ptr, int oformat, int osize)
 
 static void
 print_formatted (struct value *val, int size,
-		 const struct value_print_options *options,
+		 const value_print_options &options,
 		 struct ui_file *stream)
 {
   struct type *type = check_typedef (val->type ());
@@ -298,7 +298,7 @@ print_formatted (struct value *val, int size,
 
   if (size)
     {
-      switch (options->format)
+      switch (options.format)
 	{
 	case 's':
 	  {
@@ -322,7 +322,7 @@ print_formatted (struct value *val, int size,
 	}
     }
 
-  if (options->format == 0 || options->format == 's'
+  if (options.format == 0 || options.format == 's'
       || type->code () == TYPE_CODE_VOID
       || type->code () == TYPE_CODE_REF
       || type->code () == TYPE_CODE_ARRAY
@@ -363,7 +363,7 @@ float_type_from_length (struct type *type)
 
 void
 print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
-			const struct value_print_options *options,
+			const value_print_options &options,
 			int size, struct ui_file *stream)
 {
   struct gdbarch *gdbarch = type->arch ();
@@ -371,7 +371,7 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
   enum bfd_endian byte_order = type_byte_order (type);
 
   /* String printing should go through val_print_scalar_formatted.  */
-  gdb_assert (options->format != 's');
+  gdb_assert (options.format != 's');
 
   /* If the value is a pointer, and pointers and addresses are not the
      same, then at this point, the value's length (in target bytes) is
@@ -382,8 +382,8 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
   /* If we are printing it as unsigned, truncate it in case it is actually
      a negative signed value (e.g. "print/u (short)-1" should print 65535
      (if shorts are 16 bits) instead of 4294967295).  */
-  if (options->format != 'c'
-      && (options->format != 'd' || type->is_unsigned ()))
+  if (options.format != 'c'
+      && (options.format != 'd' || type->is_unsigned ()))
     {
       if (len < type->length () && byte_order == BFD_ENDIAN_BIG)
 	valaddr += type->length () - len;
@@ -398,7 +398,7 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
       valaddr = &zero;
     }
 
-  if (size != 0 && (options->format == 'x' || options->format == 't'))
+  if (size != 0 && (options.format == 'x' || options.format == 't'))
     {
       /* Truncate to fit.  */
       unsigned newlen;
@@ -432,12 +432,12 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
      here for possible use later.  */
   std::optional<LONGEST> val_long;
   if ((is_fixed_point_type (type)
-       && (options->format == 'o'
-	   || options->format == 'x'
-	   || options->format == 't'
-	   || options->format == 'z'
-	   || options->format == 'd'
-	   || options->format == 'u'))
+       && (options.format == 'o'
+	   || options.format == 'x'
+	   || options.format == 't'
+	   || options.format == 'z'
+	   || options.format == 'd'
+	   || options.format == 'u'))
       || (type->code () == TYPE_CODE_RANGE && type->bounds ()->bias != 0)
       || type->bit_size_differs_p ())
     {
@@ -451,7 +451,7 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
   /* Printing a non-float type as 'f' will interpret the data as if it were
      of a floating-point type of the same length, if that exists.  Otherwise,
      the data is printed as integer.  */
-  char format = options->format;
+  char format = options.format;
   if (format == 'f' && type->code () != TYPE_CODE_FLT)
     {
       type = float_type_from_length (type);
@@ -493,7 +493,7 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
       break;
     case 'c':
       {
-	struct value_print_options opts = *options;
+	value_print_options opts = options;
 
 	if (!val_long.has_value ())
 	  val_long.emplace (unpack_long (type, valaddr));
@@ -504,7 +504,7 @@ print_scalar_formatted (const gdb_byte *valaddr, struct type *type,
 	else
 	  type = builtin_type (gdbarch)->builtin_true_char;
 
-	value_print (value_from_longest (type, *val_long), stream, &opts);
+	value_print (value_from_longest (type, *val_long), stream, opts);
       }
       break;
 
@@ -538,7 +538,7 @@ set_next_address (struct gdbarch *gdbarch, CORE_ADDR addr)
 }
 
 /* Optionally print address ADDR symbolically as <SYMBOL+OFFSET> on STREAM,
-   after LEADIN.  Print nothing if no symbolic name is found nearby.
+   after LEAD_IN.  Print nothing if no symbolic name is found nearby.
    Optionally also print source file and line number, if available.
    DO_DEMANGLE controls whether to print a symbol in its native "raw" form,
    or to interpret it as a possible C++ name and convert it back to source
@@ -549,7 +549,7 @@ set_next_address (struct gdbarch *gdbarch, CORE_ADDR addr)
 int
 print_address_symbolic (struct gdbarch *gdbarch, CORE_ADDR addr,
 			struct ui_file *stream,
-			int do_demangle, const char *leadin)
+			int do_demangle, const char *lead_in)
 {
   std::string name, filename;
   int unmapped = 0;
@@ -560,7 +560,7 @@ print_address_symbolic (struct gdbarch *gdbarch, CORE_ADDR addr,
 			      &offset, &filename, &line, &unmapped))
     return 0;
 
-  gdb_puts (leadin, stream);
+  gdb_puts (lead_in, stream);
   if (unmapped)
     gdb_puts ("<*", stream);
   else
@@ -750,7 +750,7 @@ pc_prefix (CORE_ADDR addr)
       frame_info_ptr frame;
       std::optional<CORE_ADDR> pc;
 
-      frame = get_selected_frame (NULL);
+      frame = get_selected_frame ();
       if ((pc = get_frame_pc_if_available (frame)) && *pc == addr)
 	return "=> ";
     }
@@ -762,11 +762,11 @@ pc_prefix (CORE_ADDR addr)
    Return non-zero if anything was printed; zero otherwise.  */
 
 int
-print_address_demangle (const struct value_print_options *opts,
+print_address_demangle (const value_print_options &opts,
 			struct gdbarch *gdbarch, CORE_ADDR addr,
 			struct ui_file *stream, int do_demangle)
 {
-  if (opts->addressprint)
+  if (opts.addressprint)
     {
       fputs_styled (paddress (gdbarch, addr), address_style.style (), stream);
       print_address_symbolic (gdbarch, addr, stream, do_demangle, " ");
@@ -926,14 +926,14 @@ integer_is_zero (const gdb_byte *x, int len)
 
 /* Find the start address of a string in which ADDR is included.
    Basically we search for '\0' and return the next address,
-   but if OPTIONS->PRINT_MAX is smaller than the length of a string,
+   but if OPTIONS.PRINT_MAX is smaller than the length of a string,
    we stop searching and return the address to print characters as many as
    PRINT_MAX from the string.  */
 
 static CORE_ADDR
 find_string_backward (struct gdbarch *gdbarch,
 		      CORE_ADDR addr, int count, int char_size,
-		      const struct value_print_options *options,
+		      const value_print_options &options,
 		      int *strings_counted)
 {
   const int chunk_size = 0x20;
@@ -1055,7 +1055,13 @@ format_to_type (format_data fmt, gdbarch *gdbarch, type_instance_flags flags)
     }
 
   gdb_assert (val_type != nullptr);
-  val_type = make_type_with_address_space (val_type, flags);
+
+  if (flags.harvard_aspace != HARVARD_ASPACE_NONE)
+    val_type = make_type_with_harvard_address_space (val_type,
+						     flags.harvard_aspace);
+
+  if (flags.address_class != 0)
+    val_type = make_type_with_address_class (val_type, flags.address_class);
 
   return val_type;
 }
@@ -1101,8 +1107,7 @@ do_examine_next_address (struct format_data fmt)
   if (format == 's' || format == 'i')
     maxelts = 1;
 
-  value_print_options opts;
-  get_formatted_print_options (&opts, format);
+  value_print_options opts = get_formatted_print_options (format);
 
   bool need_to_update_next_address = false;
   CORE_ADDR addr_rewound = 0;
@@ -1125,7 +1130,7 @@ do_examine_next_address (struct format_data fmt)
 	{
 	  next_address = find_string_backward (gdbarch, next_address,
 					       count, val_type->length (),
-					       &opts, &count);
+					       opts, &count);
 	}
       else
 	{
@@ -1210,7 +1215,7 @@ do_examine_next_address (struct format_data fmt)
 	  last_examine_value
 	    = release_value (value_at_lazy (val_type, next_address));
 
-	  print_formatted (last_examine_value.get (), size, &opts, gdb_stdout);
+	  print_formatted (last_examine_value.get (), size, opts, gdb_stdout);
 
 	  /* Display any branch delay slots following the final insn.  */
 	  if (format == 'i' && count == 1)
@@ -1247,13 +1252,13 @@ validate_format (struct format_data fmt, const char *cmdname)
 
 void
 print_command_parse_format (const char **expp, const char *cmdname,
-			    value_print_options *opts)
+			    value_print_options &opts)
 {
   const char *exp = *expp;
 
-  /* opts->raw value might already have been set by 'set print raw-values'
+  /* opts.raw value might already have been set by 'set print raw-values'
      or by using 'print -raw-values'.
-     So, do not set opts->raw to 0, only set it to 1 if /r is given.  */
+     So, do not set opts.raw to 0, only set it to 1 if /r is given.  */
   if (exp && *exp == '/')
     {
       format_data fmt;
@@ -1263,12 +1268,12 @@ print_command_parse_format (const char **expp, const char *cmdname,
       validate_format (fmt, cmdname);
       last_format = fmt.format;
 
-      opts->format = fmt.format;
-      opts->raw = opts->raw || fmt.raw;
+      opts.format = fmt.format;
+      opts.raw = opts.raw || fmt.raw;
     }
   else
     {
-      opts->format = 0;
+      opts.format = 0;
     }
 
   *expp = exp;
@@ -1294,7 +1299,7 @@ print_value (value *val, const value_print_options &opts)
 
   annotate_value_history_value ();
 
-  print_formatted (val, 0, &opts, gdb_stdout);
+  print_formatted (val, 0, opts, gdb_stdout);
   gdb_printf ("\n");
 
   annotate_value_history_end ();
@@ -1332,12 +1337,12 @@ should_validate_memtags (gdbarch *gdbarch, struct value *value)
 /* Helper for parsing arguments for print_command_1.  */
 
 static struct value *
-process_print_command_args (const char *args, value_print_options *print_opts,
+process_print_command_args (const char *args, value_print_options &print_opts,
 			    bool voidprint)
 {
-  get_user_print_options (print_opts);
+  print_opts = get_user_print_options ();
   /* Override global settings with explicit options, if any.  */
-  auto group = make_value_print_options_def_group (print_opts);
+  auto group = make_value_print_options_def_group (&print_opts);
   gdb::option::process_options
     (&args, gdb::option::PROCESS_OPTIONS_REQUIRE_DELIMITER, group);
 
@@ -1350,7 +1355,7 @@ process_print_command_args (const char *args, value_print_options *print_opts,
       /* This setting allows large arrays to be printed by limiting the
 	 number of elements that are loaded into GDB's memory; we only
 	 need to load as many array elements as we plan to print.  */
-      scoped_array_length_limiting limit_large_arrays (print_opts->print_max);
+      scoped_array_length_limiting limit_large_arrays (print_opts.print_max);
 
       /* VOIDPRINT is true to indicate that we do want to print a void
 	 value, so invert it for parse_expression.  */
@@ -1373,7 +1378,7 @@ print_command_1 (const char *args, int voidprint)
 {
   value_print_options print_opts;
 
-  struct value *val = process_print_command_args (args, &print_opts, voidprint);
+  struct value *val = process_print_command_args (args, print_opts, voidprint);
 
   if (voidprint || (val && val->type () &&
 		    val->type ()->code () != TYPE_CODE_VOID))
@@ -1458,7 +1463,6 @@ output_command (const char *exp, int from_tty)
   char format = 0;
   struct value *val;
   struct format_data fmt;
-  struct value_print_options opts;
 
   fmt.size = 0;
   fmt.raw = 0;
@@ -1477,7 +1481,7 @@ output_command (const char *exp, int from_tty)
 
   annotate_value_begin (val->type ());
 
-  get_formatted_print_options (&opts, format);
+  value_print_options opts = get_formatted_print_options (format);
   opts.raw = fmt.raw;
 
   /* This setting allows large arrays to be printed by limiting the
@@ -1485,7 +1489,7 @@ output_command (const char *exp, int from_tty)
      need to load as many array elements as we plan to print.  */
   scoped_array_length_limiting limit_large_arrays (opts.print_max);
 
-  print_formatted (val, fmt.size, &opts, gdb_stdout);
+  print_formatted (val, fmt.size, opts, gdb_stdout);
 
   annotate_value_end ();
 
@@ -1888,7 +1892,7 @@ x_command (const char *exp, int from_tty)
       else
 	next_address = value_as_address (val);
 
-      type_instance_flags flags = 0;
+      type_instance_flags flags {};
       if (val->type ()->is_pointer_or_reference ())
 	flags = val->type ()->target_type ()->instance_flags ();
 
@@ -2123,7 +2127,7 @@ do_one_display (struct display *d)
   if (d->block)
     {
       if (d->pspace == current_program_space)
-	within_current_scope = d->block->contains (get_selected_block (0),
+	within_current_scope = d->block->contains (get_selected_block (),
 						   true);
       else
 	within_current_scope = 0;
@@ -2175,7 +2179,7 @@ do_one_display (struct display *d)
 	  if (d->format.format == 'i')
 	    addr = gdbarch_addr_bits_remove (d->exp->gdbarch, addr);
 
-	  type_instance_flags flags = 0;
+	  type_instance_flags flags {};
 	  if (val->type ()->is_pointer_or_reference ())
 	    flags = val->type ()->target_type ()->instance_flags ();
 
@@ -2192,8 +2196,6 @@ do_one_display (struct display *d)
     }
   else
     {
-      struct value_print_options opts;
-
       annotate_display_format ();
 
       if (d->format.format)
@@ -2208,7 +2210,7 @@ do_one_display (struct display *d)
 
       annotate_display_expression ();
 
-      get_formatted_print_options (&opts, d->format.format);
+      value_print_options opts = get_formatted_print_options (d->format.format);
       opts.raw = d->format.raw;
 
       try
@@ -2216,7 +2218,7 @@ do_one_display (struct display *d)
 	  struct value *val;
 
 	  val = d->exp->evaluate ();
-	  print_formatted (val, d->format.size, &opts, gdb_stdout);
+	  print_formatted (val, d->format.size, opts, gdb_stdout);
 	}
       catch (const gdb_exception_error &ex)
 	{
@@ -2289,7 +2291,7 @@ Num Enb Expression\n"));
       else if (d->format.format)
 	gdb_printf ("/%c ", d->format.format);
       gdb_puts (d->exp_string.c_str ());
-      if (d->block && !d->block->contains (get_selected_block (0), true))
+      if (d->block && !d->block->contains (get_selected_block (), true))
 	gdb_printf (_(" (cannot be evaluated in the current context)"));
       gdb_printf ("\n");
     }
@@ -2377,21 +2379,56 @@ clear_dangling_display_expressions (struct objfile *objfile)
 void
 print_variable_value (symbol *var, const frame_info_ptr &frame,
 		      ui_file *stream, int indent,
-		      const language_defn *language)
+		      const language_defn *language,
+		      var_shadowing shadow_status)
 {
   try
     {
       struct value *val;
-      struct value_print_options opts;
 
       /* READ_VAR_VALUE needs a block in order to deal with non-local
 	 references (i.e. to handle nested functions).  In this context, we
 	 print variables that are local to this frame, so we can avoid passing
 	 a block to it.  */
       val = read_var_value (var, NULL, frame);
-      get_user_print_options (&opts);
+      value_print_options opts = get_user_print_options ();
       opts.deref_ref = true;
-      common_val_print_checked (val, stream, indent, &opts, language);
+      common_val_print_checked (val, stream, indent, opts, language);
+
+      /* Print <%line, shadowed> after the variable value only when it is
+	 variable shadowing case.  */
+      if (shadow_status != var_shadowing::NONE)
+	{
+	  /* Use lbasename instead of symtab_to_filename_for_display as the
+	     latter defaults to relative path while basename is preferred
+	     here.  */
+	  const char *file_name = (var->symtab () != nullptr
+				   && var->symtab ()->filename () != nullptr)
+				   ? lbasename (var->symtab ()->filename ())
+				   : "??";
+	  bool printed = (shadow_status == var_shadowing::SHADOWED);
+	  string_file out (current_uiout->can_emit_style_escape ());
+
+	  gdb_printf (&out, "\t<%ps:",
+		      styled_string (file_name_style.style (), file_name));
+
+	  if (var->line () > 0)
+	    gdb_printf (&out, "%ps",
+			styled_string (line_number_style.style (),
+				       pulongest (var->line ())));
+	  else
+	    gdb_puts ("No line number information available", &out);
+
+	  if (printed)
+	    {
+	      gdb_puts (", ", &out);
+	      fputs_styled ("shadowed", metadata_style.style (), &out);
+	    }
+
+	  gdb_puts (">", &out);
+
+	  gdb_puts (out.c_str (), stream);
+	}
     }
   catch (const gdb_exception_error &except)
     {
@@ -2406,7 +2443,8 @@ print_variable_value (symbol *var, const frame_info_ptr &frame,
 void
 print_variable_and_value (const char *name, symbol *var,
 			  const frame_info_ptr &frame,
-			  ui_file *stream, int indent)
+			  ui_file *stream, int indent,
+			  var_shadowing shadow_status)
 {
   if (name == nullptr)
     name = var->print_name ();
@@ -2414,7 +2452,8 @@ print_variable_and_value (const char *name, symbol *var,
   gdb_printf (stream, "%*s%ps = ", 2 * indent, "",
 	      styled_string (variable_name_style.style (), name));
 
-  print_variable_value (var, frame, stream, indent, current_language);
+  print_variable_value (var, frame, stream, indent, current_language,
+			shadow_status);
 
   gdb_printf (stream, "\n");
 }
@@ -2892,8 +2931,7 @@ ui_printf (const char *arg, struct ui_file *stream)
 	    break;
 	  case value_arg:
 	    {
-	      value_print_options print_opts;
-	      get_user_print_options (&print_opts);
+	      value_print_options print_opts = get_user_print_options ();
 
 	      if (current_substring[2] == '[')
 		{
@@ -2915,7 +2953,7 @@ ui_printf (const char *arg, struct ui_file *stream)
 			     args_ptr);
 		}
 
-	      print_formatted (val_args[i], 0, &print_opts, stream);
+	      print_formatted (val_args[i], 0, print_opts, stream);
 	    }
 	    break;
 	  case literal_piece:
@@ -2997,7 +3035,7 @@ memory_tag_print_tag_command (const char *args, enum memtag_type tag_type)
      then fetch the logical or allocation tag.  */
   value_print_options print_opts;
 
-  struct value *val = process_print_command_args (args, &print_opts, true);
+  struct value *val = process_print_command_args (args, print_opts, true);
   gdbarch *arch = current_inferior ()->arch ();
 
   /* If the address is not in a region memory mapped with a memory tagging
@@ -3018,7 +3056,7 @@ memory_tag_print_tag_command (const char *args, enum memtag_type tag_type)
 		== memtag_type::logical? "Logical" : "Allocation");
 
   struct value *v_tag = process_print_command_args (tag.c_str (),
-						    &print_opts,
+						    print_opts,
 						    true);
   print_opts.output_format = 'x';
   print_value (v_tag, print_opts);
@@ -3052,7 +3090,7 @@ memory_tag_print_allocation_tag_command (const char *args, int from_tty)
 static void
 parse_with_logical_tag_input (const char *args, struct value **val,
 			      gdb::byte_vector &tags,
-			      value_print_options *print_opts)
+			      value_print_options &print_opts)
 {
   /* Fetch the address.  */
   std::string address_string = extract_string_maybe_quoted (&args);
@@ -3091,7 +3129,7 @@ memory_tag_with_logical_tag_command (const char *args, int from_tty)
   gdbarch *arch = current_inferior ()->arch ();
 
   /* Parse the input.  */
-  parse_with_logical_tag_input (args, &val, tags, &print_opts);
+  parse_with_logical_tag_input (args, &val, tags, print_opts);
 
   /* Setting the logical tag is just a local operation that does not touch
      any memory from the target.  Given an input value, we modify the value
@@ -3131,7 +3169,7 @@ parse_set_allocation_tag_input (const char *args, struct value **val,
 
   /* Parse the address into a value.  */
   value_print_options print_opts;
-  *val = process_print_command_args (address_string.c_str (), &print_opts,
+  *val = process_print_command_args (address_string.c_str (), print_opts,
 				     true);
 
   /* Fetch the length.  */
@@ -3209,7 +3247,7 @@ memory_tag_check_command (const char *args, int from_tty)
      pointer, then check its logical tag against the allocation tag.  */
   value_print_options print_opts;
 
-  struct value *val = process_print_command_args (args, &print_opts, true);
+  struct value *val = process_print_command_args (args, print_opts, true);
   gdbarch *arch = current_inferior ()->arch ();
 
   CORE_ADDR addr = value_as_address (val);

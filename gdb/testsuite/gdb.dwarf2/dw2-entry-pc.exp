@@ -14,7 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Test different ways in which DW_AT_entry_pc can be expressed in the
-# DWARF.  Also test with DWARF-4 and DWARF-5.  See the individule test
+# DWARF.  Also test with DWARF-4 and DWARF-5.  See the individual test
 # procs below precise details of what DW_AT_entry_pc forms are tested.
 
 load_lib dwarf.exp
@@ -29,7 +29,7 @@ get_func_info foo
 
 if { [prepare_for_testing "failed to prepare" ${testfile} \
 	  [list ${srcfile}] {debug nopie}]} {
-    return -1
+    return
 }
 
 # Address for the middle of foo.  This is used as our entry point when
@@ -143,17 +143,18 @@ proc build_and_test_ranged { suffix asm_file entry_pc } {
 # the entry_pc attribute is not given.  The function's entry PC will
 # default to the low address.
 
-proc_with_prefix use_low_high_bounds_without_entry_pc { dwarf_vesion } {
+proc_with_prefix use_low_high_bounds_without_entry_pc { dwarf_version } {
     set suffix [get_next_suffix]
 
     # Make some DWARF for the test.
     set asm_file [standard_output_file "$::testfile-dw-$suffix.S"]
     Dwarf::assemble $asm_file {
+	upvar dwarf_version dwarf_version
 	global srcfile
 
 	declare_labels lines_table
 
-	cu { version $::dwarf_version } {
+	cu { version $dwarf_version } {
 	    compile_unit {
 		DW_AT_producer "gcc"
 		DW_AT_language @DW_LANG_C
@@ -287,7 +288,7 @@ proc_with_prefix use_ranges_without_entry_pc { dwarf_version } {
 
 	declare_labels lines_table ranges_label
 
-	cu { version $::dwarf_version } {
+	cu { version $dwarf_version } {
 	    compile_unit {
 		DW_AT_producer "gcc"
 		DW_AT_language @DW_LANG_C
@@ -351,7 +352,7 @@ proc_with_prefix use_ranges_with_entry_pc { dwarf_version } {
 
 	declare_labels lines_table ranges_label
 
-	cu { version $::dwarf_version } {
+	cu { version $dwarf_version } {
 	    compile_unit {
 		DW_AT_producer "gcc"
 		DW_AT_language @DW_LANG_C
@@ -418,7 +419,7 @@ proc_with_prefix use_ranges_with_entry_offset { dwarf_version } {
 
 	set foo_offset [expr {$::foo_middle_addr - $::r1_s}]
 
-	cu { version $::dwarf_version } {
+	cu { version $dwarf_version } {
 	    compile_unit {
 		DW_AT_producer "gcc"
 		DW_AT_language @DW_LANG_C

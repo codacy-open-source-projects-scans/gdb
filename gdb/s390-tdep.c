@@ -54,7 +54,7 @@ static std::string s390_disassembler_options;
 
 constexpr gdb_byte s390_break_insn[] = { 0x0, 0x1 };
 
-typedef BP_MANIPULATION (s390_break_insn) s390_breakpoint;
+using s390_breakpoint = BP_MANIPULATION (s390_break_insn);
 
 /* Types.  */
 
@@ -301,6 +301,7 @@ s390_is_partial_instruction (struct gdbarch *gdbarch, CORE_ADDR loc, int *len)
       break;
     }
 
+  /* codespell:ignore-begin.  */
   switch (insn)
     {
     case 0xb255: /* MVST */
@@ -325,6 +326,7 @@ s390_is_partial_instruction (struct gdbarch *gdbarch, CORE_ADDR loc, int *len)
       *len = 4;
       return 1;
     }
+  /* codespell:ignore-end.  */
 
   return 0;
 }
@@ -1605,42 +1607,42 @@ s390_addr_bits_remove (struct gdbarch *gdbarch, CORE_ADDR addr)
   return addr & 0x7fffffff;
 }
 
-/* Implement addr_class_type_flags gdbarch method.
+/* Implement addr_class_dwarf_to_id gdbarch method.
    Only used for ABI_LINUX_ZSERIES.  */
 
-static type_instance_flags
-s390_address_class_type_flags (int byte_size, int dwarf2_addr_class)
+static unsigned int
+s390_address_class_dwarf_to_id (int byte_size, int dwarf2_addr_class)
 {
   if (byte_size == 4)
-    return TYPE_INSTANCE_FLAG_ADDRESS_CLASS_1;
+    return 1;
   else
     return 0;
 }
 
-/* Implement addr_class_type_flags_to_name gdbarch method.
+/* Implement addr_class_id_to_name gdbarch method.
    Only used for ABI_LINUX_ZSERIES.  */
 
 static const char *
-s390_address_class_type_flags_to_name (struct gdbarch *gdbarch,
-				       type_instance_flags type_flags)
+s390_address_class_id_to_name (struct gdbarch *gdbarch,
+			       unsigned int address_class)
 {
-  if (type_flags & TYPE_INSTANCE_FLAG_ADDRESS_CLASS_1)
+  if (address_class == 1)
     return "mode32";
   else
     return NULL;
 }
 
-/* Implement addr_class_name_to_type_flags gdbarch method.
+/* Implement addr_class_name_to_id gdbarch method.
    Only used for ABI_LINUX_ZSERIES.  */
 
 static bool
-s390_address_class_name_to_type_flags (struct gdbarch *gdbarch,
-				       const char *name,
-				       type_instance_flags *type_flags_ptr)
+s390_address_class_name_to_id (struct gdbarch *gdbarch,
+			       const char *name,
+			       unsigned int &address_class)
 {
   if (streq (name, "mode32"))
     {
-      *type_flags_ptr = TYPE_INSTANCE_FLAG_ADDRESS_CLASS_1;
+      address_class = 1;
       return true;
     }
   else
@@ -2194,8 +2196,8 @@ s390_get_return_buf_addr (struct type *val_type,
 
   if (val_on_entry == nullptr)
     {
-      warning ("Cannot determine the function return value.\n"
-	       "Try compiling with -fvar-tracking.");
+      warning (_("Cannot determine the function return value.\n"
+		 "Try compiling with -fvar-tracking."));
       return 0;
     }
 
@@ -3372,6 +3374,7 @@ ex:
 	return -1;
       break;
 
+    /* codespell:ignore-begin.  */
     case 0x20: /* LPDR - load positive */
     case 0x30: /* LPER - load positive */
     case 0x21: /* LNDR - load negative */
@@ -3396,6 +3399,7 @@ ex:
     case 0x3f: /* SUR - subtract unnormalized */
     case 0x6f: /* SW - subtract unnormalized */
     case 0x7f: /* SU - subtract unnormalized */
+    /* codespell:ignore-end.  */
       /* float destination + flags */
       if (record_full_arch_list_add_reg (regcache, S390_F0_REGNUM + inib[2]))
 	return -1;
@@ -3922,7 +3926,9 @@ ex:
 
 	/* 0xb29e-0xb2a4 undefined */
 
+	/* codespell:ignore-begin.  */
 	case 0xb2a5: /* TRE - translate extended [partial] */
+	/* codespell:ignore-end.  */
 	  regcache_raw_read_unsigned (regcache, S390_R0_REGNUM + inib[6], &tmp);
 	  oaddr = s390_record_address_mask (gdbarch, regcache, tmp);
 	  regcache_raw_read_unsigned (regcache, S390_R0_REGNUM + (inib[6] | 1), &tmp);
@@ -7019,8 +7025,6 @@ UNKNOWN_OP:
 
   if (record_full_arch_list_add_reg (regcache, S390_PSWA_REGNUM))
     return -1;
-  if (record_full_arch_list_add_end ())
-    return -1;
   return 0;
 }
 
@@ -7351,12 +7355,12 @@ s390_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
       set_gdbarch_long_bit (gdbarch, 64);
       set_gdbarch_long_long_bit (gdbarch, 64);
       set_gdbarch_ptr_bit (gdbarch, 64);
-      set_gdbarch_address_class_type_flags (gdbarch,
-					    s390_address_class_type_flags);
-      set_gdbarch_address_class_type_flags_to_name (gdbarch,
-						    s390_address_class_type_flags_to_name);
-      set_gdbarch_address_class_name_to_type_flags (gdbarch,
-						    s390_address_class_name_to_type_flags);
+      set_gdbarch_address_class_dwarf_to_id (gdbarch,
+					     s390_address_class_dwarf_to_id);
+      set_gdbarch_address_class_id_to_name (gdbarch,
+					    s390_address_class_id_to_name);
+      set_gdbarch_address_class_name_to_id (gdbarch,
+					    s390_address_class_name_to_id);
       break;
     }
 

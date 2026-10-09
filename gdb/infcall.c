@@ -29,6 +29,7 @@
 #include "language.h"
 #include "objfiles.h"
 #include "cli/cli-cmds.h"
+#include "cli/cli-style.h"
 #include "command.h"
 #include "dummy-frame.h"
 #include "ada-lang.h"
@@ -394,6 +395,9 @@ find_function_addr (struct value *function,
 	     FUNCTION_TYPE have been asked for.  */
 	  if (retval_type != NULL || function_type != NULL)
 	    {
+	      /* Default to original function type's return type.  Target type
+		 replaces this only if it provides a usable return type.  */
+	      value_type = ftype->target_type ();
 	      type *target_ftype = find_function_type (funaddr);
 	      /* If we don't have debug info for the target function,
 		 see if we can instead extract the target function's
@@ -402,8 +406,13 @@ find_function_addr (struct value *function,
 		target_ftype = find_gnu_ifunc_target_type (resolver_addr);
 	      if (target_ftype != NULL)
 		{
-		  value_type = check_typedef (target_ftype)->target_type ();
-		  ftype = target_ftype;
+		  type *target_value_type
+		    = check_typedef (target_ftype)->target_type ();
+		  if (target_value_type != nullptr)
+		    {
+		      value_type = target_value_type;
+		      ftype = target_ftype;
+		    }
 		}
 	    }
 	}
@@ -917,12 +926,20 @@ run_inferior_call (std::unique_ptr<call_thread_fsm> sm,
       current_ui->register_file_handler ();
     }
 
-  /* If the infcall does NOT succeed, normal_stop will have already
-     finished the thread states.  However, on success, normal_stop
-     defers here, so that we can set back the thread states to what
-     they were before the call.  Note that we must also finish the
-     state of new threads that might have spawned while the call was
-     running.  The main cases to handle are:
+  /* Sync the user/frontend thread states from the internal thread
+     states.  proceed marked threads in resume_ptid as THREAD_RUNNING
+     for this infcall; we must now sync them back, regardless of how
+     the call ended.  For the success path and for the unwind paths
+     (unwind-on-{signal,timeout,terminating-exception}),
+     call_thread_fsm::should_notify_stop returns false and normal_stop
+     is skipped -- this call is the canonical place to do the sync.
+     For other failure paths normal_stop does run and has already
+     finished the thread state; finish_thread_state is idempotent, so
+     calling it again here is harmless.  Note that we must also finish
+     the state of new threads that might have spawned while the call
+     was running.
+
+     The main cases to handle are:
 
      - "(gdb) print foo ()", or any other command that evaluates an
      expression at the prompt.  (The thread was marked stopped before.)
@@ -933,8 +950,7 @@ run_inferior_call (std::unique_ptr<call_thread_fsm> sm,
      evaluates true and thus we'll present a user-visible stop is
      decided elsewhere.  */
   if (!was_running
-      && call_thread_ptid == inferior_ptid
-      && stop_stack_dummy == STOP_STACK_DUMMY)
+      && call_thread_ptid == inferior_ptid)
     finish_thread_state (call_thread->inf->process_target (),
 			 user_visible_resume_ptid (0));
 

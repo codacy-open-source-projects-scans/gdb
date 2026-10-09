@@ -203,6 +203,9 @@ notify_thread_exited (thread_info *t, std::optional<ULONGEST> exit_code,
 {
   if (!silent && print_thread_events)
     {
+      /* Switch inferior before the target calls below.  */
+      auto restore_inf = maybe_switch_inferior (t->inf);
+
       if (exit_code.has_value ())
 	gdb_printf (_("[%s (id %s) exited with code %s]\n"),
 		    target_pid_to_str (t->ptid).c_str (),
@@ -599,15 +602,6 @@ find_thread_by_handle (gdb::array_view<const gdb_byte> handle,
 
 /* See gdbthread.h.  */
 
-void
-for_each_thread (for_each_thread_callback_ftype callback)
-{
-  for (thread_info &tp : all_threads_safe ())
-    callback (&tp);
-}
-
-/* See gdbthread.h.  */
-
 struct thread_info *
 find_thread (find_thread_callback_ftype callback)
 {
@@ -672,13 +666,17 @@ first_thread_of_inferior (inferior *inf)
 }
 
 thread_info *
-any_thread_of_inferior (inferior *inf)
+any_non_exited_thread_of_inferior (inferior *inf)
 {
   gdb_assert (inf->pid != 0);
 
-  /* Prefer the current thread, if there's one.  */
+  /* Prefer the current thread, if there's one and it hasn't exited.  */
   if (inf == current_inferior () && inferior_ptid != null_ptid)
-    return inferior_thread ();
+    {
+      if (thread_info *curr_thr = inferior_thread ();
+	  curr_thr->state () != THREAD_EXITED)
+	return curr_thr;
+    }
 
   for (thread_info &tp : inf->non_exited_threads ())
     return &tp;
@@ -1192,7 +1190,7 @@ do_print_thread (ui_out *uiout, const char *requested_threads,
 			    global_ids, pid, tp))
     return;
 
-  ui_out_emit_tuple tuple_emitter (uiout, NULL);
+  ui_out_emit_tuple tuple_emitter (uiout);
 
   if (!uiout->is_mi_like_p ())
     {
@@ -1240,7 +1238,7 @@ do_print_thread (ui_out *uiout, const char *requested_threads,
     {
       /* The switch above put us at the top of the stack (leaf
 	 frame).  */
-      print_stack_frame (get_selected_frame (NULL),
+      print_stack_frame (get_selected_frame (),
 			 /* For MI output, print frame level.  */
 			 uiout->is_mi_like_p (),
 			 LOCATION, 0);
@@ -2009,10 +2007,19 @@ thread_command (const char *tidstr, int from_tty)
     }
   else
     {
+      inferior *previous_inferior = current_inferior ();
+
       thread_select (tidstr, parse_thread_id (tidstr, NULL));
 
-      notify_user_selected_context_changed
-	(USER_SELECTED_THREAD | USER_SELECTED_FRAME);
+      user_selected_what selection = (USER_SELECTED_THREAD
+				      | USER_SELECTED_FRAME);
+
+      /* If the inferior changed as a consequence of the thread change,
+	 then let the user know.  */
+      if (previous_inferior != current_inferior ())
+	selection |= USER_SELECTED_INFERIOR;
+
+      notify_user_selected_context_changed (selection);
     }
 }
 
@@ -2151,7 +2158,7 @@ print_selected_thread_frame (struct ui_out *uiout,
 	uiout->text ("\n");
 
       if (has_stack_frames ())
-	print_stack_frame_to_uiout (uiout, get_selected_frame (NULL),
+	print_stack_frame_to_uiout (uiout, get_selected_frame (),
 				    1, SRC_AND_LOC, 1);
     }
 }

@@ -28,7 +28,7 @@ standard_testfile
 set NUM 2
 
 if {[gdb_compile_pthreads "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable debug] != "" } {
-    return -1
+    return
 }
 
 # Now we can proceed with the real testing.
@@ -157,7 +157,6 @@ gdb_test_no_output "set width 0"
 runto_main
 
 # See if scheduler locking is available on this target.
-global gdb_prompt
 gdb_test_multiple "set scheduler-locking off" "scheduler locking set to none" {
     -re "Target .* cannot support this command" {
 	unsupported "target does not support scheduler locking"

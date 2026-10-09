@@ -41,21 +41,21 @@ struct program_space;
 /* A function to load and process a script file.
    The file has been opened and is ready to be read from the beginning.
    Any exceptions are not caught, and are passed to the caller.  */
-typedef void script_sourcer_func (const struct extension_language_defn *,
+using script_sourcer_func = void (const struct extension_language_defn *,
 				  FILE *stream, const char *filename);
 
 /* A function to load and process a script for an objfile.
    The file has been opened and is ready to be read from the beginning.
    Any exceptions are not caught, and are passed to the caller.  */
-typedef void objfile_script_sourcer_func
-  (const struct extension_language_defn *,
-   struct objfile *, FILE *stream, const char *filename);
+using objfile_script_sourcer_func
+  = void (const struct extension_language_defn *,
+	  struct objfile *, FILE *stream, const char *filename);
 
 /* A function to execute a script for an objfile.
    Any exceptions are not caught, and are passed to the caller.  */
-typedef void objfile_script_executor_func
-  (const struct extension_language_defn *,
-   struct objfile *, const char *name, const char *script);
+using objfile_script_executor_func
+  = void (const struct extension_language_defn *,
+	  struct objfile *, const char *name, const char *script);
 
 /* Enum of each extension(/scripting) language.  */
 
@@ -232,7 +232,7 @@ private:
   const extension_language_defn *m_extlang;
 };
 
-typedef std::unique_ptr<xmethod_worker> xmethod_worker_up;
+using xmethod_worker_up = std::unique_ptr<xmethod_worker>;
 
 /* The interface for gdb's own extension(/scripting) language.  */
 extern const struct extension_language_defn extension_language_gdb;
@@ -296,7 +296,7 @@ extern gdb::unique_xmalloc_ptr<char> apply_ext_lang_type_printers
 
 extern int apply_ext_lang_val_pretty_printer
   (struct value *value, struct ui_file *stream, int recurse,
-   const struct value_print_options *options,
+   const value_print_options &options,
    const struct language_defn *language);
 
 extern enum ext_lang_bt_status apply_ext_lang_frame_filter

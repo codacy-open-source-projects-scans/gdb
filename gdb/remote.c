@@ -99,16 +99,16 @@ bool remote_debug = false;
 #define OPAQUETHREADBYTES 8
 
 /* a 64 bit opaque identifier */
-typedef unsigned char threadref[OPAQUETHREADBYTES];
+using threadref = unsigned char[OPAQUETHREADBYTES];
 
 struct gdb_ext_thread_info;
 struct threads_listing_context;
-typedef int (*rmt_thread_action) (threadref *ref, void *context);
+using rmt_thread_action = int (*) (threadref *ref, void *context);
 struct protocol_feature;
 struct packet_reg;
 
 struct stop_reply;
-typedef std::unique_ptr<stop_reply> stop_reply_up;
+using stop_reply_up = std::unique_ptr<stop_reply>;
 
 /* Generic configuration support for packets the stub optionally
    supports.  Allows the user to specify the use of the packet as well
@@ -1034,8 +1034,6 @@ public:
   std::string pid_to_str (ptid_t) override;
 
   const char *extra_thread_info (struct thread_info *) override;
-
-  ptid_t get_ada_task_ptid (long lwp, ULONGEST thread) override;
 
   thread_info *thread_handle_to_thread_info (const gdb_byte *thread_handle,
 					     int handle_len,
@@ -3633,7 +3631,7 @@ remote_target::thread_name (struct thread_info *info)
 /* Right now, the internal structure is int. We want it to be bigger.
    Plan to fix this.  */
 
-typedef int gdb_threadref;	/* Internal GDB thread reference.  */
+using gdb_threadref = int;	/* Internal GDB thread reference.  */
 
 /* gdb_ext_thread_info is an internal GDB data structure which is
    equivalent to the reply of the remote threadinfo packet.  */
@@ -3684,31 +3682,17 @@ static char *pack_threadlist_request (char *pkt, int startflag,
 static int remote_newthread_step (threadref *ref, void *context);
 
 
-/* Write a PTID to BUF.  ENDBUF points to one-passed-the-end of the
+/* Write a PTID to BUF.  ENDBUF points to one-past-the-end of the
    buffer we're allowed to write to.  Returns
    BUF+CHARACTERS_WRITTEN.  */
 
 char *
 remote_target::write_ptid (char *buf, const char *endbuf, ptid_t ptid)
 {
-  ptid_t::pid_type pid;
-  ptid_t::lwp_type lwp;
-
-  if (m_features.remote_multi_process_p ())
-    {
-      pid = ptid.pid ();
-      if (pid < 0)
-	buf += xsnprintf (buf, endbuf - buf, "p-%x.", -pid);
-      else
-	buf += xsnprintf (buf, endbuf - buf, "p%x.", pid);
-    }
-  lwp = ptid.lwp ();
-  if (lwp < 0)
-    buf += xsnprintf (buf, endbuf - buf, "-%lx", -lwp);
-  else
-    buf += xsnprintf (buf, endbuf - buf, "%lx", lwp);
-
-  return buf;
+  std::string repr = ptid.to_rsp_string (m_features.remote_multi_process_p ());
+  gdb_assert (repr.length () < endbuf - buf);
+  strcpy (buf, repr.c_str ());
+  return buf + repr.length ();
 }
 
 /* Extract a PTID from BUF.  If non-null, OBUF is set to one past the
@@ -3718,67 +3702,21 @@ remote_target::write_ptid (char *buf, const char *endbuf, ptid_t ptid)
 static ptid_t
 read_ptid (const char *buf, const char **obuf)
 {
-  const char *p = buf;
-  const char *pp;
-  ptid_t::pid_type pid = 0;
-  ptid_t::lwp_type lwp = 0;
-  ULONGEST hex;
-
-  if (*p == 'p')
-    {
-      /* Multi-process ptid.  */
-      pp = unpack_varlen_hex (p + 1, &hex);
-      if ((pp == (p + 1)) || (*pp != '.'))
-	error (_("invalid remote ptid: %s"), buf);
-
-      pid = (ptid_t::pid_type) (LONGEST) hex;
-      if (hex != ((ULONGEST) pid))
-	error (_("invalid remote ptid: %s"), buf);
-
-      p = pp + 1;
-      pp = unpack_varlen_hex (p, &hex);
-      if (pp == p)
-	error (_("invalid remote ptid: %s"), buf);
-
-      lwp = (ptid_t::lwp_type) (LONGEST) hex;
-      if (hex != ((ULONGEST) lwp))
-	error (_("invalid remote ptid: %s"), buf);
-
-      if (obuf)
-	*obuf = pp;
-
-      return ptid_t (pid, lwp);
-    }
-
-  /* No multi-process.  Just a thread id.  */
-  pp = unpack_varlen_hex (p, &hex);
-
-  /* Return null_ptid when no thread id is found.  */
-  if (p == pp)
-    {
-      if (obuf)
-	*obuf = pp;
-      return null_ptid;
-    }
-
-  lwp = (ptid_t::lwp_type) (LONGEST) hex;
-  if (hex != ((ULONGEST) lwp))
-    error (_("invalid remote ptid: %s"), buf);
-
-  /* Since the stub is not sending a process id, default to what's
-     current_inferior, unless it doesn't have a PID yet.  If so,
-     then since there's no way to know the pid of the reported
-     threads, use the magic number.  */
-  inferior *inf = current_inferior ();
-  if (inf->pid == 0)
-    pid = magic_null_ptid.pid ();
-  else
-    pid = inf->pid;
-
-  if (obuf)
-    *obuf = pp;
-
-  return ptid_t (pid, lwp);
+  return ptid_t::parse (buf, obuf, false,
+    [] ()
+      {
+	/* Since the stub is not sending a process id, default to
+	   what's current_inferior, unless it doesn't have a PID yet.
+	   If so, then since there's no way to know the pid of the
+	   reported threads, use the magic number.  */
+	inferior *inf = current_inferior ();
+	ptid_t::pid_type pid;
+	if (inf->pid == 0)
+	  pid = magic_null_ptid.pid ();
+	else
+	  pid = inf->pid;
+	return pid;
+      });
 }
 
 static int
@@ -4797,15 +4735,6 @@ remote_target::static_tracepoint_markers_by_strid (const char *strid)
 }
 
 
-/* Implement the to_get_ada_task_ptid function for the remote targets.  */
-
-ptid_t
-remote_target::get_ada_task_ptid (long lwp, ULONGEST thread)
-{
-  return ptid_t (inferior_ptid.pid (), lwp);
-}
-
-
 /* Restart the remote side; this is an extended protocol operation.  */
 
 void
@@ -5410,7 +5339,7 @@ get_semicolon_delimited_hex_as_string (const char **ptr)
   return str;
 }
 
-/* See declaration in class above.   */
+/* See declaration in class above.  */
 
 remote_exec_and_args_info
 remote_target::fetch_remote_executable_and_arguments ()
@@ -5821,7 +5750,7 @@ remote_target::start_remote_1 (int from_tty, int extended_p)
       /* Need to switch to a specific thread, because remote_check_symbols
 	 uses INFERIOR_PTID to set the general thread.  */
       scoped_restore_current_thread restore_thread;
-      thread_info *thread = any_thread_of_inferior (inf);
+      thread_info *thread = any_non_exited_thread_of_inferior (inf);
       switch_to_thread (thread);
       this->remote_check_symbols ();
     }
@@ -6808,7 +6737,7 @@ thread_pending_fork_status (struct thread_info *thread)
   return &ws;
 }
 
-/* Return THREAD's pending status if is is a pending fork/vfork/clone
+/* Return THREAD's pending status if is a pending fork/vfork/clone
    event, else return nullptr.  */
 
 static const target_waitstatus *
@@ -7944,6 +7873,10 @@ remote_target::remote_stop_ns (ptid_t ptid)
 	  }
       }
 
+  /* Skip 'vCont' packet if there are no threads to be stopped.  */
+  if (all_non_exited_threads (this, ptid).empty ())
+    return;
+
   if (!rs->supports_vCont.t)
     error (_("Remote server does not support stopping threads"));
 
@@ -8406,7 +8339,7 @@ remote_target::push_stop_reply (stop_reply_up new_event)
   if (notif_debug)
     gdb_printf (gdb_stdlog,
 		"notif: push 'Stop' %s to queue %d\n",
-		new_event->ptid.to_string ().c_str (),
+		rs->stop_reply_queue.back ()->ptid.to_string ().c_str (),
 		int (rs->stop_reply_queue.size ()));
 
   /* Mark the pending event queue only if async mode is currently enabled.
@@ -10882,7 +10815,7 @@ show_watchdog (struct ui_file *file, int from_tty,
 /* Read a packet from the remote machine, with error checking, and
    store it in *BUF.  Resize *BUF if necessary to hold the result.  If
    FOREVER, wait forever rather than timing out; this is used (in
-   synchronous mode) to wait for a target that is is executing user
+   synchronous mode) to wait for a target that is executing user
    code to stop.  If FOREVER == false, this function is allowed to time
    out gracefully and return an indication of this to the caller.
    Otherwise return the number of bytes read.  If IS_NOTIF is not
@@ -11853,7 +11786,7 @@ remote_target::region_ok_for_hw_watchpoint (CORE_ADDR addr, int len)
 }
 
 int
-remote_target::can_use_hw_breakpoint (enum bptype type, int cnt, int ot)
+remote_target::can_use_hw_breakpoint (enum bptype type, int cnt, int othertype)
 {
   if (type == bp_hardware_breakpoint)
     {
@@ -11870,7 +11803,7 @@ remote_target::can_use_hw_breakpoint (enum bptype type, int cnt, int ot)
 	return 0;
       else if (remote_hw_watchpoint_limit < 0)
 	return 1;
-      else if (ot)
+      else if (othertype)
 	return -1;
       else if (cnt <= remote_hw_watchpoint_limit)
 	return 1;
@@ -12767,12 +12700,15 @@ cli_packet_command (const char *args, int from_tty)
    The split and joined arguments are printed out.  Additionally, the
    joined arguments are split and joined a second time, and compared to the
    result of the first join, this provides some basic validation that GDB
-   sess the joined arguments as equivalent to the original argument
+   sees the joined arguments as equivalent to the original argument
    string.  */
 
 static void
 test_remote_args_command (const char *args, int from_tty)
 {
+  if (args == nullptr)
+    error (_("missing argument string"));
+
   std::vector<std::string> split_args = gdb::remote_args::split (args);
 
   gdb_printf ("Input (%s)\n", args);
@@ -16232,7 +16168,7 @@ remote_objfile_changed_check_symbols (program_space *pspace)
 	 called very early in the connection process, while the inferior is
 	 being set up, before threads are added.  Just skip it, start_remote_1
 	 also calls remote_check_symbols when it's done setting things up.  */
-      thread_info *thread = any_thread_of_inferior (inf);
+      thread_info *thread = any_non_exited_thread_of_inferior (inf);
       if (thread != nullptr)
 	{
 	  scoped_restore_current_thread restore_thread;
@@ -16688,7 +16624,7 @@ test_memory_tagging_functions ()
   /* On the previous tests, qIsAddressTagged packet was auto detected and set
      as supported.  But an empty reply means the packet is unsupported, so for
      testing the empty reply the support is reset to unknown state, otherwise
-     packet_ok will complain.   */
+     packet_ok will complain.  */
   remote.m_features.m_protocol_packets[PACKET_qIsAddressTagged].support =
     PACKET_SUPPORT_UNKNOWN;
   SELF_CHECK (check_is_address_tagged_reply (&remote, packet, is_tagged) ==

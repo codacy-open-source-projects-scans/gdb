@@ -67,6 +67,8 @@ struct recpy_gap_object : public PyObject
   Py_ssize_t number;
 };
 
+static_assert (gdb::is_python_allocatable_v<recpy_gap_object>);
+
 /* Implementation of record.method.  */
 
 static PyObject *
@@ -206,7 +208,7 @@ recpy_insn_new (thread_info *thread, enum record_method method,
   obj->method = method;
   obj->number = number;
 
-  return (PyObject *) obj;
+  return obj;
 }
 
 /* Implementation of RecordInstruction.sal [gdb.Symtab_and_line].  */
@@ -303,7 +305,7 @@ recpy_func_new (thread_info *thread, enum record_method method,
   obj->method = method;
   obj->number = number;
 
-  return (PyObject *) obj;
+  return obj;
 }
 
 /* Implementation of RecordFunctionSegment.level [int].  */
@@ -416,10 +418,7 @@ recpy_element_richcompare (PyObject *self, PyObject *other, int op)
   const recpy_element_object * const obj2 = (recpy_element_object *) other;
 
   if (Py_TYPE (self) != Py_TYPE (other))
-    {
-      Py_INCREF (Py_NotImplemented);
-      return Py_NotImplemented;
-    }
+    return py_notimplemented ().release ();
 
   switch (op)
   {
@@ -427,24 +426,23 @@ recpy_element_richcompare (PyObject *self, PyObject *other, int op)
       if (obj1->thread == obj2->thread
 	  && obj1->method == obj2->method
 	  && obj1->number == obj2->number)
-	Py_RETURN_TRUE;
+	return py_true ().release ();
       else
-	Py_RETURN_FALSE;
+	return py_false ().release ();
 
     case Py_NE:
       if (obj1->thread != obj2->thread
 	  || obj1->method != obj2->method
 	  || obj1->number != obj2->number)
-	Py_RETURN_TRUE;
+	return py_true ().release ();
       else
-	Py_RETURN_FALSE;
+	return py_false ().release ();
 
     default:
       break;
   }
 
-  Py_INCREF (Py_NotImplemented);
-  return Py_NotImplemented;
+  return py_notimplemented ().release ();
 }
 
 /* Create a new gdb.RecordGap object.  */
@@ -462,7 +460,7 @@ recpy_gap_new (int reason_code, const char *reason_string, Py_ssize_t number)
   obj->reason_string = reason_string;
   obj->number = number;
 
-  return (PyObject *) obj;
+  return obj;
 }
 
 /* Implementation of RecordGap.number [int].  */
@@ -511,7 +509,7 @@ recpy_aux_new (thread_info *thread, enum record_method method,
   obj->method = method;
   obj->number = number;
 
-  return (PyObject *) obj;
+  return obj;
 }
 
 /* Implementation of Auxiliary.data [buffer].  */
@@ -691,7 +689,7 @@ gdbpy_current_recording (PyObject *self, PyObject *args)
   recpy_record_object *ret = NULL;
 
   if (find_record_target () == NULL)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   ret = PyObject_New (recpy_record_object, &recpy_record_type);
   if (ret == nullptr)
@@ -700,7 +698,7 @@ gdbpy_current_recording (PyObject *self, PyObject *args)
   ret->thread = inferior_thread ();
   ret->method = target_record_method (ret->thread->ptid);
 
-  return (PyObject *) ret;
+  return ret;
 }
 
 /* Implementation of gdb.stop_recording (self) -> None.  */
@@ -717,7 +715,7 @@ gdbpy_stop_recording (PyObject *self, PyObject *args)
       return gdbpy_handle_gdb_exception (nullptr, except);
     }
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 GDBPY_INITIALIZE_FILE (gdbpy_initialize_record);

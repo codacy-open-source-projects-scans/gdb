@@ -70,6 +70,14 @@
 #define AT_HWCAP2 26
 #endif
 
+#ifndef AT_HWCAP3
+#define AT_HWCAP3 29
+#endif
+
+#ifndef AT_HWCAP4
+#define AT_HWCAP4 30
+#endif
+
 /* Some targets did not define these ptrace constants from the start,
    so gdbserver defines them locally here.  In the future, these may
    be removed after they are added to asm/ptrace.h.  */
@@ -104,7 +112,7 @@
 
 #ifndef HAVE_ELF32_AUXV_T
 /* Copied from glibc's elf.h.  */
-typedef struct
+struct Elf32_auxv_t
 {
   uint32_t a_type;		/* Entry type */
   union
@@ -114,12 +122,12 @@ typedef struct
 	 though, since it does not work when using 32-bit definitions
 	 on 64-bit platforms and vice versa.  */
     } a_un;
-} Elf32_auxv_t;
+};
 #endif
 
 #ifndef HAVE_ELF64_AUXV_T
 /* Copied from glibc's elf.h.  */
-typedef struct
+struct Elf64_auxv_t
 {
   uint64_t a_type;		/* Entry type */
   union
@@ -129,7 +137,7 @@ typedef struct
 	 though, since it does not work when using 32-bit definitions
 	 on 64-bit platforms and vice versa.  */
     } a_un;
-} Elf64_auxv_t;
+};
 #endif
 
 /* See nat/linux-nat.h.  */
@@ -532,9 +540,9 @@ linux_process_target::handle_extended_wait (lwp_info **orig_event_lwp,
 	  if (ret == -1)
 	    perror_with_name ("waiting for new child");
 	  else if (ret != new_pid)
-	    warning ("wait returned unexpected PID %d", ret);
+	    warning (_("wait returned unexpected PID %d"), ret);
 	  else if (!WIFSTOPPED (status))
-	    warning ("wait returned unexpected status 0x%x", status);
+	    warning (_("wait returned unexpected status 0x%x"), status);
 	}
 
       if (debug_threads)
@@ -732,6 +740,40 @@ linux_process_target::handle_extended_wait (lwp_info **orig_event_lwp,
       event_ptid = event_thr->id;
       event_pid = event_ptid.pid ();
 
+      /* If GDBserver had sent the exec'ing thread a SIGSTOP and the thread
+	 exec'ed before consuming it, the SIGSTOP stays pending across the exec.
+	 The pending SIGSTOP is reported once the post-exec thread is resumed.
+	 Carry the expectation over to the new lwp_info below, so that it is
+	 filtered out instead of being reported to GDB.
+
+	 Things get interesting if a non-leader thread does the exec.  The
+	 kernel deletes the other threads, changes the exec'ing thread's id
+	 so it matches the tgid (becomes the new leader), and reports the
+	 PTRACE_EVENT_EXEC for that leader id.  If a SIGSTOP was pending on
+	 the exec'ing non-leader as the exec happened, it will still be pending
+	 post-exec, but it will be reported under leader id.
+
+	 Since EVENT_LWP was looked up using the leader id, it represents the
+	 former leader, not necessarily the exec'ing thread.  To properly carry
+	 the stop expectation from the exec'ing thread's lwp_info to the new
+	 lwp_info, use PTRACE_GETEVENTMSG to obtain the exec'ing thread's former
+	 id, and look up the lwp_info from that.
+
+	 If a SIGSTOP is pending (in the kernel) on the leader when a non-leader
+	 execs, then that SIGSTOP disappears with the thread.  */
+      unsigned long execing_tid;
+      if (ptrace (PTRACE_GETEVENTMSG, event_ptid.lwp (), (PTRACE_TYPE_ARG3) 0,
+		  &execing_tid) != 0)
+	{
+	  /* If ptrace fails, fall back to using the leader.  */
+	  execing_tid = event_ptid.lwp ();
+	}
+
+      lwp_info *execing_lwp
+	= find_lwp_pid (ptid_t (event_pid, execing_tid));
+      bool stop_expected
+	= execing_lwp != nullptr && execing_lwp->stop_expected;
+
       /* Save the syscall list from the execing process.  */
       process_info *proc = event_thr->process ();
       syscalls_to_catch = std::move (proc->syscalls_to_catch);
@@ -746,6 +788,9 @@ linux_process_target::handle_extended_wait (lwp_info **orig_event_lwp,
       event_thr = event_lwp->thread;
       gdb_assert (current_thread == event_thr);
       arch_setup_thread (event_thr);
+
+      /* Carry over a possible SIGSTOP expectation.  */
+      event_lwp->stop_expected = stop_expected;
 
       /* Set the event status.  */
       event_lwp->waitstatus.set_execd
@@ -1173,7 +1218,7 @@ linux_process_target::attach (unsigned long pid)
       this->remove_linux_process (proc);
 
       std::string reason = linux_ptrace_attach_fail_reason_string (ptid, err);
-      error ("Cannot attach to process %ld: %s", pid, reason.c_str ());
+      error (_("Cannot attach to process %ld: %s"), pid, reason.c_str ());
     }
 
   open_proc_mem_file (proc);
@@ -4077,9 +4122,9 @@ linux_process_target::resume_one_lwp_throw (lwp_info *lwp, int step,
 	  if (fast_tp_collecting == fast_tpoint_collect_result::not_collecting)
 	    {
 	      if (step == 0)
-		warning ("BAD - reinserting but not stepping.");
+		warning (_("BAD - reinserting but not stepping."));
 	      if (lwp->suspended)
-		warning ("BAD - reinserting and suspended(%d).",
+		warning (_("BAD - reinserting and suspended(%d)."),
 				 lwp->suspended);
 	    }
 	}
@@ -5182,7 +5227,7 @@ register_addr (const struct usrregs_info *usrregs, int regnum)
   int addr;
 
   if (regnum < 0 || regnum >= usrregs->num_regs)
-    error ("Invalid register number %d.", regnum);
+    error (_("Invalid register number %d."), regnum);
 
   addr = usrregs->regmap[regnum];
 
@@ -5280,7 +5325,7 @@ linux_process_target::store_register (const usrregs_info *usrregs,
 
 
 	  if (!low_cannot_store_register (regno))
-	    error ("writing register %d: %s", regno, safe_strerror (errno));
+	    error (_("writing register %d: %s"), regno, safe_strerror (errno));
 	}
       regaddr += sizeof (PTRACE_XFER_TYPE);
     }
@@ -5894,7 +5939,7 @@ linux_process_target::async (bool enable)
 	    {
 	      gdb_sigmask (SIG_UNBLOCK, &mask, NULL);
 
-	      warning ("creating event pipe failed.");
+	      warning (_("creating event pipe failed."));
 	      return previous;
 	    }
 
@@ -6309,8 +6354,8 @@ get_phdr_phnum_from_proc_auxv (const int pid, const int is_elf64,
 
   if (*phdr_memaddr == 0 || *num_phdr == 0)
     {
-      warning ("Unexpected missing AT_PHDR and/or AT_PHNUM: "
-	       "phdr_memaddr = %ld, phdr_num = %d",
+      warning (_("Unexpected missing AT_PHDR and/or AT_PHNUM: "
+		 "phdr_memaddr = %ld, phdr_num = %d"),
 	       (long) *phdr_memaddr, *num_phdr);
       return 2;
     }
@@ -6606,7 +6651,7 @@ read_link_map (std::string &document, CORE_ADDR lmid, CORE_ADDR lm_addr,
 
       if (lm_prev != l_prev)
 	{
-	  warning ("Corrupted shared library list: 0x%s != 0x%s",
+	  warning (_("Corrupted shared library list: 0x%s != 0x%s"),
 		   paddress (lm_prev), paddress (l_prev));
 	  break;
 	}
@@ -6709,13 +6754,13 @@ linux_process_target::qxfer_libraries_svr4 (const char *annex,
   else
     {
       if (lm_prev != 0)
-	warning ("ignoring prev=0x%s without start", paddress (lm_prev));
+	warning (_("ignoring prev=0x%s without start"), paddress (lm_prev));
 
       /* We could interpret LMID as 'provide only the libraries for this
 	 namespace' but GDB is currently only providing lmid, start, and
 	 prev, or nothing.  */
       if (lmid != 0)
-	warning ("ignoring lmid=0x%s without start", paddress (lmid));
+	warning (_("ignoring lmid=0x%s without start"), paddress (lmid));
 
       CORE_ADDR r_debug = priv->r_debug;
       if (r_debug == 0)
@@ -6738,21 +6783,21 @@ linux_process_target::qxfer_libraries_svr4 (const char *annex,
 				 (unsigned char *) &r_version,
 				 sizeof (r_version)) != 0)
 	    {
-	      warning ("unable to read r_version from 0x%s",
+	      warning (_("unable to read r_version from 0x%s"),
 		       paddress (r_debug + lmo->r_version_offset));
 	      break;
 	    }
 
 	  if (r_version < 1)
 	    {
-	      warning ("unexpected r_debug version %d", r_version);
+	      warning (_("unexpected r_debug version %d"), r_version);
 	      break;
 	    }
 
 	  if (read_one_ptr (r_debug + lmo->r_map_offset, &lm_addr,
 			    ptr_size) != 0)
 	    {
-	      warning ("unable to read r_map from 0x%s",
+	      warning (_("unable to read r_map from 0x%s"),
 		       paddress (r_debug + lmo->r_map_offset));
 	      break;
 	    }
@@ -6776,7 +6821,7 @@ linux_process_target::qxfer_libraries_svr4 (const char *annex,
 	      if (read_one_ptr (lm_addr + lmo->l_next_offset,
 				&lm_addr, ptr_size) != 0)
 		{
-		  warning ("unable to read l_next from 0x%s",
+		  warning (_("unable to read l_next from 0x%s"),
 			   paddress (lm_addr + lmo->l_next_offset));
 		  break;
 		}
@@ -6790,7 +6835,7 @@ linux_process_target::qxfer_libraries_svr4 (const char *annex,
 	  if (read_one_ptr (r_debug + lmo->r_next_offset, &r_debug,
 			    ptr_size) != 0)
 	    {
-	      warning ("unable to read r_next from 0x%s",
+	      warning (_("unable to read r_next from 0x%s"),
 		       paddress (r_debug + lmo->r_next_offset));
 	      break;
 	    }
@@ -7196,6 +7241,26 @@ linux_get_hwcap2 (int pid, int wordsize)
   CORE_ADDR hwcap2 = 0;
   linux_get_auxv (pid, wordsize, AT_HWCAP2, &hwcap2);
   return hwcap2;
+}
+
+/* See linux-low.h.  */
+
+CORE_ADDR
+linux_get_hwcap3 (int pid, int wordsize)
+{
+  CORE_ADDR hwcap3 = 0;
+  linux_get_auxv (pid, wordsize, AT_HWCAP3, &hwcap3);
+  return hwcap3;
+}
+
+/* See linux-low.h.  */
+
+CORE_ADDR
+linux_get_hwcap4 (int pid, int wordsize)
+{
+  CORE_ADDR hwcap4 = 0;
+  linux_get_auxv (pid, wordsize, AT_HWCAP4, &hwcap4);
+  return hwcap4;
 }
 
 #ifdef HAVE_LINUX_REGSETS

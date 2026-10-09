@@ -209,7 +209,7 @@ tui_update_source_windows_with_line (struct symtab_and_line sal)
   if (sal.symtab != nullptr)
     {
       find_pc_for_line (sal.symtab, sal.line, &sal.pc);
-      gdbarch = sal.symtab->compunit ()->objfile ()->arch ();
+      gdbarch = sal.symtab->compunit ().objfile ()->arch ();
     }
 
   for (struct tui_source_window_base *win_info : tui_source_windows ())
@@ -309,6 +309,8 @@ void
 tui_source_window_base::refresh_window ()
 {
   TUI_SCOPED_DEBUG_START_END ("window `%s`", name ());
+
+  gdb_assert (handle != nullptr);
 
   /* tui_win_info::refresh_window would draw the empty background window to
      the screen, potentially creating a flicker.  */

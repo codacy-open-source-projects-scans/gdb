@@ -141,7 +141,7 @@ extern struct value * eval_op_f_loc (struct type *expect_type,
 /* Implement the evaluation of UNOP_FORTRAN_RANK.  EXPECTED_TYPE, EXP, and
    NOSIDE are as for expression::evaluate (see expression.h).  OP will
    always be UNOP_FORTRAN_RANK, and ARG1 is the argument being passed to
-   the expression.   */
+   the expression.  */
 
 extern struct value *eval_op_f_rank (struct type *expect_type,
 				     struct expression *exp,
@@ -198,9 +198,9 @@ namespace expr
 
 /* Function prototype for Fortran intrinsic functions taking one argument and
    one kind argument.  */
-typedef value *binary_kind_ftype (type *expect_type, expression *exp,
-				  noside noside, exp_opcode op, value *arg1,
-				  type *kind_arg);
+using binary_kind_ftype = value * (type *expect_type, expression *exp,
+				   noside noside, exp_opcode op, value *arg1,
+				   type *kind_arg);
 
 /* Two-argument operation with the second argument being a kind argument.  */
 template<exp_opcode OP, binary_kind_ftype FUNC>
@@ -224,9 +224,9 @@ public:
 
 /* Function prototype for Fortran intrinsic functions taking two arguments and
    one kind argument.  */
-typedef value *ternary_kind_ftype (type *expect_type, expression *exp,
-				   noside noside, exp_opcode op, value *arg1,
-				   value *arg2, type *kind_arg);
+using ternary_kind_ftype = value * (type *expect_type, expression *exp,
+				    noside noside, exp_opcode op, value *arg1,
+				    value *arg2, type *kind_arg);
 
 /* Three-argument operation with the third argument being a kind argument.  */
 template<exp_opcode OP, ternary_kind_ftype FUNC>

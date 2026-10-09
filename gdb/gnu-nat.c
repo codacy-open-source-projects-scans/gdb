@@ -152,7 +152,7 @@ struct inf
   {
     /* Fields describing the current inferior.  */
 
-    struct proc *task;		/* The mach task.   */
+    struct proc *task;		/* The mach task.  */
     struct proc *threads;	/* A linked list of all threads in TASK.  */
 
     /* True if THREADS needn't be validated by querying the task.  We
@@ -2617,13 +2617,14 @@ gnu_nat_target::find_memory_regions (find_memory_region_ftype func)
 	  /* This region is distinct from the last one we saw, so report
 	     that previous one.  */
 	  if (last_protection != VM_PROT_NONE)
-	    (*func) (last_region_address,
+	    func (last_region_address,
 		     last_region_end - last_region_address,
 		     last_protection & VM_PROT_READ,
 		     last_protection & VM_PROT_WRITE,
 		     last_protection & VM_PROT_EXECUTE,
 		     true, /* MODIFIED is unknown, pass it as true.  */
-		     false /* No memory tags in the object file.  */);
+		     false, /* No memory tags in the object file.  */
+		     false /* Not known to be all zeroes.  */);
 	  last_region_address = region_address;
 	  last_region_end = region_address += region_length;
 	  last_protection = protection;
@@ -2637,7 +2638,8 @@ gnu_nat_target::find_memory_regions (find_memory_region_ftype func)
 	  last_protection & VM_PROT_WRITE,
 	  last_protection & VM_PROT_EXECUTE,
 	  true, /* MODIFIED is unknown, pass it as true.  */
-	  false /* No memory tags in the object file.  */);
+	  false, /* No memory tags in the object file.  */
+	  false /* Not known to be all zeroes.  */);
 
   return true;
 }

@@ -27,7 +27,7 @@ lappend opts additional_flags=-nostdlib
 
 if {[prepare_for_testing "failed to prepare" $exefile \
 	 [list $srcfile $srcfile2 $srcfile3] $opts]} {
-    return -1
+    return
 }
 
 # Wrap the entire test in a namespace to avoid contaminating other tests.
@@ -98,7 +98,7 @@ namespace eval $testfile {
 
     # Fire up gdb.
     if {![runto_main]} {
-	return -1
+	return
     }
 
     # Turn off queries
@@ -220,7 +220,7 @@ namespace eval $testfile {
 	    }
 	}
 
-	set tst "complete non-existant function name"
+	set tst "complete non-existent function name"
 	send_gdb "break -function foo\t"
 	gdb_test_multiple "" $tst {
 	    -re "break -function foo\\\x07" {
@@ -279,7 +279,7 @@ namespace eval $testfile {
 	    }
 	}
 
-	set tst "complete non-existant file name"
+	set tst "complete non-existent file name"
 	send_gdb "break -source foo\t"
 	gdb_test_multiple "" $tst {
 	    -re "break -source foo" {
@@ -319,7 +319,7 @@ namespace eval $testfile {
 	    }
 	}
 
-	set tst "complete filename and non-existant function name"
+	set tst "complete filename and non-existent function name"
 	send_gdb "break -sou 3explicit.c -fun foo\t"
 	gdb_test_multiple "" $tst {
 	    -re "break -sou 3explicit.c -fun foo\\\x07" {
@@ -580,7 +580,7 @@ namespace eval $testfile {
 
     set tst "pending invalid conditional explicit breakpoint"
     if {![gdb_breakpoint "-func myfunction if foofoofoo == 1" \
-	      allow-pending]} {
+	      -allow-pending]} {
 	fail "set $tst"
     } else {
 	gdb_test "info break" ".*PENDING.*myfunction\r\n\\s+stop only if foofoofoo == 1.*" $tst
@@ -597,7 +597,7 @@ namespace eval $testfile {
 
     set tst "pending valid conditional explicit breakpoint"
     if {![gdb_breakpoint "-func myfunction if arg == 0" \
-	      allow-pending]} {
+	      -allow-pending]} {
 	fail "set $tst"
     } else {
 	gdb_test "info break" \
@@ -610,7 +610,7 @@ namespace eval $testfile {
 	    "$tst resolved"
     }
 
-    # Test interaction of condition command and explicit linespec conditons.
+    # Test interaction of condition command and explicit linespec conditions.
     clean_restart $exefile
 
     set tst "condition_command overrides explicit linespec condition"

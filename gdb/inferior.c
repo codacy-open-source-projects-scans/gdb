@@ -588,7 +588,7 @@ print_inferior (struct ui_out *uiout, const char *requested_inferiors)
       if (!number_is_in_list (requested_inferiors, inf->num))
 	continue;
 
-      ui_out_emit_tuple tuple_emitter (uiout, NULL);
+      ui_out_emit_tuple tuple_emitter (uiout);
 
       if (inf == current_inf)
 	uiout->field_string ("current", "*");
@@ -663,7 +663,7 @@ detach_inferior_command (const char *args, int from_tty)
 	  continue;
 	}
 
-      thread_info *tp = any_thread_of_inferior (inf);
+      thread_info *tp = any_non_exited_thread_of_inferior (inf);
       if (tp == NULL)
 	{
 	  warning (_("Inferior ID %d has no threads."), num);
@@ -702,7 +702,7 @@ kill_inferior_command (const char *args, int from_tty)
 	  continue;
 	}
 
-      thread_info *tp = any_thread_of_inferior (inf);
+      thread_info *tp = any_non_exited_thread_of_inferior (inf);
       if (tp == NULL)
 	{
 	  warning (_("Inferior ID %d has no threads."), num);
@@ -771,7 +771,7 @@ inferior_command (const char *args, int from_tty)
 	{
 	  if (inf != current_inferior ())
 	    {
-	      thread_info *tp = any_thread_of_inferior (inf);
+	      thread_info *tp = any_non_exited_thread_of_inferior (inf);
 	      if (tp == NULL)
 		error (_("Inferior has no threads."));
 

@@ -46,6 +46,8 @@ struct style_object : public PyObject
   char *style_name;
 };
 
+static_assert (gdb::is_python_allocatable_v<style_object>);
+
 extern PyTypeObject style_object_type;
 
 /* Initialize the 'style' module.  */
@@ -267,7 +269,7 @@ stylepy_init_from_parts (PyObject *self, PyObject *fg, PyObject *bg,
       PyErr_Format
 	(PyExc_TypeError,
 	 _("'foreground' argument must be gdb.Color or None, not %s."),
-	 gdbpy_py_obj_tp_name (fg));
+	 gdbpy_py_obj_tp_name (fg).c_str ());
       return -1;
     }
 
@@ -276,7 +278,7 @@ stylepy_init_from_parts (PyObject *self, PyObject *fg, PyObject *bg,
       PyErr_Format
 	(PyExc_TypeError,
 	 _("'background' argument must be gdb.Color or None, not %s."),
-	 gdbpy_py_obj_tp_name (bg));
+	 gdbpy_py_obj_tp_name (bg).c_str ());
       return -1;
     }
 
@@ -346,7 +348,7 @@ stylepy_init (PyObject *self, PyObject *args, PyObject *kwargs)
 
 
 
-/* See python-internal.h.   */
+/* See python-internal.h.  */
 
 bool
 gdbpy_is_style (PyObject *obj)
@@ -371,7 +373,7 @@ stylepy_to_style (style_object *stylepy)
   return style;
 }
 
-/* See python-internal.h.   */
+/* See python-internal.h.  */
 
 std::optional<ui_file_style>
 gdbpy_style_object_to_ui_file_style (PyObject *obj)
@@ -483,7 +485,7 @@ stylepy_set_foreground (PyObject *self, PyObject *newvalue, void *closure)
   if (!gdbpy_is_color (newvalue))
     {
       PyErr_Format (PyExc_TypeError, _("value must be gdb.Color, not %s"),
-		    gdbpy_py_obj_tp_name (newvalue));
+		    gdbpy_py_obj_tp_name (newvalue).c_str ());
       return -1;
     }
 
@@ -541,7 +543,7 @@ stylepy_set_background (PyObject *self, PyObject *newvalue, void *closure)
   if (!gdbpy_is_color (newvalue))
     {
       PyErr_Format (PyExc_TypeError, _("value must be gdb.Color, not %s"),
-		    gdbpy_py_obj_tp_name (newvalue));
+		    gdbpy_py_obj_tp_name (newvalue).c_str ());
       return -1;
     }
 
@@ -623,7 +625,7 @@ stylepy_set_intensity (PyObject *self, PyObject *newvalue, void *closure)
       PyErr_Format
 	(PyExc_TypeError,
 	 _("value must be a Long (a gdb.INTENSITY constant), not %s"),
-	 gdbpy_py_obj_tp_name (newvalue));
+	 gdbpy_py_obj_tp_name (newvalue).c_str ());
       return -1;
     }
 
@@ -733,12 +735,12 @@ stylepy_repr (PyObject *self)
 
   if (style_obj->style_name == nullptr)
     return PyUnicode_FromFormat ("<%s fg=%s, bg=%s, intensity=%s>",
-				 gdbpy_py_obj_tp_name (self),
+				 gdbpy_py_obj_tp_name (self).c_str (),
 				 fg_str.get (), bg_str.get (),
 				 intensity_str);
   else
     return PyUnicode_FromFormat ("<%s name='%s', fg=%s, bg=%s, intensity=%s>",
-				 gdbpy_py_obj_tp_name (self),
+				 gdbpy_py_obj_tp_name (self).c_str (),
 				 style_obj->style_name, fg_str.get (),
 				 bg_str.get (), intensity_str);
 }

@@ -84,7 +84,6 @@ gld${EMULATION_NAME}_before_parse (void)
   input_flags.dynamic = ${DYNAMIC_LINK-true};
   config.has_shared = `if test -n "$GENERATE_SHLIB_SCRIPT" ; then echo true ; else echo false ; fi`;
   config.separate_code = `if test "x${SEPARATE_CODE}" = xyes ; then echo true ; else echo false ; fi`;
-  link_info.check_relocs_after_open_input = true;
 EOF
 if test -n "$COMMONPAGESIZE"; then
 fragment <<EOF
@@ -182,7 +181,7 @@ fragment <<EOF
 static void
 gld${EMULATION_NAME}_after_allocation (void)
 {
-  int need_layout = bfd_elf_discard_info (link_info.output_bfd, &link_info);
+  int need_layout = bfd_elf_discard_info (&link_info);
 
   if (need_layout < 0)
     einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
@@ -1171,6 +1170,7 @@ EOF
 fi
 fi
 
+LDEMUL_AFTER_OPEN_OUTPUT=${LDEMUL_AFTER_OPEN_OUTPUT-ldelf_after_open_output}
 LDEMUL_AFTER_PARSE=${LDEMUL_AFTER_PARSE-ldelf_after_parse}
 LDEMUL_BEFORE_PLUGIN_ALL_SYMBOLS_READ=${LDEMUL_BEFORE_PLUGIN_ALL_SYMBOLS_READ-gld${EMULATION_NAME}_before_plugin_all_symbols_read}
 LDEMUL_AFTER_OPEN=${LDEMUL_AFTER_OPEN-gld${EMULATION_NAME}_after_open}

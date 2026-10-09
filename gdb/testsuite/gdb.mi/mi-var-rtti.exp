@@ -22,7 +22,7 @@ standard_testfile .cc
 set opts {debug c++}
 
 if {[build_executable $testfile.exp $testfile $srcfile $opts]} {
-    return -1
+    return
 }
 
 if {[mi_clean_restart $::testfile]} {
@@ -111,14 +111,14 @@ set inline_tests {
     use_rtti_for_ref
     use_rtti_for_ptr_child
     use_rtti_for_ref_child
-    use_rtti_with_multiple_inheritence
+    use_rtti_with_multiple_inheritance
     type_update_when_use_rtti
     skip_type_update_when_not_use_rtti
 }
 
 foreach_with_prefix inline_test $inline_tests {
     if { [mi_run_inline_test $inline_test] < 0 } {
-       return -1
+	return
     }
 }
 

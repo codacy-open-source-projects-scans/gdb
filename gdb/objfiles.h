@@ -151,12 +151,12 @@ extern void print_objfile_statistics (void);
 
 struct minimal_symbol_iterator
 {
-  typedef minimal_symbol_iterator self_type;
-  typedef struct minimal_symbol *value_type;
-  typedef struct minimal_symbol *&reference;
-  typedef struct minimal_symbol **pointer;
-  typedef std::forward_iterator_tag iterator_category;
-  typedef int difference_type;
+  using self_type = minimal_symbol_iterator;
+  using value_type = struct minimal_symbol *;
+  using reference = struct minimal_symbol *&;
+  using pointer = struct minimal_symbol **;
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = int;
 
   explicit minimal_symbol_iterator (struct minimal_symbol *msym)
     : m_msym (msym)
@@ -342,7 +342,7 @@ private:
 
 /* A range adapter wrapping separate_debug_iterator.  */
 
-typedef iterator_range<separate_debug_iterator> separate_debug_range;
+using separate_debug_range = iterator_range<separate_debug_iterator>;
 
 /* Sections in an objfile.  The section offsets are stored in the
    OBJFILE.  */
@@ -450,6 +450,27 @@ public:
   /* Return the program space associated with this objfile.  */
   program_space *pspace () { return m_pspace; }
 
+  /* Return the first solib associated to this objfile, or nullptr if there are
+     none.  */
+  solib *first_solib ()
+  { return !m_solibs.empty () ? m_solibs[0] : nullptr; }
+
+  /* Add SOLIB to the list of solibs associated to this objfile.  */
+  void add_solib (solib &solib)
+  {
+    gdb_assert (std::find (m_solibs.begin (), m_solibs.end (), &solib)
+		== m_solibs.end ());
+    m_solibs.emplace_back (&solib);
+  }
+
+  /* Remove SOLIB from the list of solibs associated to this objfile.  */
+  void remove_solib (solib &solib)
+  {
+    auto it = std::find (m_solibs.begin (), m_solibs.end (), &solib);
+    gdb_assert (it != m_solibs.end ());
+    m_solibs.erase (it);
+  }
+
   using compunit_symtab_iterator
     = owning_intrusive_list<compunit_symtab>::iterator;
   using compunit_symtab_range = iterator_range<compunit_symtab_iterator>;
@@ -467,7 +488,7 @@ public:
   /* A range adapter that makes it possible to iterate over all
      minimal symbols of an objfile.  */
 
-  typedef iterator_range<minimal_symbol_iterator> msymbols_range;
+  using msymbols_range = iterator_range<minimal_symbol_iterator>;
 
   /* Return a range adapter for iterating over all minimal
      symbols.  */
@@ -702,6 +723,10 @@ private:
 
   program_space *m_pspace;
 
+  /* The solibs associated to this objfile.  This is a 1 objfile to N solibs
+     relationship (see solib.c for details).  */
+  std::vector<solib *> m_solibs;
+
 public:
   /* The object file's BFD.  Can be null if the objfile contains only
      minimal symbols (e.g. the run time common symbols for SunOS4) or
@@ -875,7 +900,7 @@ struct objfile_unlinker
 
 /* A unique pointer that holds an objfile.  */
 
-typedef std::unique_ptr<objfile, objfile_unlinker> scoped_objfile_unlinker;
+using scoped_objfile_unlinker = std::unique_ptr<objfile, objfile_unlinker>;
 
 /* Relocation offset applied to the section.  */
 inline CORE_ADDR

@@ -48,6 +48,7 @@ extern "C" {
 #include <stdarg.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <inttypes.h>
 
 #if defined (__STDC__) || defined (ALMOST_STDC) || defined (HAVE_STRINGIZE)
 #ifndef SABER
@@ -77,10 +78,22 @@ extern "C" {
 /* The word size of the default bfd target.  */
 #define BFD_DEFAULT_TARGET_SIZE @bfd_default_target_size@
 
-#include <inttypes.h>
-
 #if BFD_ARCH_SIZE >= 64
 #define BFD64
+#endif
+
+#if GCC_VERSION >= 7000
+#define _bfd_mul_overflow(a, b, res) __builtin_mul_overflow (a, b, res)
+#else
+/* Assumes unsigned values.  Careful!  Args evaluated multiple times.  */
+#define _bfd_mul_overflow(a, b, res) \
+  ((*res) = (a), (*res) *= (b), (b) != 0 && (*res) / (b) != (a))
+#endif
+
+#ifdef __GNUC__
+#define _bfd_constant_p(v) __builtin_constant_p (v)
+#else
+#define _bfd_constant_p(v) 0
 #endif
 
 /* Silence "applying zero offset to null pointer" UBSAN warnings.  */
@@ -1571,12 +1584,12 @@ enum bfd_architecture
 #define bfd_mach_arm_6M        20
 #define bfd_mach_arm_6SM       21
 #define bfd_mach_arm_7EM       22
-#define bfd_mach_arm_8         23
+#define bfd_mach_arm_8A        23
 #define bfd_mach_arm_8R        24
 #define bfd_mach_arm_8M_BASE   25
 #define bfd_mach_arm_8M_MAIN   26
 #define bfd_mach_arm_8_1M_MAIN 27
-#define bfd_mach_arm_9         28
+#define bfd_mach_arm_9A        28
   bfd_arch_nds32,     /* Andes NDS32.  */
 #define bfd_mach_n1            1
 #define bfd_mach_n1h           2
@@ -1804,20 +1817,37 @@ enum bfd_architecture
 #define bfd_mach_loongarch64   2
   bfd_arch_amdgcn,     /* AMDGCN */
 #define bfd_mach_amdgcn_unknown 0x000
-#define bfd_mach_amdgcn_gfx900  0x02c
-#define bfd_mach_amdgcn_gfx904  0x02e
-#define bfd_mach_amdgcn_gfx906  0x02f
-#define bfd_mach_amdgcn_gfx908  0x030
-#define bfd_mach_amdgcn_gfx90a  0x03f
-#define bfd_mach_amdgcn_gfx1010 0x033
-#define bfd_mach_amdgcn_gfx1011 0x034
-#define bfd_mach_amdgcn_gfx1012 0x035
-#define bfd_mach_amdgcn_gfx1030 0x036
-#define bfd_mach_amdgcn_gfx1031 0x037
-#define bfd_mach_amdgcn_gfx1032 0x038
-#define bfd_mach_amdgcn_gfx1100 0x041
-#define bfd_mach_amdgcn_gfx1101 0x046
-#define bfd_mach_amdgcn_gfx1102 0x047
+#define bfd_mach_amdgcn_gfx9_generic    0x051
+#define bfd_mach_amdgcn_gfx900          0x02c
+#define bfd_mach_amdgcn_gfx904          0x02e
+#define bfd_mach_amdgcn_gfx906          0x02f
+#define bfd_mach_amdgcn_gfx908          0x030
+#define bfd_mach_amdgcn_gfx90a          0x03f
+#define bfd_mach_amdgcn_gfx9_4_generic  0x05f
+#define bfd_mach_amdgcn_gfx942          0x04c
+#define bfd_mach_amdgcn_gfx950          0x04f
+#define bfd_mach_amdgcn_gfx10_1_generic 0x052
+#define bfd_mach_amdgcn_gfx1010         0x033
+#define bfd_mach_amdgcn_gfx1011         0x034
+#define bfd_mach_amdgcn_gfx1012         0x035
+#define bfd_mach_amdgcn_gfx10_3_generic 0x053
+#define bfd_mach_amdgcn_gfx1030         0x036
+#define bfd_mach_amdgcn_gfx1031         0x037
+#define bfd_mach_amdgcn_gfx1032         0x038
+#define bfd_mach_amdgcn_gfx11_generic   0x054
+#define bfd_mach_amdgcn_gfx1100         0x041
+#define bfd_mach_amdgcn_gfx1101         0x046
+#define bfd_mach_amdgcn_gfx1102         0x047
+#define bfd_mach_amdgcn_gfx1103         0x044
+#define bfd_mach_amdgcn_gfx1150         0x043
+#define bfd_mach_amdgcn_gfx1151         0x04a
+#define bfd_mach_amdgcn_gfx1152         0x055
+#define bfd_mach_amdgcn_gfx1153         0x058
+#define bfd_mach_amdgcn_gfx12_generic   0x059
+#define bfd_mach_amdgcn_gfx1200         0x048
+#define bfd_mach_amdgcn_gfx1201         0x04e
+#define bfd_mach_amdgcn_gfx12_5_generic 0x05b
+#define bfd_mach_amdgcn_gfx1250         0x049
   bfd_arch_last
   };
 
@@ -2480,7 +2510,8 @@ bfd_set_asymbol_name (asymbol *sy, const char *name)
 static inline bfd_size_type
 bfd_get_section_limit_octets (const bfd *abfd, const asection *sec)
 {
-  if (abfd->direction != write_direction && sec->rawsize != 0)
+  if (abfd->format != bfd_core && abfd->direction != write_direction
+      && sec->rawsize != 0)
     return sec->rawsize;
   return sec->size;
 }
@@ -2499,7 +2530,8 @@ bfd_get_section_limit (const bfd *abfd, const asection *sec)
 static inline bfd_size_type
 bfd_get_section_alloc_size (const bfd *abfd, const asection *sec)
 {
-  if (abfd->direction != write_direction && sec->rawsize > sec->size)
+  if (abfd->format != bfd_core && abfd->direction != write_direction
+      && sec->rawsize > sec->size)
     return sec->rawsize;
   return sec->size;
 }
@@ -2796,8 +2828,8 @@ bool bfd_set_private_flags (bfd *abfd, flagword flags);
        BFD_SEND (abfd, _bfd_canonicalize_dynamic_reloc, (abfd, arels, asyms))
 
 bfd_byte *bfd_get_relocated_section_contents
-   (bfd *, struct bfd_link_info *, struct bfd_link_order *, bfd_byte *,
-    bool, asymbol **);
+   (bfd *, struct bfd_link_info *, const struct bfd_link_order *,
+    bfd_byte *, bool, asymbol **);
 
 bool bfd_record_phdr
    (bfd *, unsigned long, bool, flagword, bool, bfd_vma,
@@ -3868,6 +3900,7 @@ enum bfd_reloc_code_real
   /* i386/elf relocations.  */
   BFD_RELOC_386_GOT32,
   BFD_RELOC_386_PLT32,
+  BFD_RELOC_386_PC32_TO_PLT32,
   BFD_RELOC_386_TLS_TPOFF,
   BFD_RELOC_386_TLS_IE,
   BFD_RELOC_386_TLS_GOTIE,
@@ -3906,6 +3939,7 @@ enum bfd_reloc_code_real
   BFD_RELOC_X86_64_TLSDESC,
   BFD_RELOC_X86_64_PC32_BND,
   BFD_RELOC_X86_64_PLT32_BND,
+  BFD_RELOC_X86_64_PC32_TO_PLT32,
   BFD_RELOC_X86_64_GOTPCRELX,
   BFD_RELOC_X86_64_REX_GOTPCRELX,
   BFD_RELOC_X86_64_CODE_4_GOTPCRELX,
@@ -6134,6 +6168,22 @@ enum bfd_reloc_code_real
   BFD_RELOC_XTENSA_NDIFF16,
   BFD_RELOC_XTENSA_NDIFF32,
 
+  /* Xtensa relocation to mark a positive difference of two local symbols
+     encoded as an unsigned LEB128 value.  This works like
+     BFD_RELOC_XTENSA_PDIFF32, but the linker rewrites the difference in
+     place using the number of bytes the assembler originally emitted, so
+     that the size of the containing section never changes.  Without it the
+     assembler would have to inhibit linker relaxation of all code covered
+     by such a difference, which DWARF 5 location and range lists produce
+     for virtually every function.  */
+  BFD_RELOC_XTENSA_PDIFF_ULEB128,
+
+  /* Xtensa 32-bit absolute address, computed as S + A with the addend taken
+     only from the r_addend field.  Unlike R_XTENSA_32, to which BFD_RELOC_32
+     maps and which is partial_inplace, the contents of the relocated word do
+     not contribute to the result.  */
+  BFD_RELOC_XTENSA_32_ABS,
+
   /* 8 bit signed offset in (ix+d) or (iy+d).  */
   BFD_RELOC_Z80_DISP8,
 
@@ -7675,7 +7725,7 @@ typedef struct bfd_target
   bfd_byte *
        (*_bfd_get_relocated_section_contents) (bfd *,
 					       struct bfd_link_info *,
-					       struct bfd_link_order *,
+					       const struct bfd_link_order *,
 					       bfd_byte *, bool,
 					       struct bfd_symbol **);
 

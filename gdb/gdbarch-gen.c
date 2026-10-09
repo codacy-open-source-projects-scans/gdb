@@ -163,10 +163,10 @@ struct gdbarch
   gdbarch_adjust_dwarf2_line_ftype *adjust_dwarf2_line = default_adjust_dwarf2_line;
   bool cannot_step_breakpoint = false;
   bool have_nonsteppable_watchpoint = false;
-  gdbarch_address_class_type_flags_ftype *address_class_type_flags = nullptr;
-  gdbarch_address_class_type_flags_to_name_ftype *address_class_type_flags_to_name = nullptr;
+  gdbarch_address_class_dwarf_to_id_ftype *address_class_dwarf_to_id = nullptr;
+  gdbarch_address_class_id_to_name_ftype *address_class_id_to_name = nullptr;
   gdbarch_execute_dwarf_cfa_vendor_op_ftype *execute_dwarf_cfa_vendor_op = default_execute_dwarf_cfa_vendor_op;
-  gdbarch_address_class_name_to_type_flags_ftype *address_class_name_to_type_flags = nullptr;
+  gdbarch_address_class_name_to_id_ftype *address_class_name_to_id = nullptr;
   gdbarch_register_reggroup_p_ftype *register_reggroup_p = default_register_reggroup_p;
   gdbarch_fetch_pointer_argument_ftype *fetch_pointer_argument = nullptr;
   gdbarch_iterate_over_regset_sections_ftype *iterate_over_regset_sections = nullptr;
@@ -253,6 +253,7 @@ struct gdbarch
   gdbarch_core_parse_exec_context_ftype *core_parse_exec_context = default_core_parse_exec_context;
   gdbarch_shadow_stack_push_ftype *shadow_stack_push = nullptr;
   gdbarch_get_shadow_stack_pointer_ftype *get_shadow_stack_pointer = default_get_shadow_stack_pointer;
+  bool imprecise_pagefault_reporting = false;
 };
 
 /* Create a new ``struct gdbarch'' based on information provided by
@@ -418,10 +419,10 @@ verify_gdbarch (struct gdbarch *gdbarch)
   /* Skip verify of adjust_dwarf2_line, invalid_p == 0.  */
   /* Skip verify of cannot_step_breakpoint, invalid_p == 0.  */
   /* Skip verify of have_nonsteppable_watchpoint, invalid_p == 0.  */
-  /* Skip verify of address_class_type_flags, has predicate.  */
-  /* Skip verify of address_class_type_flags_to_name, has predicate.  */
+  /* Skip verify of address_class_dwarf_to_id, has predicate.  */
+  /* Skip verify of address_class_id_to_name, has predicate.  */
   /* Skip verify of execute_dwarf_cfa_vendor_op, invalid_p == 0.  */
-  /* Skip verify of address_class_name_to_type_flags, has predicate.  */
+  /* Skip verify of address_class_name_to_id, has predicate.  */
   /* Skip verify of register_reggroup_p, invalid_p == 0.  */
   /* Skip verify of fetch_pointer_argument, invalid_p == 0.  */
   /* Skip verify of iterate_over_regset_sections, has predicate.  */
@@ -513,6 +514,7 @@ verify_gdbarch (struct gdbarch *gdbarch)
   /* Skip verify of core_parse_exec_context, invalid_p == 0.  */
   /* Skip verify of shadow_stack_push, has predicate.  */
   /* Skip verify of get_shadow_stack_pointer, invalid_p == 0.  */
+  /* Skip verify of imprecise_pagefault_reporting, invalid_p == 0.  */
   if (!log.empty ())
     internal_error (_("verify_gdbarch: the following are invalid ...%s"),
 		    log.c_str ());
@@ -959,26 +961,26 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
 	      "gdbarch_dump: have_nonsteppable_watchpoint = %s\n",
 	      plongest (gdbarch->have_nonsteppable_watchpoint));
   gdb_printf (file,
-	      "gdbarch_dump: gdbarch_address_class_type_flags_p() = %d\n",
-	      gdbarch_address_class_type_flags_p (gdbarch));
+	      "gdbarch_dump: gdbarch_address_class_dwarf_to_id_p() = %d\n",
+	      gdbarch_address_class_dwarf_to_id_p (gdbarch));
   gdb_printf (file,
-	      "gdbarch_dump: address_class_type_flags = <%s>\n",
-	      host_address_to_string (gdbarch->address_class_type_flags));
+	      "gdbarch_dump: address_class_dwarf_to_id = <%s>\n",
+	      host_address_to_string (gdbarch->address_class_dwarf_to_id));
   gdb_printf (file,
-	      "gdbarch_dump: gdbarch_address_class_type_flags_to_name_p() = %d\n",
-	      gdbarch_address_class_type_flags_to_name_p (gdbarch));
+	      "gdbarch_dump: gdbarch_address_class_id_to_name_p() = %d\n",
+	      gdbarch_address_class_id_to_name_p (gdbarch));
   gdb_printf (file,
-	      "gdbarch_dump: address_class_type_flags_to_name = <%s>\n",
-	      host_address_to_string (gdbarch->address_class_type_flags_to_name));
+	      "gdbarch_dump: address_class_id_to_name = <%s>\n",
+	      host_address_to_string (gdbarch->address_class_id_to_name));
   gdb_printf (file,
 	      "gdbarch_dump: execute_dwarf_cfa_vendor_op = <%s>\n",
 	      host_address_to_string (gdbarch->execute_dwarf_cfa_vendor_op));
   gdb_printf (file,
-	      "gdbarch_dump: gdbarch_address_class_name_to_type_flags_p() = %d\n",
-	      gdbarch_address_class_name_to_type_flags_p (gdbarch));
+	      "gdbarch_dump: gdbarch_address_class_name_to_id_p() = %d\n",
+	      gdbarch_address_class_name_to_id_p (gdbarch));
   gdb_printf (file,
-	      "gdbarch_dump: address_class_name_to_type_flags = <%s>\n",
-	      host_address_to_string (gdbarch->address_class_name_to_type_flags));
+	      "gdbarch_dump: address_class_name_to_id = <%s>\n",
+	      host_address_to_string (gdbarch->address_class_name_to_id));
   gdb_printf (file,
 	      "gdbarch_dump: register_reggroup_p = <%s>\n",
 	      host_address_to_string (gdbarch->register_reggroup_p));
@@ -1339,6 +1341,9 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
   gdb_printf (file,
 	      "gdbarch_dump: get_shadow_stack_pointer = <%s>\n",
 	      host_address_to_string (gdbarch->get_shadow_stack_pointer));
+  gdb_printf (file,
+	      "gdbarch_dump: imprecise_pagefault_reporting = %s\n",
+	      plongest (gdbarch->imprecise_pagefault_reporting));
   if (gdbarch->dump_tdep != nullptr)
     gdbarch->dump_tdep (gdbarch, file);
 }
@@ -3496,51 +3501,51 @@ set_gdbarch_have_nonsteppable_watchpoint (struct gdbarch *gdbarch,
 }
 
 bool
-gdbarch_address_class_type_flags_p (struct gdbarch *gdbarch)
+gdbarch_address_class_dwarf_to_id_p (struct gdbarch *gdbarch)
 {
   gdb_assert (gdbarch != nullptr);
-  return gdbarch->address_class_type_flags != nullptr;
+  return gdbarch->address_class_dwarf_to_id != nullptr;
 }
 
-type_instance_flags
-gdbarch_address_class_type_flags (struct gdbarch *gdbarch, int byte_size, int dwarf2_addr_class)
+unsigned int
+gdbarch_address_class_dwarf_to_id (struct gdbarch *gdbarch, int byte_size, int dwarf2_addr_class)
 {
   gdb_assert (gdbarch != nullptr);
-  gdb_assert (gdbarch->address_class_type_flags != nullptr);
+  gdb_assert (gdbarch->address_class_dwarf_to_id != nullptr);
   if (gdbarch_debug >= 2)
-    gdb_printf (gdb_stdlog, "gdbarch_address_class_type_flags called\n");
-  return gdbarch->address_class_type_flags (byte_size, dwarf2_addr_class);
+    gdb_printf (gdb_stdlog, "gdbarch_address_class_dwarf_to_id called\n");
+  return gdbarch->address_class_dwarf_to_id (byte_size, dwarf2_addr_class);
 }
 
 void
-set_gdbarch_address_class_type_flags (struct gdbarch *gdbarch,
-				      gdbarch_address_class_type_flags_ftype address_class_type_flags)
+set_gdbarch_address_class_dwarf_to_id (struct gdbarch *gdbarch,
+				       gdbarch_address_class_dwarf_to_id_ftype address_class_dwarf_to_id)
 {
-  gdbarch->address_class_type_flags = address_class_type_flags;
+  gdbarch->address_class_dwarf_to_id = address_class_dwarf_to_id;
 }
 
 bool
-gdbarch_address_class_type_flags_to_name_p (struct gdbarch *gdbarch)
+gdbarch_address_class_id_to_name_p (struct gdbarch *gdbarch)
 {
   gdb_assert (gdbarch != nullptr);
-  return gdbarch->address_class_type_flags_to_name != nullptr;
+  return gdbarch->address_class_id_to_name != nullptr;
 }
 
 const char *
-gdbarch_address_class_type_flags_to_name (struct gdbarch *gdbarch, type_instance_flags type_flags)
+gdbarch_address_class_id_to_name (struct gdbarch *gdbarch, unsigned int address_class)
 {
   gdb_assert (gdbarch != nullptr);
-  gdb_assert (gdbarch->address_class_type_flags_to_name != nullptr);
+  gdb_assert (gdbarch->address_class_id_to_name != nullptr);
   if (gdbarch_debug >= 2)
-    gdb_printf (gdb_stdlog, "gdbarch_address_class_type_flags_to_name called\n");
-  return gdbarch->address_class_type_flags_to_name (gdbarch, type_flags);
+    gdb_printf (gdb_stdlog, "gdbarch_address_class_id_to_name called\n");
+  return gdbarch->address_class_id_to_name (gdbarch, address_class);
 }
 
 void
-set_gdbarch_address_class_type_flags_to_name (struct gdbarch *gdbarch,
-					      gdbarch_address_class_type_flags_to_name_ftype address_class_type_flags_to_name)
+set_gdbarch_address_class_id_to_name (struct gdbarch *gdbarch,
+				      gdbarch_address_class_id_to_name_ftype address_class_id_to_name)
 {
-  gdbarch->address_class_type_flags_to_name = address_class_type_flags_to_name;
+  gdbarch->address_class_id_to_name = address_class_id_to_name;
 }
 
 bool
@@ -3561,27 +3566,27 @@ set_gdbarch_execute_dwarf_cfa_vendor_op (struct gdbarch *gdbarch,
 }
 
 bool
-gdbarch_address_class_name_to_type_flags_p (struct gdbarch *gdbarch)
+gdbarch_address_class_name_to_id_p (struct gdbarch *gdbarch)
 {
   gdb_assert (gdbarch != nullptr);
-  return gdbarch->address_class_name_to_type_flags != nullptr;
+  return gdbarch->address_class_name_to_id != nullptr;
 }
 
 bool
-gdbarch_address_class_name_to_type_flags (struct gdbarch *gdbarch, const char *name, type_instance_flags *type_flags_ptr)
+gdbarch_address_class_name_to_id (struct gdbarch *gdbarch, const char *name, unsigned int &address_class)
 {
   gdb_assert (gdbarch != nullptr);
-  gdb_assert (gdbarch->address_class_name_to_type_flags != nullptr);
+  gdb_assert (gdbarch->address_class_name_to_id != nullptr);
   if (gdbarch_debug >= 2)
-    gdb_printf (gdb_stdlog, "gdbarch_address_class_name_to_type_flags called\n");
-  return gdbarch->address_class_name_to_type_flags (gdbarch, name, type_flags_ptr);
+    gdb_printf (gdb_stdlog, "gdbarch_address_class_name_to_id called\n");
+  return gdbarch->address_class_name_to_id (gdbarch, name, address_class);
 }
 
 void
-set_gdbarch_address_class_name_to_type_flags (struct gdbarch *gdbarch,
-					      gdbarch_address_class_name_to_type_flags_ftype address_class_name_to_type_flags)
+set_gdbarch_address_class_name_to_id (struct gdbarch *gdbarch,
+				      gdbarch_address_class_name_to_id_ftype address_class_name_to_id)
 {
-  gdbarch->address_class_name_to_type_flags = address_class_name_to_type_flags;
+  gdbarch->address_class_name_to_id = address_class_name_to_id;
 }
 
 bool
@@ -5196,13 +5201,13 @@ set_gdbarch_get_pc_address_flags (struct gdbarch *gdbarch,
 }
 
 void
-gdbarch_read_core_file_mappings (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_pre_loop_ftype pre_loop_cb, read_core_file_mappings_loop_ftype loop_cb)
+gdbarch_read_core_file_mappings (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_loop_ftype loop_cb)
 {
   gdb_assert (gdbarch != nullptr);
   gdb_assert (gdbarch->read_core_file_mappings != nullptr);
   if (gdbarch_debug >= 2)
     gdb_printf (gdb_stdlog, "gdbarch_read_core_file_mappings called\n");
-  gdbarch->read_core_file_mappings (gdbarch, cbfd, pre_loop_cb, loop_cb);
+  gdbarch->read_core_file_mappings (gdbarch, cbfd, loop_cb);
 }
 
 void
@@ -5285,4 +5290,21 @@ set_gdbarch_get_shadow_stack_pointer (struct gdbarch *gdbarch,
 				      gdbarch_get_shadow_stack_pointer_ftype get_shadow_stack_pointer)
 {
   gdbarch->get_shadow_stack_pointer = get_shadow_stack_pointer;
+}
+
+bool
+gdbarch_imprecise_pagefault_reporting (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != nullptr);
+  /* Skip verify of imprecise_pagefault_reporting, invalid_p == 0.  */
+  if (gdbarch_debug >= 2)
+    gdb_printf (gdb_stdlog, "gdbarch_imprecise_pagefault_reporting called\n");
+  return gdbarch->imprecise_pagefault_reporting;
+}
+
+void
+set_gdbarch_imprecise_pagefault_reporting (struct gdbarch *gdbarch,
+					   bool imprecise_pagefault_reporting)
+{
+  gdbarch->imprecise_pagefault_reporting = imprecise_pagefault_reporting;
 }

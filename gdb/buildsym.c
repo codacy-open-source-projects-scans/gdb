@@ -18,6 +18,8 @@
 
 #include "buildsym.h"
 #include "gdbsupport/gdb_obstack.h"
+#include "gdbsupport/pathstuff.h"
+#include "filesystem.h"
 #include "symtab.h"
 #include "symfile.h"
 #include "objfiles.h"
@@ -53,6 +55,9 @@ buildsym_compunit::buildsym_compunit (struct objfile *objfile_,
     m_language (language_),
     m_last_source_start_addr (last_addr)
 {
+  if (should_normalize_slashes ())
+    normalize_slashes (&m_comp_dir[0]);
+
   /* Build the subfile for NAME (the main source file) so that we can record
      a pointer to it for later.
      IMPORTANT: Do not allocate a struct symtab for NAME here.
@@ -358,16 +363,15 @@ buildsym_compunit::make_blockvector ()
       gdb_assert (num_blocks > 1);
 
       /* Assert our understanding of how the blocks are laid out.  */
-      gdb_assert (blockvector->block (0)->is_global_block ());
-      gdb_assert (blockvector->block (1)->is_static_block ());
+      gdb_assert (blockvector->block (GLOBAL_BLOCK)->is_global_block ());
+      gdb_assert (blockvector->block (STATIC_BLOCK)->is_static_block ());
 
-      /* The 'J > 1' here is so that we don't place the global block into
-	 the map.  For CU with gaps, the static block will reflect the
-	 gaps, while the global block will just reflect the full extent of
+      /* The 'J > GLOBAL_BLOCK' here is so that we don't place the global
+	 block into the map.  For CU with gaps, the static block will reflect
+	 the gaps, while the global block will just reflect the full extent of
 	 the range.  */
-      for (int j = num_blocks; j > 1; )
+      for (int j = num_blocks - 1; j > GLOBAL_BLOCK; --j)
 	{
-	  --j;
 	  struct block *b = blockvector->block (j);
 
 	  gdb_assert (!b->is_global_block ());
@@ -924,15 +928,15 @@ buildsym_compunit::augment_type_symtab ()
     }
 }
 
-/* Push a context block.  VALU is the starting PC address of this
+/* Push a context block.  VALUE is the starting PC address of this
    context.  */
 
 void
-buildsym_compunit::push_context (CORE_ADDR valu)
+buildsym_compunit::push_context (CORE_ADDR value)
 {
   m_context_stack.emplace_back (std::move (m_local_symbols),
 				m_local_using_directives,
-				m_pending_blocks, valu);
+				m_pending_blocks, value);
   m_local_using_directives = nullptr;
 }
 

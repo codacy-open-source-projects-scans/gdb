@@ -28,7 +28,7 @@
 #endif /* HAVE_SYS_RESOURCE_H */
 
 #ifdef TUI
-/* For tui_get_command_dimension and tui_disable.   */
+/* For tui_get_command_dimension and tui_disable.  */
 #include "tui/tui.h"
 #endif
 
@@ -182,6 +182,16 @@ vwarning (const char *string, va_list args)
     }
 }
 
+/* See common-exceptions.h.  */
+
+std::string
+vformat_exception (const char *fmt, va_list args)
+{
+  string_file text (true);
+  text.vprintf (fmt, args);
+  return text.release ();
+}
+
 /* Print an error message and return to command level.
    The first argument STRING is the error message, used as a fprintf string,
    and the remaining args are passed as arguments to it.  */
@@ -204,7 +214,7 @@ abort_with_message (const char *msg)
   else
     gdb_puts (msg, gdb_stderr);
 
-  abort ();		/* ARI: abort */
+  abort ();
 }
 
 /* Dump core trying to increase the core soft limit to hard limit first.  */
@@ -223,7 +233,7 @@ dump_core (void)
      a backtrace to the console here.  */
   signal (SIGABRT, SIG_DFL);
 
-  abort ();		/* ARI: abort */
+  abort ();
 }
 
 /* Check whether GDB will be able to dump core using the dump_core
@@ -373,7 +383,7 @@ internal_vproblem (struct internal_problem *problem,
 	   does not fix this problem.  This is the solution suggested
 	   at http://gcc.gnu.org/bugzilla/show_bug.cgi?id=25509.  */
 	if (write (STDERR_FILENO, msg, sizeof (msg)) != sizeof (msg))
-	  abort (); /* ARI: abort */
+	  abort ();
 	exit (1);
       }
   }
@@ -2927,7 +2937,9 @@ strncmp_iw_with_mode_tests ()
 	       "\tfoo\t<\tbar\t<\tbaz\t<\tquxi\t>\t>\t>\t(int)", NORMAL);
   CHECK_MATCH ("foo<bar<baz<quxi>>>(int)",
 	       " \tfoo \t< \tbar \t< \tbaz \t< \tquxi \t> \t> \t> \t( \tint \t)", NORMAL);
-  CHECK_MATCH ("foo<bar<baz>>::foo(quxi &)", "fo", NORMAL);
+  CHECK_MATCH ("foo<bar<baz>>::foo(quxi &)",
+	       "fo", /* codespell:ignore.  */
+	       NORMAL);
   CHECK_MATCH ("foo<bar<baz>>::foo(quxi &)", "foo", NORMAL);
   CHECK_MATCH ("foo<bar<baz>>::foo(quxi &)", "foo<bar<baz>>::", NORMAL);
   CHECK_MATCH ("foo<bar<baz>>::foo(quxi &)", "foo<bar<baz> >::foo", NORMAL);

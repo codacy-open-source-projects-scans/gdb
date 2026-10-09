@@ -716,7 +716,7 @@ h8300_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
 /* Function: extract_return_value
    Figure out where in REGBUF the called function has left its return value.
-   Copy that into VALBUF.  Be sure to account for CPU type.   */
+   Copy that into VALBUF.  Be sure to account for CPU type.  */
 
 static void
 h8300_extract_return_value (struct type *type, struct regcache *regcache,
@@ -1228,7 +1228,7 @@ h8300s_dbg_reg_to_regnum (struct gdbarch *gdbarch, int regno)
 /*static unsigned char breakpoint[] = { 0x7A, 0xFF }; *//* ??? */
 constexpr gdb_byte h8300_break_insn[] = { 0x01, 0x80 };	/* Sleep */
 
-typedef BP_MANIPULATION (h8300_break_insn) h8300_breakpoint;
+using h8300_breakpoint = BP_MANIPULATION (h8300_break_insn);
 
 static struct gdbarch *
 h8300_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)

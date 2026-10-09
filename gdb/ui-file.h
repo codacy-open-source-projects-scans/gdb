@@ -93,6 +93,14 @@ public:
   virtual bool can_emit_style_escape ()
   { return false; }
 
+  /* True if emojis are allowed on STREAM.  */
+  bool emoji_allowed ()
+  {
+    /* By default, assume that emojis are not allowed on streams that don't
+       support ANSI escapes.  */
+    return can_emit_style_escape ();
+  }
+
   virtual void flush ()
   {}
 
@@ -147,7 +155,7 @@ private:
   void printchar (int c, int quoter, bool async_safe);
 };
 
-typedef std::unique_ptr<ui_file> ui_file_up;
+using ui_file_up = std::unique_ptr<ui_file>;
 
 /* A ui_file that writes to nowhere.  */
 
@@ -295,7 +303,7 @@ private:
   bool m_close_p;
 };
 
-typedef std::unique_ptr<stdio_file> stdio_file_up;
+using stdio_file_up = std::unique_ptr<stdio_file>;
 
 /* Like stdio_file, but specifically for stderr.
 

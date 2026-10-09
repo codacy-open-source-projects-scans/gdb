@@ -32,9 +32,6 @@
 #if HAVE_SIGNAL_H
 #include <signal.h>
 #endif
-#if HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 #include <unistd.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
@@ -59,7 +56,7 @@
 #include "getopt.h"
 
 #ifndef HAVE_SOCKLEN_T
-typedef int socklen_t;
+using socklen_t = int;
 #endif
 
 /* Sort of a hack... */
@@ -255,9 +252,6 @@ remote_open (const char *name)
 #endif
     }
 
-#if defined(F_SETFL) && defined (FASYNC)
-  fcntl (remote_desc_in, F_SETFL, FASYNC);
-#endif
   remote_desc_out = remote_desc_in;
 }
 

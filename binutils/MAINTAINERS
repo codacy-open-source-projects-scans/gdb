@@ -44,6 +44,7 @@ repository without obtaining approval first:
   Michael Meissner <gnu@the-meissners.org>
   Richard Sandiford <rdsandiford@googlemail.com>
   Jan Beulich <jbeulich@suse.com>
+  Maciej W. Rozycki <macro@orcam.me.uk>
 
 GDB global maintainers also have permission to commit and approve
 patches to the top level files and to those parts of bfd files
@@ -73,7 +74,7 @@ responsibility among the other maintainers.
   BFIN		   Jie Zhang <jzhang918@gmail.com>
   BPF		   Jose E. Marchesi <jose.marchesi@oracle.com>
   CRIS		   Hans-Peter Nilsson <hp@axis.com>
-  CTF		   Nick Alcock <nick.alcock@oracle.com>
+  CTF		   Nick Alcock <nix@esperi.org.uk>
   C-SKY		   Lifang Xia <lifang_xia@linux.alibaba.com>
   C-SKY		   Yunhai Shang <yunhai@linux.alibaba.com>
   DLX              Nikolaos Kavvadias <nkavv@physics.auth.gr>
@@ -94,6 +95,7 @@ responsibility among the other maintainers.
   ix86 COFF	   DJ Delorie <dj@redhat.com>
   ix86 PE/COFF	   Dave Korn <dave.korn.cygwin@gmail.com>
   ix86 INTEL MODE  Jan Beulich <jbeulich@suse.com>
+  KVX		   Paul Iannetta <paplevetoe@yahoo.fr>
   libsframe	   Indu Bhagat <ibhagatgnu@gmail.com>
   LM32             Jon Beniston <jon@beniston.com>
   LoongArch	   Chenghua Xu <xuchenghua@loongson.cn>
@@ -122,7 +124,8 @@ responsibility among the other maintainers.
   RISC-V	   Palmer Dabbelt <palmer@dabbelt.com>
   RISC-V	   Andrew Waterman <andrew@sifive.com>
   RISC-V	   Jim Wilson <jim.wilson.gcc@gmail.com>
-  RISC-V	   Nelson Chu <nelson.chu1990@gmail.com>
+  RISC-V	   Nelson Chu <nelson.chu@sifive.com>
+  RISC-V	   Kito Cheng <kito.cheng@sifive.com>
   RX               Nick Clifton <nickc@redhat.com>
   S12Z		   John Darrington <john@darrington.wattle.id.au>
   s390, s390x	   Andreas Krebbel <krebbel@linux.ibm.com>
@@ -131,13 +134,11 @@ responsibility among the other maintainers.
   SPARC		   Jose E. Marchesi <jose.marchesi@oracle.com>
   SPU		   Alan Modra <amodra@gmail.com>
   TIC54X           Timothy Wall <twall@alum.mit.edu>
-  TIC6X            Joseph Myers <josmyers@redhat.com>
   VAX		   Jan-Benedict Glaw <jbglaw@lug-owl.de>
   Visium	   Eric Botcazou <ebotcazou@libertysurf.fr>
   VMS		   Tristan Gingold <tgingold@free.fr>
   x86_64	   Jan Beulich <jbeulich@suse.com>
   x86_64	   Jan Hubicka <jh@suse.cz>
-  x86_64	   Andreas Jaeger <aj@suse.de>
   x86_64	   H.J. Lu <hjl.tools@gmail.com>
   XGATE            Sean Keys <skeys@ipdatasys.com>
   Xtensa	   Max Filippov <jcmvbkbc@gmail.com>
@@ -150,25 +151,25 @@ These folks have acted as maintainers in the past, but have now
 moved on to other things.  Our thanks for all their hard work
 goes with them.
 
-  Paul Brook
-  Eric Christopher
-  Jason Eckhardt
-  Mike Frysinger
-  Paul Iannetta
-  Geoff Keating
-  Mark Kettenis
-  Walter Lee
-  Mei Ligang
+  Andreas Jaeger
   Arnold Metselaar
-  Vladimir Mezentsev
-  Mark Mitchell
-  Richard Sandiford
   Bernd Schmidt
-  Svein Seldal
-  Martin Schwidefsky
-  M R Swami Reddy
-  Matt Thomas
+  Eric Christopher
+  Geoff Keating
+  Jason Eckhardt
   Jim Wilson
+  M R Swami Reddy
+  Mark Kettenis
+  Mark Mitchell
+  Martin Schwidefsky
+  Matt Thomas
+  Mei Ligang
+  Mike Frysinger
+  Paul Brook
+  Richard Sandiford
+  Svein Seldal
+  Vladimir Mezentsev
+  Walter Lee
 
       --------- CGEN Maintainers -------------
 

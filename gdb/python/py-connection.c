@@ -42,6 +42,8 @@ struct connection_object : public PyObject
   struct process_stratum_target *target;
 };
 
+static_assert (gdb::is_python_allocatable_v<connection_object>);
+
 extern PyTypeObject connection_object_type;
 
 extern PyTypeObject remote_connection_object_type;
@@ -74,7 +76,7 @@ gdbpy_ref<>
 target_to_connection_object (process_stratum_target *target)
 {
   if (target == nullptr)
-    return gdbpy_ref<>::new_reference (Py_None);
+    return py_none ();
 
   gdbpy_ref <connection_object> conn_obj;
   auto conn_obj_iter = all_connection_objects.find (target);
@@ -141,10 +143,11 @@ emit_connection_event (process_stratum_target *target,
     return -1;
 
   gdbpy_ref<> conn = target_to_connection_object (target);
-  if (evpy_add_attribute (event_obj.get (), "connection", conn.get ()) < 0)
+  if (conn == nullptr
+      || evpy_add_attribute (event_obj, "connection", conn) < 0)
     return -1;
 
-  return evpy_emit_event (event_obj.get (), registry);
+  return evpy_emit_event (event_obj, registry);
 }
 
 /* Callback for the connection_removed observer.  */
@@ -157,9 +160,9 @@ connpy_connection_removed (process_stratum_target *target)
 
   gdbpy_enter enter_py;
 
-  if (!evregpy_no_listeners_p (gdb_py_events.connection_removed))
-    if (emit_connection_event (target, gdb_py_events.connection_removed) < 0)
-      gdbpy_print_stack ();
+  if (evregpy_has_listeners_p (gdb_py_events.connection_removed)
+      && emit_connection_event (target, gdb_py_events.connection_removed) < 0)
+    gdbpy_print_stack ();
 
   auto conn_obj_iter = all_connection_objects.find (target);
   if (conn_obj_iter != all_connection_objects.end ())
@@ -201,7 +204,7 @@ connpy_repr (PyObject *obj)
     return gdb_py_invalid_object_repr (obj);
 
   return PyUnicode_FromFormat ("<%s num=%d, what=\"%s\">",
-			       gdbpy_py_obj_tp_name (obj),
+			       gdbpy_py_obj_tp_name (obj).c_str (),
 			       target->connection_number,
 			       make_target_connection_string (target).c_str ());
 }
@@ -216,9 +219,9 @@ connpy_is_valid (PyObject *self, PyObject *args)
   connection_object *conn = (connection_object *) self;
 
   if (conn->target == nullptr)
-    Py_RETURN_FALSE;
+    return py_false ().release ();
 
-  Py_RETURN_TRUE;
+  return py_true ().release ();
 }
 
 /* Return the id number of this connection.  */
@@ -274,7 +277,7 @@ connpy_get_connection_details (PyObject *self, void *closure)
   if (details != nullptr)
     return host_string_to_python_string (details).release ();
   else
-    Py_RETURN_NONE;
+    return py_none ().release ();
 }
 
 /* Python specific initialization for this file.  */
@@ -321,8 +324,7 @@ struct py_send_packet_callbacks : public send_remote_packet_callbacks
     else
       {
 	/* We didn't get back any result data; set the result to None.  */
-	Py_INCREF (Py_None);
-	m_result.reset (Py_None);
+	m_result = py_none ();
       }
   }
 

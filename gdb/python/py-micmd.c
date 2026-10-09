@@ -74,6 +74,8 @@ struct micmdpy_object : public PyObject
   char *mi_command_name;
 };
 
+static_assert (gdb::is_python_allocatable_v<micmdpy_object>);
+
 /* The MI command implemented in Python.  */
 
 struct mi_command_py : public mi_command
@@ -205,7 +207,7 @@ mi_command_py::invoke (struct mi_parse *parse) const
   gdb_assert (this->m_pyobj != nullptr);
   gdb_assert (PyErr_Occurred () == nullptr);
   gdbpy_ref<> results
-    (PyObject_CallMethodObjArgs ((PyObject *) this->m_pyobj.get (), invoke_cst,
+    (PyObject_CallMethodObjArgs (this->m_pyobj.get (), invoke_cst,
 				 argobj.get (), nullptr));
   if (results == nullptr)
     gdbpy_handle_exception ();
@@ -490,8 +492,8 @@ micmdpy_get_installed (PyObject *self, void *closure)
   struct micmdpy_object *micmd_obj = (struct micmdpy_object *) self;
 
   if (micmd_obj->mi_command == nullptr)
-    Py_RETURN_FALSE;
-  Py_RETURN_TRUE;
+    return py_false ().release ();
+  return py_true ().release ();
 }
 
 /* Set the gdb.MICommand.installed property.  The property can be set to
@@ -509,7 +511,9 @@ micmdpy_set_installed (PyObject *self, PyObject *newvalue, void *closure)
     {
       PyErr_Format (PyExc_TypeError,
 		    _("gdb.MICommand.installed must be set to a bool, not %s"),
-		    newvalue == Py_None ? "None" : gdbpy_py_obj_tp_name (newvalue));
+		    (newvalue == Py_None
+		     ? "None"
+		     : gdbpy_py_obj_tp_name (newvalue).c_str ()));
       return -1;
     }
 
@@ -524,7 +528,7 @@ micmdpy_set_installed (PyObject *self, PyObject *newvalue, void *closure)
     return micmdpy_uninstall_command (micmd_obj);
 }
 
-/* The gdb.MICommand properties.   */
+/* The gdb.MICommand properties.  */
 
 static gdb_PyGetSetDef micmdpy_object_getset[] = {
   { "name", micmdpy_get_name, nullptr, "The command's name.", nullptr },

@@ -29,7 +29,7 @@ enum val_prettyformat
   {
     Val_no_prettyformat = 0,
     Val_prettyformat,
-    /* * Use the default setting which the user has specified.  */
+    /* Use the default setting which the user has specified.  */
     Val_prettyformat_default
   };
 
@@ -128,10 +128,10 @@ struct value_print_options
 /* Return the character count limit for printing strings.  */
 
 static inline unsigned int
-get_print_max_chars (const struct value_print_options *options)
+get_print_max_chars (const value_print_options &options)
 {
-  return (options->print_max_chars != PRINT_MAX_CHARS_ELEMENTS
-	  ? options->print_max_chars : options->print_max);
+  return (options.print_max_chars != PRINT_MAX_CHARS_ELEMENTS
+	  ? options.print_max_chars : options.print_max);
 }
 
 /* Create an option_def_group for the value_print options, with OPTS
@@ -142,29 +142,34 @@ extern gdb::option::option_def_group make_value_print_options_def_group
 /* The global print options set by the user.  In general this should
    not be directly accessed, except by set/show commands.  Ordinary
    code should call get_user_print_options instead.  */
-extern struct value_print_options user_print_options;
+extern value_print_options user_print_options;
 
-/* Initialize *OPTS to be a copy of the user print options.  */
-extern void get_user_print_options (struct value_print_options *opts);
+/* Accessor for the user print options.  */
 
-/* Initialize *OPTS to be a copy of the user print options, but with
-   pretty-formatting disabled.  */
-extern void get_no_prettyformat_print_options (struct value_print_options *);
+static inline
+const value_print_options &
+get_user_print_options ()
+{
+  return user_print_options;
+}
 
-/* Initialize *OPTS to be a copy of the user print options, but using
-   FORMAT as the formatting option.  */
-extern void get_formatted_print_options (struct value_print_options *opts,
-					 char format);
+/* Return a copy of the user print options, but with pretty-formatting
+   disabled.  */
+extern value_print_options get_no_prettyformat_print_options ();
+
+/* Return a copy of the user print options, but using FORMAT as the
+   formatting option.  */
+extern value_print_options get_formatted_print_options (char format);
 
 extern void maybe_print_array_index (struct type *index_type, LONGEST index,
 				     struct ui_file *stream,
-				     const struct value_print_options *);
+				     const value_print_options &);
 
 
 /* Print elements of an array.  */
 
 extern void value_print_array_elements (struct value *, struct ui_file *, int,
-					const struct value_print_options *,
+					const value_print_options &,
 					unsigned int);
 
 /* Print a scalar according to OPTIONS and SIZE on STREAM.  Format 'i'
@@ -174,12 +179,12 @@ extern void value_print_array_elements (struct value *, struct ui_file *, int,
    with a format.  */
 
 extern void value_print_scalar_formatted
-  (struct value *val, const struct value_print_options *options,
+  (struct value *val, const value_print_options &options,
    int size, struct ui_file *stream);
 
 extern void print_binary_chars (struct ui_file *, const gdb_byte *,
 				unsigned int, enum bfd_endian, bool,
-				const struct value_print_options *options);
+				const value_print_options &options);
 
 extern void print_octal_chars (struct ui_file *, const gdb_byte *,
 			       unsigned int, enum bfd_endian);
@@ -190,24 +195,24 @@ extern void print_decimal_chars (struct ui_file *, const gdb_byte *,
 extern void print_hex_chars (struct ui_file *, const gdb_byte *,
 			     unsigned int, enum bfd_endian, bool);
 
-extern void print_function_pointer_address (const struct value_print_options *options,
+extern void print_function_pointer_address (const value_print_options &options,
 					    struct gdbarch *gdbarch,
 					    CORE_ADDR address,
 					    struct ui_file *stream);
 
 /* Helper function to check the validity of some bits of a value.
 
-   If TYPE represents some aggregate type (e.g., a structure), return 1.
+   If TYPE is a structure, union, array, or complex type, return 1.  These
+   types can have components with different availability states, so callers
+   should check components individually.
 
-   Otherwise, any of the bytes starting at OFFSET and extending for
-   TYPE->length () bytes are invalid, print a message to STREAM and
-   return 0.  The checking is done using FUNCS.
+   Otherwise, if any of the bytes starting at FIELD_BYTE_OFFSET and
+   extending for TYPE->length () bytes are invalid, print a message to
+   STREAM and return false.  Otherwise, return true.  */
 
-   Otherwise, return 1.  */
-
-extern int valprint_check_validity (struct ui_file *stream, struct type *type,
-				    LONGEST embedded_offset,
-				    const struct value *val);
+extern bool valprint_check_validity (struct ui_file *stream, struct type *type,
+				     LONGEST field_byte_offset,
+				     const struct value *val);
 
 extern void val_print_optimized_out (const struct value *val,
 				     struct ui_file *stream);
@@ -254,7 +259,7 @@ struct generic_val_print_decorations
 
 extern void generic_value_print (struct value *val, struct ui_file *stream,
 				 int recurse,
-				 const struct value_print_options *options,
+				 const value_print_options &options,
 				 const struct generic_val_print_decorations *d);
 
 extern void generic_emit_char (int c, struct type *type, struct ui_file *stream,
@@ -264,7 +269,7 @@ extern void generic_printstr (struct ui_file *stream, struct type *type,
 			      const gdb_byte *string, unsigned int length,
 			      const char *encoding, int force_ellipses,
 			      int quote_char, int c_style_terminator,
-			      const struct value_print_options *options);
+			      const value_print_options &options);
 
 /* Run the "output" command.  ARGS and FROM_TTY are the usual
    arguments passed to all command implementations, except ARGS is
@@ -272,7 +277,11 @@ extern void generic_printstr (struct ui_file *stream, struct type *type,
 
 extern void output_command (const char *args, int from_tty);
 
-extern int val_print_scalar_type_p (struct type *type);
+/* When printing in "summary" mode we want to print scalar arguments
+   but not aggregate arguments.  Return true if TYPE is a scalar type,
+   false if it is an aggregate.  */
+
+extern bool val_print_scalar_type_p (struct type *type);
 
 struct format_data
   {
@@ -287,7 +296,7 @@ struct format_data
   };
 
 extern void print_command_parse_format (const char **expp, const char *cmdname,
-					value_print_options *opts);
+					value_print_options &opts);
 
 /* Print VAL to console according to OPTS, including recording it to
    the history.  */
@@ -326,7 +335,7 @@ extern int build_address_symbolic (struct gdbarch *,
    LANGUAGE determines what type of ellipsis expression is printed.  */
 
 extern bool val_print_check_max_depth (struct ui_file *stream, int recurse,
-				       const struct value_print_options *opts,
+				       const value_print_options &opts,
 				       const struct language_defn *language);
 
 /* Like common_val_print, but call value_check_printable first.  */
@@ -334,7 +343,7 @@ extern bool val_print_check_max_depth (struct ui_file *stream, int recurse,
 extern void common_val_print_checked
   (struct value *val,
    struct ui_file *stream, int recurse,
-   const struct value_print_options *options,
+   const value_print_options &options,
    const struct language_defn *language);
 
 #endif /* GDB_VALPRINT_H */

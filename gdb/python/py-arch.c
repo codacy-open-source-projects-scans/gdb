@@ -27,6 +27,8 @@ struct arch_object : public PyObject
   struct gdbarch *gdbarch;
 };
 
+static_assert (gdb::is_python_allocatable_v<arch_object>);
+
 static const registry<gdbarch>::key<PyObject, gdb::noop_deleter<PyObject>>
      arch_object_data;
 
@@ -57,7 +59,7 @@ arch_object_data_init (struct gdbarch *gdbarch)
 
   arch_obj->gdbarch = gdbarch;
 
-  return (PyObject *) arch_obj;
+  return arch_obj;
 }
 
 /* Returns the struct gdbarch value corresponding to the given Python
@@ -341,7 +343,7 @@ archpy_repr (PyObject *self)
 
   auto arch_info = gdbarch_bfd_arch_info (gdbarch);
   return PyUnicode_FromFormat ("<%s arch_name=%s printable_name=%s>",
-			       gdbpy_py_obj_tp_name (self),
+			       gdbpy_py_obj_tp_name (self).c_str (),
 			       arch_info->arch_name,
 			       arch_info->printable_name);
 }

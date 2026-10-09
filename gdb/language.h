@@ -83,6 +83,20 @@ enum macro_expansion
     macro_expansion_no, macro_expansion_c
   };
 
+/* How should shadowed, or shadowing, variables be printed.  */
+
+enum class lang_vars_shadowing
+  {
+    /* Adds shadowed information for such variables.  */
+    PRINT,
+
+    /* Does not print shadowed variables.  */
+    HIDE,
+
+    /* Print variables without shadow information.  */
+    NONE,
+  };
+
 
 /* Per architecture (OS/ABI) language information.  */
 
@@ -305,7 +319,7 @@ struct language_defn
   virtual void print_array_index (struct type *index_type,
 				  LONGEST index_value,
 				  struct ui_file *stream,
-				  const value_print_options *options) const;
+				  const value_print_options &options) const;
 
   /* Given a symbol VAR, the corresponding block VAR_BLOCK (if any) and a
      stack frame id FRAME, read the value of the variable and return (pointer
@@ -499,13 +513,13 @@ struct language_defn
 
   /* Print a top-level value using syntax appropriate for this language.  */
   virtual void value_print (struct value *val, struct ui_file *stream,
-			    const struct value_print_options *options) const;
+			    const value_print_options &options) const;
 
   /* Print a value using syntax appropriate for this language.  RECURSE is
      the recursion depth.  It is zero-based.  */
   virtual void value_print_inner
 	(struct value *val, struct ui_file *stream, int recurse,
-	 const struct value_print_options *options) const;
+	 const value_print_options &options) const;
 
   /* Parser function.  */
 
@@ -522,7 +536,7 @@ struct language_defn
   virtual void printstr (struct ui_file *stream, struct type *elttype,
 			 const gdb_byte *string, unsigned int length,
 			 const char *encoding, int force_ellipses,
-			 const struct value_print_options *options) const;
+			 const value_print_options &options) const;
 
 
   /* Print a typedef using syntax appropriate for this language.
@@ -638,6 +652,18 @@ struct language_defn
 
   virtual const struct lang_varobj_ops *varobj_ops () const;
 
+  /* Normally a "static link" (a reference to an outer frame) is
+     represented by DW_AT_static_link in DWARF.  However, some
+     compilers do not emit this -- but do provide some
+     language-specific way to find the correct outer frame.  If the
+     ordinary search for a static link fails for a given frame, then
+     this method will be called for that frame's language.  It should
+     either return the correct outer instance, if one exists, or a
+     null frame if no such frame exists.  */
+
+  virtual frame_info_ptr follow_static_link (const frame_info_ptr &frame)
+    const;
+
 protected:
 
   /* This is the overridable part of the GET_SYMBOL_NAME_MATCHER method.
@@ -752,7 +778,7 @@ extern void language_info ();
 
 extern void set_language (enum language lang);
 
-typedef void lazily_set_language_ftype ();
+using lazily_set_language_ftype = void ();
 extern void lazily_set_language (lazily_set_language_ftype *fun);
 
 
@@ -788,6 +814,10 @@ void c_get_string (struct value *value,
    may return an Ada matcher regardless of LANG.  */
 symbol_name_matcher_ftype *get_symbol_name_matcher
   (const language_defn *lang, const lookup_name_info &lookup_name);
+
+/* Returns the shadowing option supported for the input language.  */
+
+extern lang_vars_shadowing get_lang_vars_shadowing_option (enum language lang);
 
 /* Save the current language and restore it upon destruction.  */
 

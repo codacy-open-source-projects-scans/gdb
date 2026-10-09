@@ -27,11 +27,40 @@
 
 #define RISCV_UNKNOWN_VERSION -1
 
+#define is_riscv_elf(bfd)				\
+  (bfd_get_flavour (bfd) == bfd_target_elf_flavour	\
+   && elf_tdata (bfd) != NULL				\
+   && elf_object_id (bfd) == RISCV_ELF_DATA)
+
 typedef enum
 {
     PLT_NORMAL            = 0x0,  /* Normal plts.  */
     PLT_ZICFILP_UNLABELED = 0x1   /* Landing pad unlabeled plts.  */
 } riscv_plt_type;
+
+/* For -z zicfilp=.  */
+typedef enum
+{
+  RISCV_ZICFILP_IMPLICIT,   /* Deduce from the inputs.  */
+  RISCV_ZICFILP_NEVER,      /* Never mark the output.  */
+  RISCV_ZICFILP_UNLABELED   /* Mark the output as CFI_LP_UNLABELED.  */
+} riscv_zicfilp_policy;
+
+/* For -z zicfiss=.  */
+typedef enum
+{
+  RISCV_ZICFISS_IMPLICIT,   /* Deduce from the inputs.  */
+  RISCV_ZICFISS_NEVER,      /* Never mark the output.  */
+  RISCV_ZICFISS_ALWAYS      /* Always mark the output as CFI_SS.  */
+} riscv_zicfiss_policy;
+
+/* For -z zicfilp-unlabeled-report= and -z zicfiss-report=.  */
+typedef enum
+{
+  RISCV_REPORT_NONE,
+  RISCV_REPORT_WARNING,
+  RISCV_REPORT_ERROR
+} riscv_report_policy;
 
 struct riscv_elf_params
 {
@@ -39,6 +68,12 @@ struct riscv_elf_params
   bool relax_gp;
   /* Whether to check if SUB_ULEB128 relocation has non-zero addend.  */
   bool check_uleb128;
+  /* How to mark the output for Zicfilp and Zicfiss.  */
+  riscv_zicfilp_policy zicfilp;
+  riscv_zicfiss_policy zicfiss;
+  /* How to report the inputs without the Zicfilp or Zicfiss property.  */
+  riscv_report_policy zicfilp_unlabeled_report;
+  riscv_report_policy zicfiss_report;
 };
 
 extern void riscv_elf32_set_options (struct bfd_link_info *,
@@ -92,7 +127,7 @@ typedef struct
   void (*error_handler) (const char *,
 			 ...) ATTRIBUTE_PRINTF_1;
   unsigned *xlen;
-  enum riscv_spec_class *isa_spec;
+  const enum riscv_spec_class *isa_spec;
   bool check_unknown_prefixed_ext;
 } riscv_parse_subset_t;
 
@@ -137,6 +172,15 @@ extern void
 bfd_elf32_riscv_set_data_segment_info (struct bfd_link_info *, int *);
 extern void
 bfd_elf64_riscv_set_data_segment_info (struct bfd_link_info *, int *);
+
+extern unsigned int
+bfd_elf32_riscv_init_relax_passes (struct bfd_link_info *);
+extern unsigned int
+bfd_elf64_riscv_init_relax_passes (struct bfd_link_info *);
+
+extern bool
+_bfd_riscv_elf_merge_private_bfd_data (bfd *, struct bfd_link_info *,
+				       unsigned int) ATTRIBUTE_HIDDEN;
 
 extern bfd *
 _bfd_riscv_elf_link_setup_gnu_properties (struct bfd_link_info *, uint32_t *) ATTRIBUTE_HIDDEN;

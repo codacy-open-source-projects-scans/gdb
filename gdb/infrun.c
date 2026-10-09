@@ -109,6 +109,8 @@ static bool step_over_info_valid_p (void);
 
 static bool schedlock_applies (struct thread_info *tp);
 
+static void handle_process_exited (struct execution_control_state *ecs);
+
 /* Asynchronous signal handler registered as event loop source for
    when we have pending events ready to be passed to the core.  */
 static struct async_event_handler *infrun_async_inferior_event_token;
@@ -366,6 +368,43 @@ update_signals_program_target (void)
   target_program_signals (signal_program);
 }
 
+/* See infrun.h.  */
+
+gdb_signal
+get_detach_signal (process_stratum_target *proc_target, ptid_t ptid)
+{
+  thread_info *tp = proc_target->find_thread (ptid);
+  gdb_signal signo = GDB_SIGNAL_0;
+
+  if (target_is_non_stop_p ()
+      && tp->internal_state () != THREAD_INT_RUNNING)
+    {
+      if (tp->has_pending_waitstatus ())
+	{
+	  /* If the thread has a pending event, and it was stopped
+	     with a signal, use that signal to resume it.  If it has a
+	     pending event of another kind, it was not stopped with a
+	     signal, so resume it without a signal.  */
+	  if (tp->pending_waitstatus ().kind () == TARGET_WAITKIND_STOPPED)
+	    signo = tp->pending_waitstatus ().sig ();
+	}
+      else
+	signo = tp->stop_signal ();
+    }
+  else if (!target_is_non_stop_p ())
+    {
+      ptid_t last_ptid;
+      process_stratum_target *last_target;
+
+      get_last_target_status (&last_target, &last_ptid, nullptr);
+
+      if (last_target == proc_target && ptid == last_ptid)
+	signo = tp->stop_signal ();
+    }
+
+  return signo;
+}
+
 /* Value to pass to target_resume() to cause all threads to resume.  */
 
 #define RESUME_ALL minus_one_ptid
@@ -374,9 +413,9 @@ update_signals_program_target (void)
 
 static struct cmd_list_element *stop_command;
 
-/* Nonzero if we want to give control to the user when we're notified
-   of shared library events by the dynamic linker.  */
-int stop_on_solib_events;
+/* See infrun.h.  */
+
+bool stop_on_solib_events;
 
 /* Enable or disable optional shared library event breakpoints
    as appropriate when the above flag is changed.  */
@@ -660,7 +699,8 @@ holding the child stopped.  Try \"set %ps\" or \"%ps\".\n"),
   target_follow_fork (child_inf, child_ptid, fork_kind, follow_child,
 		      detach_fork);
 
-  gdb::observers::inferior_forked.notify (parent_inf, child_inf, fork_kind);
+  gdb::observers::inferior_forked.notify (parent_inf, child_inf, fork_kind,
+					  detach_fork, follow_child);
 
   /* target_follow_fork must leave the parent as the current inferior.  If we
      want to follow the child, we make it the current one below.  */
@@ -1338,7 +1378,7 @@ follow_exec (ptid_t ptid, const char *exec_file_target)
      we don't want those to be satisfied by the libraries of the
      previous incarnation of this process.  */
   no_shared_libraries (current_program_space);
-  current_program_space->unset_solib_ops ();
+  current_program_space->clear_solib_ops ();
 
   inferior *execing_inferior = current_inferior ();
   inferior *following_inferior;
@@ -1395,7 +1435,7 @@ follow_exec (ptid_t ptid, const char *exec_file_target)
      registers.  */
   target_find_description ();
 
-  following_inferior->pspace->set_solib_ops
+  following_inferior->pspace->add_solib_ops
     (gdbarch_make_solib_ops (following_inferior->arch (),
 			     following_inferior->pspace));
   gdb::observers::inferior_execd.notify (execing_inferior, following_inferior);
@@ -1679,7 +1719,7 @@ infrun_inferior_execd (inferior *exec_inf, inferior *follow_inf)
 {
   /* If some threads where was doing a displaced step in this inferior at the
      moment of the exec, they no longer exist.  Even if the exec'ing thread
-     doing a displaced step, we don't want to to any fixup nor restore displaced
+     doing a displaced step, we don't want to do any fixup nor restore displaced
      stepping buffer bytes.  */
   follow_inf->displaced_step_state.reset ();
 
@@ -3945,8 +3985,8 @@ delete_thread_infrun_breakpoints (struct thread_info *tp)
    just stopped.  In all-stop, that's all the non-exited threads; in
    non-stop, that's the current thread, only.  */
 
-typedef void (*for_each_just_stopped_thread_callback_func)
-  (struct thread_info *tp);
+using for_each_just_stopped_thread_callback_func
+  = void (*) (struct thread_info *tp);
 
 static void
 for_each_just_stopped_thread (for_each_just_stopped_thread_callback_func func)
@@ -4741,7 +4781,68 @@ fetch_inferior_event ()
 	       don't want to stop all the other threads.  */
 	    if (ecs.event_thread == nullptr
 		|| !ecs.event_thread->control.in_cond_eval)
-	      stop_all_threads_if_all_stop_mode ();
+	      {
+		stop_all_threads_if_all_stop_mode ();
+
+		/* Say the user does "next" over an exit(0) call, or
+		   out of main, either of which make the whole process
+		   exit.  If the target supports target_thread_events,
+		   then that is activated while "next" is in progress,
+		   and consequently we may be processing a thread-exit
+		   event (caused by the process exit) for a thread
+		   that reported its exit before the
+		   whole-process-exit event is reported for another
+		   thread (which is normally going to be the last
+		   event out of the inferior, but we don't know for
+		   which thread it will be).
+
+		   If we're in 'all-stop on top of non-stop' mode, and
+		   indeed the inferior process is exiting, then the
+		   stop_all_threads_if_all_stop_mode call above must
+		   have seen the process-exit event, as it will see
+		   one stop for each and every (running) thread of the
+		   process.  Look at the pending statuses of all
+		   threads, and see if we have a process-exit status.
+		   If so, prefer handling it now and report the
+		   inferior exit to the user instead of reporting the
+		   original thread exit.
+
+		   Do not do this if are handling any other kind of
+		   event, like e.g., a breakpoint hit, which the user
+		   may be interested in knowing was hit before the
+		   process exited.  If we ever have a "catch
+		   thread-exit" or something similar, we may want to
+		   skip this "prefer process-exit" if such a
+		   catchpoint is installed.  */
+		if (ecs.ws.kind () == TARGET_WAITKIND_THREAD_EXITED
+		    && !non_stop && exists_non_stop_target ())
+		  {
+		    for (thread_info &thread : inf->non_exited_threads ())
+		      {
+			if (thread.has_pending_waitstatus ()
+			    && ((thread.pending_waitstatus ().kind ()
+				 == TARGET_WAITKIND_EXITED)
+				|| (thread.pending_waitstatus ().kind ()
+				    == TARGET_WAITKIND_SIGNALLED)))
+			  {
+			    /* Found a pending process-exit event.
+			       Prefer handling and reporting it now
+			       over the thread-exit event.  */
+			    infrun_debug_printf
+			      ("found pending process-exit event, preferring it");
+			    ecs.ws = thread.pending_waitstatus ();
+			    thread.clear_pending_waitstatus ();
+			    ecs.event_thread = nullptr;
+			    ecs.ptid = thread.ptid;
+			    /* Re-record the last target status.  */
+			    set_last_target_status (ecs.target, ecs.ptid,
+						    ecs.ws);
+			    handle_process_exited (&ecs);
+			    break;
+			  }
+		      }
+		  }
+	      }
 
 	    clean_up_just_stopped_threads_fsms (&ecs);
 
@@ -5638,7 +5739,7 @@ handle_one (const wait_one_event &event)
    the expected stops.  */
 
 static void
-reenable_target_async ()
+re_enable_target_async ()
 {
   for (inferior *inf : all_inferiors ())
     {
@@ -5782,7 +5883,7 @@ stop_all_threads (const char *reason, inferior *inf)
 	  if (pass > 0)
 	    pass = -1;
 
-	  reenable_target_async ();
+	  re_enable_target_async ();
 
 	  for (int i = 0; i < waits_needed; i++)
 	    {
@@ -6067,6 +6168,81 @@ handle_thread_exited (execution_control_state *ecs)
   return true;
 }
 
+/* Handle a process exit event.  */
+
+static void
+handle_process_exited (execution_control_state *ecs)
+{
+  /* Depending on the system, ecs->ptid may point to a thread or to a
+     process.  On some targets, target_mourn_inferior may need to have
+     access to the just-exited thread.  That is the case of
+     GNU/Linux's "checkpoint" support, for example.  Switch context
+     appropriately.  */
+  thread_info *thr = ecs->target->find_thread (ecs->ptid);
+  if (thr != nullptr)
+    switch_to_thread (thr);
+  else
+    {
+      inferior *inf = find_inferior_ptid (ecs->target, ecs->ptid);
+      switch_to_inferior_no_thread (inf);
+    }
+
+  handle_vfork_child_exec_or_exit (0);
+  target_terminal::ours ();	/* Must do this before mourn anyway.  */
+
+  /* Clearing any previous state of convenience variables.  */
+  clear_exit_convenience_vars ();
+
+  if (ecs->ws.kind () == TARGET_WAITKIND_EXITED)
+    {
+      /* Record the exit code in the convenience variable $_exitcode,
+	 so that the user can inspect this again later.  */
+      set_internalvar_integer (lookup_internalvar ("_exitcode"),
+			       (LONGEST) ecs->ws.exit_status ());
+
+      /* Also record this in the inferior itself.  */
+      current_inferior ()->has_exit_code = true;
+      current_inferior ()->exit_code = (LONGEST) ecs->ws.exit_status ();
+
+      /* Support the --return-child-result option.  */
+      return_child_result_value = ecs->ws.exit_status ();
+
+      interps_notify_exited (ecs->ws.exit_status ());
+    }
+  else
+    {
+      struct gdbarch *gdbarch = current_inferior ()->arch ();
+
+      if (gdbarch_gdb_signal_to_target_p (gdbarch))
+	{
+	  /* Set the value of the internal variable $_exitsignal,
+	     which holds the signal uncaught by the inferior.  */
+	  set_internalvar_integer (lookup_internalvar ("_exitsignal"),
+				   gdbarch_gdb_signal_to_target (gdbarch,
+								 ecs->ws.sig ()));
+	}
+      else
+	{
+	  /* We don't have access to the target's method used for
+	     converting between signal numbers (GDB's internal
+	     representation <-> target's representation).
+	     Therefore, we cannot do a good job at displaying this
+	     information to the user.  It's better to just warn
+	     her about it (if infrun debugging is enabled), and
+	     give up.  */
+	  infrun_debug_printf ("Cannot fill $_exitsignal with the correct "
+			       "signal number.");
+	}
+
+      interps_notify_signal_exited (ecs->ws.sig ());
+    }
+
+  gdb_flush (gdb_stdout);
+  target_mourn_inferior (inferior_ptid);
+  stop_print_frame = false;
+  stop_waiting (ecs);
+}
+
 /* Given an execution control state that has been freshly filled in by
    an event from the inferior, figure out what it means and take
    appropriate action.
@@ -6156,7 +6332,9 @@ handle_inferior_event (struct execution_control_state *ecs)
      stack.  */
   if (ecs->ws.kind () == TARGET_WAITKIND_STOPPED
       && (ecs->ws.sig () == GDB_SIGNAL_ILL
-	  || ecs->ws.sig () == GDB_SIGNAL_SEGV
+	  || (ecs->ws.sig () == GDB_SIGNAL_SEGV
+	      && !(gdbarch_imprecise_pagefault_reporting
+		   (target_thread_architecture (ecs->event_thread->ptid))))
 	  || ecs->ws.sig () == GDB_SIGNAL_EMT))
     {
       struct regcache *regcache = get_thread_regcache (ecs->event_thread);
@@ -6276,74 +6454,7 @@ handle_inferior_event (struct execution_control_state *ecs)
 
     case TARGET_WAITKIND_EXITED:
     case TARGET_WAITKIND_SIGNALLED:
-      {
-	/* Depending on the system, ecs->ptid may point to a thread or
-	   to a process.  On some targets, target_mourn_inferior may
-	   need to have access to the just-exited thread.  That is the
-	   case of GNU/Linux's "checkpoint" support, for example.
-	   Call the switch_to_xxx routine as appropriate.  */
-	thread_info *thr = ecs->target->find_thread (ecs->ptid);
-	if (thr != nullptr)
-	  switch_to_thread (thr);
-	else
-	  {
-	    inferior *inf = find_inferior_ptid (ecs->target, ecs->ptid);
-	    switch_to_inferior_no_thread (inf);
-	  }
-      }
-      handle_vfork_child_exec_or_exit (0);
-      target_terminal::ours ();	/* Must do this before mourn anyway.  */
-
-      /* Clearing any previous state of convenience variables.  */
-      clear_exit_convenience_vars ();
-
-      if (ecs->ws.kind () == TARGET_WAITKIND_EXITED)
-	{
-	  /* Record the exit code in the convenience variable $_exitcode, so
-	     that the user can inspect this again later.  */
-	  set_internalvar_integer (lookup_internalvar ("_exitcode"),
-				   (LONGEST) ecs->ws.exit_status ());
-
-	  /* Also record this in the inferior itself.  */
-	  current_inferior ()->has_exit_code = true;
-	  current_inferior ()->exit_code = (LONGEST) ecs->ws.exit_status ();
-
-	  /* Support the --return-child-result option.  */
-	  return_child_result_value = ecs->ws.exit_status ();
-
-	  interps_notify_exited (ecs->ws.exit_status ());
-	}
-      else
-	{
-	  struct gdbarch *gdbarch = current_inferior ()->arch ();
-
-	  if (gdbarch_gdb_signal_to_target_p (gdbarch))
-	    {
-	      /* Set the value of the internal variable $_exitsignal,
-		 which holds the signal uncaught by the inferior.  */
-	      set_internalvar_integer (lookup_internalvar ("_exitsignal"),
-				       gdbarch_gdb_signal_to_target (gdbarch,
-							  ecs->ws.sig ()));
-	    }
-	  else
-	    {
-	      /* We don't have access to the target's method used for
-		 converting between signal numbers (GDB's internal
-		 representation <-> target's representation).
-		 Therefore, we cannot do a good job at displaying this
-		 information to the user.  It's better to just warn
-		 her about it (if infrun debugging is enabled), and
-		 give up.  */
-	      infrun_debug_printf ("Cannot fill $_exitsignal with the correct "
-				   "signal number.");
-	    }
-
-	  interps_notify_signal_exited (ecs->ws.sig ());
-	}
-
-      gdb_flush (gdb_stdout);
-      target_mourn_inferior (inferior_ptid);
-      stop_print_frame = false;
+      handle_process_exited (ecs);
       stop_waiting (ecs);
       return;
 
@@ -6898,7 +7009,7 @@ handle_signal_stop (struct execution_control_state *ecs)
 
 	  std::string addr_str;
 	  if (addr_list.empty ())
-	    addr_str = "(no data addressses available)";
+	    addr_str = "(no data addresses available)";
 	  else
 	    {
 	      for (const CORE_ADDR addr : addr_list)
@@ -8323,7 +8434,7 @@ process_event_stop_test (struct execution_control_state *ecs)
      which includes things like the line number we are stepping away from.
      This means we will stop when we find a line table entry that is marked
      as is-statement, even if it matches the non-statement one we just
-     stepped into.   */
+     stepped into.  */
 
   ecs->event_thread->control.step_range_start = stop_pc_sal.pc;
   ecs->event_thread->control.step_range_end = stop_pc_sal.end;
@@ -9349,7 +9460,7 @@ print_stop_location (const target_waitstatus &ws)
   /* Function bpstat_print selects the frame to print.  Typically, that is the
      stop frame, in other words get_current_frame ().  But bpstat_print may
      select a different frame, see for instance ada_catchpoint::print_it.  */
-  frame_info_ptr print_frame = get_selected_frame (nullptr);
+  frame_info_ptr print_frame = get_selected_frame ();
 
  switch (bpstat_ret)
     {
@@ -9654,7 +9765,8 @@ normal_stop ()
 	  SWITCH_THRU_ALL_UIS ()
 	    {
 	      target_terminal::ours_for_output ();
-	      gdb_printf (_("[Switching to %s]\n"),
+	      gdb_printf (_("[Switching to thread %s (%s)]\n"),
+			  print_thread_id (inferior_thread ()),
 			  target_pid_to_str (inferior_ptid).c_str ());
 	      annotate_thread_changed ();
 	    }
@@ -10734,16 +10846,16 @@ leave it stopped or free to run as needed."),
   /* Update cached state.  */
   signal_cache_update (-1);
 
-  add_setshow_zinteger_cmd ("stop-on-solib-events", class_support,
-			    &stop_on_solib_events, _("\
+  add_setshow_boolean_cmd ("stop-on-solib-events", class_support,
+			   &stop_on_solib_events, _("\
 Set stopping for shared library events."), _("\
 Show stopping for shared library events."), _("\
-If nonzero, gdb will give control to the user when the dynamic linker\n\
+If on, gdb will give control to the user when the dynamic linker\n\
 notifies gdb of shared library events.  The most common event of interest\n\
 to the user would be loading/unloading of a new library."),
-			    set_stop_on_solib_events,
-			    show_stop_on_solib_events,
-			    &setlist, &showlist);
+			   set_stop_on_solib_events,
+			   show_stop_on_solib_events,
+			   &setlist, &showlist);
 
   add_setshow_enum_cmd ("follow-fork-mode", class_run,
 			follow_fork_mode_kind_names,

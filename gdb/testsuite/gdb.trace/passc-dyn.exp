@@ -22,7 +22,7 @@ require gdb_trace_common_supports_arch
 if { [gdb_compile "$srcdir/$subdir/$srcfile" $binfile \
 	  executable {debug nowarnings}] != "" } {
     untested "failed to compile"
-    return -1
+    return
 }
 
 clean_restart $testfile
@@ -82,7 +82,7 @@ gdb_test "passcount 3 $tdp4" "Setting tracepoint $tdp4's passcount to 3" \
 
 gdb_test "tstart" ".*" ""
 
-gdb_breakpoint "end" qualified
+gdb_breakpoint "end" -qualified
 gdb_test "continue" \
     "Continuing.*Breakpoint $decimal, end.*" \
     "run trace experiment"

@@ -28,6 +28,7 @@
 #include "varobj.h"
 #include "gdbcore.h"
 #include "f-lang.h"
+#include "f-exp-parser.h"
 #include "valprint.h"
 #include "value.h"
 #include "cp-support.h"
@@ -1632,10 +1633,18 @@ fortran_structop_operation::evaluate (struct type *expect_type,
 
 /* See language.h.  */
 
+int
+f_language::parser (struct parser_state *ps) const
+{
+  return f_parse (ps);
+}
+
+/* See language.h.  */
+
 void
 f_language::print_array_index (struct type *index_type, LONGEST index,
 			       struct ui_file *stream,
-			       const value_print_options *options) const
+			       const value_print_options &options) const
 {
   struct value *index_value = value_from_longest (index_type, index);
 
@@ -1981,7 +1990,7 @@ fortran_adjust_dynamic_array_base_address_hack (struct type *type,
       struct type *range_type = tmp_type->index_type ();
       LONGEST lowerbound, upperbound, stride;
       if (!get_discrete_bounds (range_type, &lowerbound, &upperbound))
-	error ("failed to get range bounds");
+	error (_("failed to get range bounds"));
 
       /* Figure out the stride for this dimension.  */
       struct type *elt_type = check_typedef (tmp_type->target_type ());

@@ -744,7 +744,8 @@ fetch_indexed_addr (uint64_t offset, uint32_t num_bytes)
       return 0;
     }
 
-  if (offset + num_bytes > section->size)
+  if (offset > section->size
+      || num_bytes > section->size - offset)
     {
       warn (_("Offset into section %s too big: %#" PRIx64 "\n"),
 	    section->name, offset);
@@ -769,7 +770,7 @@ fetch_indexed_offset (uint64_t                         idx,
 		      uint64_t                         base_address,
 		      uint64_t                         offset_size)
 {
-  uint64_t offset_of_offset = base_address + idx * offset_size;
+  uint64_t offset_of_offset;
   struct dwarf_section *section = &debug_displays [sec_enum].section;
 
   if (section->start == NULL)
@@ -778,17 +779,13 @@ fetch_indexed_offset (uint64_t                         idx,
       return -1;
     }
 
-  if (section->size < 4)
+  if (_bfd_mul_overflow (idx, offset_size, &offset_of_offset)
+      || (offset_of_offset += base_address) < base_address
+      || offset_of_offset > section->size
+      || offset_size > section->size - offset_of_offset)
     {
-      warn (_("Section %s is too small to contain an value indexed from another section!\n"),
-	    section->name);
-      return -1;
-    }
-
-  if (offset_of_offset + offset_size >= section->size)
-    {
-      warn (_("Offset of %#" PRIx64 " is too big for section %s\n"),
-	    offset_of_offset, section->name);
+      warn (_("Base %#" PRIx64 " with index %#" PRIx64 " is too big for section %s\n"),
+	    base_address, idx, section->name);
       return -1;
     }
 
@@ -2116,6 +2113,13 @@ free_dwo_info (void)
   first_dwo_info = NULL;
 }
 
+static bool
+is_dwo_section (const struct dwarf_section *section)
+{
+  size_t len = strlen (section->name);
+  return len >= 4 && memcmp (section->name + len - 4, ".dwo", 4) == 0;
+}
+
 /* Ensure that START + UVALUE is less than END.
    Return an adjusted UVALUE if necessary to ensure this relationship.  */
 
@@ -2922,7 +2926,8 @@ display_member_type (const member_type mt)
 static member_type *
 get_or_create_member_type (member_parent *parent, uint64_t die_offset)
 {
-  assert (parent != NULL);
+  if (parent == NULL)
+    return NULL;
   if (parent->member_tail == NULL
       || parent->member_tail->die_offset != die_offset)
     {
@@ -3374,6 +3379,8 @@ insert_element_in_list (enum dwarf_tag dw_tag,
 	  mt = get_or_create_member_type (union_type_list.tail, die_offset);
 	else
 	  mt = get_or_create_member_type (struct_type_list.tail, die_offset);
+	if (mt == NULL)
+	  break;
 
 	if (dw_attr == DW_AT_name)
 	  {
@@ -3884,8 +3891,7 @@ read_and_display_attr_value (unsigned long attribute,
     case DW_FORM_strx4:
       if (!do_loc)
 	{
-	  const char *suffix = section ? strrchr (section->name, '.') : NULL;
-	  bool dwo = suffix && strcmp (suffix, ".dwo") == 0;
+	  bool dwo = is_dwo_section (section);
 	  const char *strng;
 
 	  strng = fetch_indexed_string (uvalue, this_set, offset_size, dwo,
@@ -3944,8 +3950,7 @@ read_and_display_attr_value (unsigned long attribute,
       if (!do_loc)
 	{
 	  uint64_t base, idx;
-	  const char *suffix = strrchr (section->name, '.');
-	  bool dwo = suffix && strcmp (suffix, ".dwo") == 0;
+	  bool dwo = is_dwo_section (section);
 
 	  if (form == DW_FORM_loclistx)
 	    {
@@ -7586,11 +7591,7 @@ display_debug_macro (struct dwarf_section *section,
   unsigned char *end = start + section->size;
   unsigned char *curr = start;
   unsigned char *extended_op_buf[256];
-  bool is_dwo = false;
-  const char *suffix = strrchr (section->name, '.');
-
-  if (suffix && strcmp (suffix, ".dwo") == 0)
-    is_dwo = true;
+  bool is_dwo = is_dwo_section (section);
 
   if (is_dwo)
     {
@@ -8604,13 +8605,9 @@ display_debug_loc (struct dwarf_section *section, void *file)
   int locs_sorted = 1;
   unsigned char *next = start, *vnext = vstart;
   unsigned int *array = NULL;
-  const char *suffix = strrchr (section->name, '.');
-  bool is_dwo = false;
+  bool is_dwo = is_dwo_section (section);
   bool is_loclists = strstr (section->name, "debug_loclists") != NULL;
   uint64_t next_header_offset = 0;
-
-  if (suffix && strcmp (suffix, ".dwo") == 0)
-    is_dwo = true;
 
   bytes = section->size;
 
@@ -9266,9 +9263,7 @@ display_debug_str_offsets (struct dwarf_section *section,
   unsigned char *end = start + section->size;
   unsigned char *curr = start;
   uint64_t debug_str_offsets_hdr_len;
-
-  const char *suffix = strrchr (section->name, '.');
-  bool dwo = suffix && strcmp (suffix, ".dwo") == 0;
+  bool dwo = is_dwo_section (section);
 
   if (dwo)
     load_debug_section_with_follow (str_dwo, file);
@@ -12132,6 +12127,12 @@ display_debug_names (struct dwarf_section *section, void *file)
 	      READ_ULEB (form, abbrevptr, abbrev_table_end);
 	      if (xindex == 0 && form == 0)
 		break;
+
+	      if (form == DW_FORM_implicit_const)
+		{
+		  int64_t implicit_const;
+		  READ_SLEB (implicit_const, abbrevptr, abbrev_table_end);
+		}
 	    }
 	}
 
@@ -12222,7 +12223,12 @@ display_debug_names (struct dwarf_section *section, void *file)
 
 		  if (tagno >= 0)
 		    printf (" %s", get_IDX_name (xindex));
-		  entryptr = read_and_display_attr_value (0, form, 0,
+
+		  int64_t implicit_const = 0;
+		  if (form == DW_FORM_implicit_const)
+		    READ_SLEB (implicit_const, abbrevptr, abbrev_table_end);
+
+		  entryptr = read_and_display_attr_value (0, form, implicit_const,
 							  unit_start, entryptr,
 							  unit_end, 0,
 							  offset_size,

@@ -47,7 +47,7 @@ using windows_nat::windows_thread_info;
 
 /* A pointer to a function that should return non-zero iff REGNUM
    corresponds to one of the segment registers.  */
-typedef int (segment_register_p_ftype) (int regnum);
+using segment_register_p_ftype = int (int regnum);
 
 /* Maintain a linked list of "so" information.  */
 struct windows_solib
@@ -73,15 +73,59 @@ enum windows_continue_flag
        call to continue the inferior -- we are either mourning it or
        detaching.  */
     WCONT_LAST_CALL = 2,
+
+    /* By default, windows_continue only calls ContinueDebugEvent in
+       all-stop mode.  This flag indicates that windows_continue
+       should call ContinueDebugEvent even in non-stop mode.  */
+    WCONT_CONTINUE_DEBUG_EVENT = 4,
+
+    /* Skip calling ContinueDebugEvent even in all-stop mode.  This is
+       the default in non-stop mode.  */
+    WCONT_DONT_CONTINUE_DEBUG_EVENT = 8,
   };
 
 DEF_ENUM_FLAGS_TYPE (windows_continue_flag, windows_continue_flags);
 
+/* We want to register windows_thread_info as struct thread_info
+   private data.  thread_info::priv must point to a class that
+   inherits from private_thread_info.  But we can't make
+   windows_thread_info inherit private_thread_info, because
+   windows_thread_info is shared with GDBserver.  So we make a new
+   class that inherits from both private_thread_info,
+   windows_thread_info, and register that one as thread_info::private.
+   This multiple inheritance is benign, because private_thread_info is
+   a java-style interface class with no data.  */
+struct windows_private_thread_info : private_thread_info, windows_thread_info
+{
+  windows_private_thread_info (windows_nat::windows_process_info *proc,
+			       DWORD tid, HANDLE h, CORE_ADDR tlb)
+    : windows_thread_info (proc, tid, h, tlb)
+  {}
+
+  ~windows_private_thread_info () override
+  {}
+};
+
+/* If THR belongs to the windows-nat target, returns the
+   windows_thread_info object associated with it.  Otherwise returns
+   NULL.  */
+
+static inline windows_thread_info *
+as_windows_thread_info (thread_info *thr)
+{
+  /* Cast to windows_private_thread_info, which inherits from
+     windows_thread_info, the return type.  We use dynamic_cast,
+     because the inferior's thread list may have threads from other
+     targets on the target stack.  */
+  private_thread_info *priv = thr->priv.get ();
+  return dynamic_cast<windows_private_thread_info *> (priv);
+}
+
 struct windows_per_inferior : public windows_nat::windows_process_info
 {
   windows_thread_info *find_thread (ptid_t ptid) override;
-  DWORD handle_output_debug_string (const DEBUG_EVENT &current_event,
-				    struct target_waitstatus *ourstatus) override;
+  bool handle_output_debug_string (const DEBUG_EVENT &current_event,
+				   struct target_waitstatus *ourstatus) override;
   void handle_load_dll (const char *dll_name, LPVOID base) override;
   void handle_unload_dll (const DEBUG_EVENT &current_event) override;
   bool handle_access_violation (const EXCEPTION_RECORD *rec) override;
@@ -90,8 +134,6 @@ struct windows_per_inferior : public windows_nat::windows_process_info
   virtual void invalidate_thread_context (windows_thread_info *th) = 0;
 
   int windows_initialization_done = 0;
-
-  std::vector<std::unique_ptr<windows_thread_info>> thread_list;
 
   /* Counts of things.  */
   int saw_create = 0;
@@ -175,15 +217,19 @@ struct windows_nat_target : public inf_child_target
 
   bool thread_alive (ptid_t ptid) override;
 
+  const char *extra_thread_info (thread_info *info) override;
+
   std::string pid_to_str (ptid_t) override;
 
   void interrupt () override;
   void pass_ctrlc () override;
   void stop (ptid_t ptid) override;
 
-  const char *pid_to_exec_file (int pid) override;
+  void thread_events (bool enable) override;
 
-  ptid_t get_ada_task_ptid (long lwp, ULONGEST thread) override;
+  bool any_resumed_thread ();
+
+  const char *pid_to_exec_file (int pid) override;
 
   bool get_tib_address (ptid_t ptid, CORE_ADDR *addr) override;
 
@@ -210,12 +256,17 @@ struct windows_nat_target : public inf_child_target
     return m_is_async;
   }
 
+  bool supports_non_stop () override;
+  bool always_non_stop_p () override;
+
   void async (bool enable) override;
 
   int async_wait_fd () override
   {
     return serial_event_fd (m_wait_event);
   }
+
+  void debug_registers_changed_all_threads ();
 
 protected:
 
@@ -229,8 +280,8 @@ protected:
   /* Prepare the thread context for continuing.  */
   virtual void thread_context_continue (windows_thread_info *th,
 					int killed) = 0;
-  /* Set the stepping bit in the thread context.  */
-  virtual void thread_context_step (windows_thread_info *th) = 0;
+  /* Set or clear the stepping bit in the thread context.  */
+  virtual void thread_context_step (windows_thread_info *th, bool enable) = 0;
 
   /* Fetches register number R from the given windows_thread_info,
      and supplies its value to the given regcache.
@@ -261,6 +312,19 @@ private:
 				   bool main_thread_p);
   void delete_thread (ptid_t ptid, DWORD exit_code, bool main_thread_p);
   DWORD fake_create_process (const DEBUG_EVENT &current_event);
+
+  bool stop_one_thread (windows_thread_info *th,
+			enum windows_nat::stopping_kind stopping_kind);
+
+  void stop_interrupt (ptid_t ptid, bool stop_on_first_match);
+  bool dbg_break_process ();
+
+  DWORD continue_status_for_event_detaching
+    (const DEBUG_EVENT &event, size_t *reply_later_events_left = nullptr);
+
+  DWORD prepare_resume (windows_thread_info *th,
+			thread_info *tp,
+			int step, gdb_signal sig);
 
   void continue_one_thread (windows_thread_info *th,
 			    windows_continue_flags cont_flags);
@@ -328,6 +392,9 @@ private:
      already returned an event, and we need to ContinueDebugEvent
      again to restart the inferior.  */
   bool m_continued = false;
+
+  /* Whether target_thread_events is in effect.  */
+  bool m_report_thread_events = false;
 };
 
 /* Check if Windows API call succeeds, and otherwise print error code
@@ -351,5 +418,74 @@ int amd64_windows_segment_register_p (int regnum);
 /* context register offsets for amd64.  */
 extern const int amd64_mappings[];
 #endif
+
+/* Creates an iterator that works like all_matching_threads_iterator,
+   but that returns windows_thread_info pointers instead of
+   thread_info.  This could be replaced with a std::range::transform
+   when we require C++20.  */
+class all_windows_threads_iterator
+{
+public:
+  using self_type = all_windows_threads_iterator;
+  using value_type = windows_thread_info;
+  using reference = windows_thread_info *&;
+  using pointer = windows_thread_info **;
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = int;
+
+  explicit all_windows_threads_iterator (all_non_exited_threads_iterator base_iter)
+    : m_base_iter (base_iter)
+  {}
+
+  windows_thread_info * operator* () const { return as_windows_thread_info (&*m_base_iter); }
+
+  all_windows_threads_iterator &operator++ ()
+  {
+    advance ();
+    return *this;
+  }
+
+  bool operator== (const all_windows_threads_iterator &other) const
+  { return m_base_iter == other.m_base_iter; }
+
+  bool operator!= (const all_windows_threads_iterator &other) const
+  { return !(*this == other); }
+
+private:
+  /* Advance to the next windows-nat thread.  */
+  void advance ();
+
+  all_non_exited_threads_iterator m_base_iter;
+};
+
+/* The range for all_windows_threads, below.  */
+
+class all_windows_threads_range : public all_non_exited_threads_range
+{
+public:
+  all_windows_threads_range (all_non_exited_threads_range base_range)
+    : m_base_range (base_range)
+  {}
+
+  all_windows_threads_iterator begin () const;
+  all_windows_threads_iterator end () const
+  { return all_windows_threads_iterator (m_base_range.end ()); }
+
+private:
+  all_non_exited_threads_range m_base_range;
+};
+
+/* Return a range that can be used to walk over all non-exited Windows
+   threads of all inferiors, with range-for.  */
+
+static inline all_windows_threads_range
+all_windows_threads ()
+{
+  auto *win_tgt = static_cast<windows_nat_target *> (get_native_target ());
+  return (all_windows_threads_range
+	  (all_non_exited_threads_range (win_tgt, minus_one_ptid)));
+}
+
+extern void windows_debug_registers_changed_all_threads ();
 
 #endif /* GDB_WINDOWS_NAT_H */

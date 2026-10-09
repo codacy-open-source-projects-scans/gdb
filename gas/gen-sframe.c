@@ -426,7 +426,7 @@ get_fre_dataword_count (const struct sframe_row_entry *sframe_fre, bool flex_p)
 
 static unsigned int
 sframe_get_fre_dataword_size (const struct sframe_row_entry *sframe_fre,
-			    bool flex_p)
+			      bool flex_p)
 {
   unsigned int max_dataword_size = 0;
   unsigned int cfa_offset_size = 0;
@@ -1094,6 +1094,10 @@ static void
 sframe_xlate_ctx_cleanup (struct sframe_xlate_ctx *xlate_ctx)
 {
   sframe_row_entry_free (xlate_ctx->first_fre);
+  xlate_ctx->first_fre = NULL;
+  xlate_ctx->last_fre = NULL;
+  xlate_ctx->num_xlate_fres = 0;
+  xlate_ctx->flex_p = false;
   XDELETE (xlate_ctx->remember_fre);
   xlate_ctx->remember_fre = NULL;
   XDELETE (xlate_ctx->cur_fre);
@@ -1358,31 +1362,23 @@ sframe_xlate_do_def_cfa_offset (struct sframe_xlate_ctx *xlate_ctx,
 
   gas_assert (cur_fre);
   /*  Define the current CFA rule to use the provided offset (but to keep
-      the old register).  However, if the old register is not FP/SP,
+      the old register).  However, if the old register is invalid,
       skip creating SFrame stack trace info for the function.  */
-  if (cur_cfa_reg == SFRAME_CFA_FP_REG || cur_cfa_reg == SFRAME_CFA_SP_REG)
+  if (cur_cfa_reg == SFRAME_FRE_REG_INVALID)
     {
-      if (sframe_fre_stack_offset_bound_p (cfi_insn->u.i, true))
-	{
-	  sframe_fre_set_cfa_offset (cur_fre, cfi_insn->u.i);
-	  cur_fre->merge_candidate = false;
-	}
-      else
-	{
-	  as_warn (_("no SFrame FDE emitted; "
-		     ".cfi_def_cfa_offset with unsupported offset value"));
-	  return SFRAME_XLATE_ERR_NOTREPRESENTED;
-	}
-    }
-  else
-    {
-      /* No CFA base register in effect.  Non-SP/FP CFA base register should
-	 not occur, as sframe_xlate_do_def_cfa[_register] would detect this.  */
       as_warn (_("no SFrame FDE emitted; "
 		 ".cfi_def_cfa_offset without CFA base register in effect"));
       return SFRAME_XLATE_ERR_NOTREPRESENTED;
     }
 
+  if (!sframe_fre_stack_offset_bound_p (cfi_insn->u.i, true))
+    {
+      as_warn (_("no SFrame FDE emitted; "
+		 ".cfi_def_cfa_offset with unsupported offset value"));
+      return SFRAME_XLATE_ERR_NOTREPRESENTED;
+    }
+
+  sframe_fre_set_cfa_offset (cur_fre, cfi_insn->u.i);
   return SFRAME_XLATE_OK;
 }
 
@@ -2477,6 +2473,14 @@ create_sframe_all (void)
       sframe_fde = sframe_fde_alloc ();
       /* Initialize the translation context with information anew.  */
       sframe_xlate_ctx_init (xlate_ctx);
+
+      /* Report and fix open CFI.  */
+      if (dw_fde->end_address == NULL)
+	{
+	  as_bad (_("open CFI at the end of file; "
+		    "missing .cfi_endproc directive"));
+	  dw_fde->end_address = dw_fde->start_address;
+	}
 
       /* Process and link SFrame FDEs if no error.  */
       int err = sframe_do_fde (xlate_ctx, dw_fde);

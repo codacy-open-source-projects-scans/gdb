@@ -159,10 +159,6 @@ typedef struct _CODEVIEW_INFO
 #define NT_EXE_IMAGE_BASE 0x400000
 #define NT_DLL_IMAGE_BASE 0x10000000
 
-/* Default image base for BeOS. */
-#define BEOS_EXE_IMAGE_BASE 0x80000000
-#define BEOS_DLL_IMAGE_BASE 0x10000000
-
 /* Extra stuff in a PE aouthdr */
 
 #define PE_DEF_SECTION_ALIGNMENT 0x1000
@@ -684,10 +680,11 @@ struct internal_reloc
 {
   bfd_vma r_vaddr;		/* Virtual address of reference */
   long r_symndx;		/* Index into symbol table	*/
-  unsigned short r_type;	/* Relocation type		*/
-  unsigned char r_size;		/* Used by RS/6000 and ECOFF	*/
-  unsigned char r_extern;	/* Used by ECOFF		*/
   unsigned long r_offset;	/* Used by Alpha ECOFF, SPARC, others */
+  unsigned int r_type:16;	/* Relocation type		*/
+  unsigned int r_size:8;	/* Used by RS/6000 and ECOFF	*/
+  unsigned int r_extern:1;	/* Used by ECOFF		*/
+  unsigned int r_ignore:1;	/* Control _bfd_coff_generic_relocate_section */
 };
 
 #define IMAGE_REL_BASED_ABSOLUTE		0

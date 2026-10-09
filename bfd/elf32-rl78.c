@@ -442,14 +442,14 @@ rl78_compute_complex_reloc (unsigned long  r_type,
 
     case R_RL78_OPneg:
       tmp1 = rl78_stack_pop (&status);
-      tmp1 = - tmp1;
+      tmp1 = -(uint32_t) tmp1;
       rl78_stack_push (tmp1, &status);
       break;
 
     case R_RL78_OPadd:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      tmp1 += tmp2;
+      tmp1 += (uint32_t) tmp2;
       rl78_stack_push (tmp1, &status);
       break;
 
@@ -458,41 +458,51 @@ rl78_compute_complex_reloc (unsigned long  r_type,
 	 then B, then OPSUB.  So the first op we pop is B, not A.  */
       tmp2 = rl78_stack_pop (&status);	/* B */
       tmp1 = rl78_stack_pop (&status);	/* A */
-      tmp1 -= tmp2;		/* A - B */
+      tmp1 -= (uint32_t) tmp2;		/* A - B */
       rl78_stack_push (tmp1, &status);
       break;
 
     case R_RL78_OPmul:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      tmp1 *= tmp2;
+      tmp1 *= (uint32_t) tmp2;
       rl78_stack_push (tmp1, &status);
       break;
 
     case R_RL78_OPdiv:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      if (tmp2 != 0)
-	tmp1 /= tmp2;
-      else
+      if (tmp2 == 0)
 	{
 	  tmp1 = 0;
 	  status = bfd_reloc_overflow;
 	}
+      else if (tmp2 == 1)
+	;
+      else if (tmp2 == -1)
+	tmp1 = -(uint32_t) tmp1;
+      else
+	tmp1 /= tmp2;
       rl78_stack_push (tmp1, &status);
       break;
 
     case R_RL78_OPshla:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      tmp1 <<= tmp2;
+      if ((uint32_t) tmp2 >= 32)
+	tmp1 = 0;
+      else
+	tmp1 = (uint32_t) tmp1 << tmp2;
       rl78_stack_push (tmp1, &status);
       break;
 
     case R_RL78_OPshra:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      tmp1 >>= tmp2;
+      if ((uint32_t) tmp2 >= 31)
+	tmp1 = tmp1 < 0 ? -1 : 1;
+      else
+	tmp1 >>= tmp2;
       rl78_stack_push (tmp1, &status);
       break;
 
@@ -534,13 +544,15 @@ rl78_compute_complex_reloc (unsigned long  r_type,
     case R_RL78_OPmod:
       tmp2 = rl78_stack_pop (&status);
       tmp1 = rl78_stack_pop (&status);
-      if (tmp2 != 0)
-	tmp1 %= tmp2;
-      else
+      if (tmp2 == 0)
 	{
 	  tmp1 = 0;
 	  status = bfd_reloc_overflow;
 	}
+      else if (tmp2 == 1 || tmp2 == -1)
+	tmp1 = 0;
+      else
+	tmp1 %= tmp2;
       rl78_stack_push (tmp1, &status);
       break;
     }
@@ -702,8 +714,7 @@ rl78_special_reloc (bfd *      input_bfd,
 
 static int
 rl78_elf_relocate_section
-    (bfd *		     output_bfd,
-     struct bfd_link_info *  info,
+    (struct bfd_link_info *  info,
      bfd *		     input_bfd,
      asection *		     input_section,
      bfd_byte *		     contents,
@@ -751,7 +762,8 @@ rl78_elf_relocate_section
 	{
 	  sym = local_syms + r_symndx;
 	  sec = local_sections [r_symndx];
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, & sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 
 	  name = bfd_elf_string_from_elf_section
 	    (input_bfd, symtab_hdr->sh_link, sym->st_name);
@@ -1357,7 +1369,11 @@ rl78_elf_check_relocs
 	     for it now.  */
 	case R_RL78_DIR16S:
 	  if (dynobj == NULL)
-	    elf_hash_table (info)->dynobj = dynobj = abfd;
+	    {
+	      dynobj = _bfd_elf_link_dynobj (info);
+	      if (dynobj == NULL)
+		return false;
+	    }
 	  splt = elf_hash_table (info)->splt;
 	  if (splt == NULL)
 	    {
@@ -1408,8 +1424,7 @@ rl78_elf_check_relocs
 /* This must exist if dynobj is ever set.  */
 
 static bool
-rl78_elf_finish_dynamic_sections (bfd *abfd ATTRIBUTE_UNUSED,
-				  struct bfd_link_info *info,
+rl78_elf_finish_dynamic_sections (struct bfd_link_info *info,
 				  bfd_byte *buf ATTRIBUTE_UNUSED)
 {
   bfd *dynobj;
@@ -1429,7 +1444,7 @@ rl78_elf_finish_dynamic_sections (bfd *abfd ATTRIBUTE_UNUSED,
 
   dynobj = elf_hash_table (info)->dynobj;
   splt = elf_hash_table (info)->splt;
-  if (dynobj != NULL && splt != NULL)
+  if (splt != NULL)
     {
       bfd_byte *contents = splt->contents;
       unsigned int i, size = splt->size;
@@ -1445,27 +1460,22 @@ rl78_elf_finish_dynamic_sections (bfd *abfd ATTRIBUTE_UNUSED,
 }
 
 static bool
-rl78_elf_early_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
-			      struct bfd_link_info *info)
+rl78_elf_early_size_sections (struct bfd_link_info *info)
 {
-  bfd *dynobj;
   asection *splt;
 
   if (bfd_link_relocatable (info))
     return true;
 
-  dynobj = elf_hash_table (info)->dynobj;
-  if (dynobj == NULL)
-    return true;
-
   splt = elf_hash_table (info)->splt;
-  BFD_ASSERT (splt != NULL);
-
-  splt->contents = (bfd_byte *) bfd_zalloc (dynobj, splt->size);
-  if (splt->contents == NULL)
-    return false;
-  splt->alloced = 1;
-
+  if (splt != NULL)
+    {
+      bfd *dynobj = elf_hash_table (info)->dynobj;
+      splt->contents = bfd_zalloc (dynobj, splt->size);
+      if (splt->contents == NULL)
+	return false;
+      splt->alloced = 1;
+    }
   return true;
 }
 

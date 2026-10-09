@@ -33,7 +33,6 @@
 #include <process.h>
 #include "gdbsupport/gdb_tilde_expand.h"
 #include "gdbsupport/common-inferior.h"
-#include "gdbsupport/gdb_wait.h"
 
 using namespace windows_nat;
 
@@ -310,7 +309,7 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
   if (windows_process.wow64_process
       && (Wow64GetThreadContext == nullptr
 	  || Wow64SetThreadContext == nullptr))
-    error ("WOW64 debugging is not supported on this system.\n");
+    error (_("WOW64 debugging is not supported on this system.\n"));
 
   windows_process.ignore_first_breakpoint
     = !attached && windows_process.wow64_process;
@@ -318,7 +317,7 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
 
   proc = add_process (pid, attached);
   child_init_thread_list ();
-  windows_process.child_initialization_done = 0;
+  windows_process.child_initialization_done = false;
 
   if (the_low_target.initial_stuff != NULL)
     (*the_low_target.initial_stuff) (proc);
@@ -333,10 +332,12 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
 
       the_target->wait (minus_one_ptid, &status, 0);
 
-      /* Note win32_wait doesn't return thread events.  */
-      if (status.kind () != TARGET_WAITKIND_LOADED)
+      if (status.kind () == TARGET_WAITKIND_EXITED
+	  || status.kind () == TARGET_WAITKIND_SIGNALLED
+	  || status.kind () == TARGET_WAITKIND_STOPPED)
 	{
 	  windows_process.cached_status = status;
+	  windows_process.cached_ptid = current_thread->id;
 	  break;
 	}
 
@@ -368,7 +369,12 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
      phase, and then process them all in one batch now.  */
   windows_process.add_all_dlls ();
 
-  windows_process.child_initialization_done = 1;
+#ifdef __CYGWIN__
+  windows_process.started_by_cygwin
+    = inferior_started_by_cygwin (pid, attached);
+#endif
+
+  windows_process.child_initialization_done = true;
 }
 
 /* Resume all artificially suspended threads if we are continuing
@@ -447,15 +453,38 @@ static BOOL
 create_process (const char *program, char *args,
 		DWORD flags, PROCESS_INFORMATION *pi)
 {
-  const std::string &inferior_cwd = get_inferior_cwd ();
   BOOL ret;
   size_t argslen, proglen;
+#ifdef __CYGWIN__
+  char infcwd_buf[PATH_MAX];
+#endif
 
   proglen = strlen (program) + 1;
   argslen = strlen (args) + proglen;
 
   STARTUPINFOA si = { sizeof (STARTUPINFOA) };
   char *program_and_args = (char *) alloca (argslen + 1);
+
+  const char *inferior_cwd = get_inferior_cwd ().c_str ();
+  std::string expanded_infcwd;
+  if (*inferior_cwd == '\0')
+    inferior_cwd = nullptr;
+  else
+    {
+      expanded_infcwd = gdb_tilde_expand (inferior_cwd);
+      inferior_cwd = expanded_infcwd.c_str ();
+#ifndef __CYGWIN__
+      /* Mirror slashes on inferior's cwd.  */
+      std::replace (expanded_infcwd.begin (), expanded_infcwd.end (),
+		    '/', '\\');
+#else
+      if (cygwin_conv_path (CCP_POSIX_TO_WIN_A,
+			    inferior_cwd,
+			    infcwd_buf, sizeof (infcwd_buf)) < 0)
+	error (_("Error converting inferior cwd: %d"), errno);
+      inferior_cwd = infcwd_buf;
+#endif
+    }
 
   strcpy (program_and_args, program);
   strcat (program_and_args, " ");
@@ -464,10 +493,7 @@ create_process (const char *program, char *args,
 			program_and_args,  /* command line */
 			flags,             /* start flags */
 			NULL,              /* environment */
-			/* current directory */
-			(inferior_cwd.empty ()
-			 ? NULL
-			 : gdb_tilde_expand (inferior_cwd).c_str()),
+			inferior_cwd,      /* current directory */
 			get_client_state ().disable_randomization,
 			&si,               /* start info */
 			pi);               /* proc info */
@@ -492,11 +518,8 @@ win32_process_target::create_inferior (const char *program,
   DWORD err;
   char *args = (char *) program_args.c_str ();
 
-  /* win32_wait needs to know we're not attaching.  */
-  windows_process.attaching = 0;
-
   if (!program)
-    error ("No executable specified, specify executable to debug.\n");
+    error (_("No executable specified, specify executable to debug.\n"));
 
   flags = DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS;
 
@@ -514,6 +537,12 @@ win32_process_target::create_inferior (const char *program,
      }
   cygwin_conv_path (CCP_POSIX_TO_WIN_A, program, real_path, PATH_MAX);
   program = real_path;
+#else
+  /* Convert the executable path to backslash separators, so the
+     inferior observes native backslashes in its own program name.  */
+  std::string program_native = program;
+  std::replace (program_native.begin (), program_native.end (), '/', '\\');
+  program = program_native.c_str ();
 #endif
 
   OUTMSG2 (("Command line is \"%s %s\"\n", program, args));
@@ -578,8 +607,6 @@ win32_process_target::attach (unsigned long pid)
 	{
 	  DebugSetProcessKillOnExit (FALSE);
 
-	  /* win32_wait needs to know we're attaching.  */
-	  windows_process.attaching = 1;
 	  do_initial_child_stuff (h, pid, 1);
 	  return 0;
 	}
@@ -593,7 +620,7 @@ win32_process_target::attach (unsigned long pid)
 
 /* See nat/windows-nat.h.  */
 
-DWORD
+bool
 gdbserver_windows_process::handle_output_debug_string
   (const DEBUG_EVENT &current_event,
    struct target_waitstatus *ourstatus)
@@ -604,7 +631,7 @@ gdbserver_windows_process::handle_output_debug_string
   DWORD nbytes = current_event.u.DebugString.nDebugStringLength;
 
   if (nbytes == 0)
-    return 0;
+    return false;
 
   if (nbytes > READ_BUFFER_LEN)
     nbytes = READ_BUFFER_LEN;
@@ -623,7 +650,7 @@ gdbserver_windows_process::handle_output_debug_string
   else
     {
       if (read_inferior_memory (addr, (unsigned char *) s, nbytes) != 0)
-	return 0;
+	return false;
     }
 
   if (!startswith (s, "cYg"))
@@ -631,14 +658,14 @@ gdbserver_windows_process::handle_output_debug_string
       if (!server_waiting)
 	{
 	  OUTMSG2(("%s", s));
-	  return 0;
+	  return false;
 	}
 
       monitor_output (s);
     }
 #undef READ_BUFFER_LEN
 
-  return 0;
+  return false;
 }
 
 static void
@@ -775,8 +802,8 @@ resume_one_thread (thread_info *thread, bool step, gdb_signal sig,
 	  if (the_low_target.single_step != NULL)
 	    (*the_low_target.single_step) (th);
 	  else
-	    error ("Single stepping is not supported "
-		   "in this configuration.\n");
+	    error (_("Single stepping is not supported "
+		     "in this configuration.\n"));
 	}
 
       win32_set_thread_context (th);
@@ -957,7 +984,6 @@ get_child_debug_event (DWORD *continue_status,
   /* Check if GDB sent us an interrupt request.  */
   check_remote_input_interrupt_request ();
 
-  windows_process.attaching = 0;
   {
     process_info *proc = find_process_pid (windows_process.process_id);
     for (thread_info &thread : proc->thread_list ())
@@ -997,13 +1023,14 @@ get_child_debug_event (DWORD *continue_status,
       }
   }
 
+  OUTMSG2 (("gdbserver: kernel event %s for pid=%u tid=%x)\n",
+	    event_code_to_string (current_event->dwDebugEventCode).c_str (),
+	    (unsigned) current_event->dwProcessId,
+	    (unsigned) current_event->dwThreadId));
+
   switch (current_event->dwDebugEventCode)
     {
     case CREATE_THREAD_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event CREATE_THREAD_DEBUG_EVENT "
-		"for pid=%u tid=%x)\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
 
       /* Record the existence of this thread.  */
       child_add_thread (current_event->dwProcessId,
@@ -1013,10 +1040,6 @@ get_child_debug_event (DWORD *continue_status,
       break;
 
     case EXIT_THREAD_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event EXIT_THREAD_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       child_delete_thread (current_event->dwProcessId,
 			   current_event->dwThreadId);
 
@@ -1024,10 +1047,6 @@ get_child_debug_event (DWORD *continue_status,
       return 1;
 
     case CREATE_PROCESS_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event CREATE_PROCESS_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       CloseHandle (current_event->u.CreateProcessInfo.hFile);
 
       if (windows_process.open_process_used)
@@ -1047,30 +1066,13 @@ get_child_debug_event (DWORD *continue_status,
       break;
 
     case EXIT_PROCESS_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event EXIT_PROCESS_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
-      {
-	DWORD exit_status = current_event->u.ExitProcess.dwExitCode;
-	/* If the exit status looks like a fatal exception, but we
-	   don't recognize the exception's code, make the original
-	   exit status value available, to avoid losing information.  */
-	int exit_signal
-	  = WIFSIGNALED (exit_status) ? WTERMSIG (exit_status) : -1;
-	if (exit_signal == -1)
-	  ourstatus->set_exited (exit_status);
-	else
-	  ourstatus->set_signalled (gdb_signal_from_host (exit_signal));
-      }
+      *ourstatus
+	= (windows_process.exit_process_to_target_status
+	   (current_event->u.ExitProcess));
       continue_last_debug_event (DBG_CONTINUE, debug_threads);
       break;
 
     case LOAD_DLL_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event LOAD_DLL_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       CloseHandle (current_event->u.LoadDll.hFile);
       if (! windows_process.child_initialization_done)
 	break;
@@ -1080,10 +1082,6 @@ get_child_debug_event (DWORD *continue_status,
       break;
 
     case UNLOAD_DLL_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event UNLOAD_DLL_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       if (! windows_process.child_initialization_done)
 	break;
       windows_process.handle_unload_dll (*current_event);
@@ -1091,10 +1089,6 @@ get_child_debug_event (DWORD *continue_status,
       break;
 
     case EXCEPTION_DEBUG_EVENT:
-      OUTMSG2 (("gdbserver: kernel event EXCEPTION_DEBUG_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       if (windows_process.handle_exception (*current_event,
 					    ourstatus, debug_threads)
 	  == HANDLE_EXCEPTION_UNHANDLED)
@@ -1103,19 +1097,7 @@ get_child_debug_event (DWORD *continue_status,
 
     case OUTPUT_DEBUG_STRING_EVENT:
       /* A message from the kernel (or Cygwin).  */
-      OUTMSG2 (("gdbserver: kernel event OUTPUT_DEBUG_STRING_EVENT "
-		"for pid=%u tid=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId));
       windows_process.handle_output_debug_string (*current_event, nullptr);
-      break;
-
-    default:
-      OUTMSG2 (("gdbserver: kernel event unknown "
-		"for pid=%u tid=%x code=%x\n",
-		(unsigned) current_event->dwProcessId,
-		(unsigned) current_event->dwThreadId,
-		(unsigned) current_event->dwDebugEventCode));
       break;
     }
 
@@ -1158,8 +1140,8 @@ win32_process_target::wait (ptid_t ptid, target_waitstatus *ourstatus,
 	 fails).  Report it now.  */
       *ourstatus = windows_process.cached_status;
       windows_process.cached_status.set_ignore ();
-      return ptid_t (windows_process.process_id,
-		     windows_process.main_thread_id, 0);
+      switch_to_thread (find_thread_ptid (windows_process.cached_ptid));
+      return windows_process.cached_ptid;
     }
 
   while (1)
@@ -1181,8 +1163,11 @@ win32_process_target::wait (ptid_t ptid, target_waitstatus *ourstatus,
 	case TARGET_WAITKIND_SIGNALLED:
 	case TARGET_WAITKIND_LOADED:
 	  {
-	    OUTMSG2 (("Child Stopped with signal = %d \n",
-		      ourstatus->sig ()));
+	    if (ourstatus->kind () == TARGET_WAITKIND_LOADED)
+	      OUTMSG2 (("Child stopped due to library load\n"));
+	    else
+	      OUTMSG2 (("Child stopped with signal = %d \n",
+			ourstatus->sig ()));
 	    maybe_adjust_pc (current_event);
 
 	    /* All-stop, suspend all threads until they are explicitly
@@ -1192,8 +1177,8 @@ win32_process_target::wait (ptid_t ptid, target_waitstatus *ourstatus,
 	    return debug_event_ptid (&current_event);
 	  }
 	default:
-	  OUTMSG (("Ignoring unknown internal event, %d\n",
-		  ourstatus->kind ()));
+	  OUTMSG (("Ignoring unknown internal event, %s\n",
+		   ourstatus->to_string ().c_str ()));
 	  [[fallthrough]];
 	case TARGET_WAITKIND_SPURIOUS:
 	  /* do nothing, just continue */

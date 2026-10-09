@@ -46,10 +46,6 @@ fragment <<EOF
 }
 
 
-
-/* Fake input file for stubs.  */
-static lang_input_statement_type *stub_file;
-
 /* Whether we need to call gldarm_layout_sections_again.  */
 static int need_laying_out = 0;
 
@@ -213,7 +209,7 @@ gld${EMULATION_NAME}_after_allocation (void)
      ie. doesn't affect any code, so we can delay resizing the
      sections.  It's likely we'll resize everything in the process of
      adding stubs.  */
-  ret = bfd_elf_discard_info (link_info.output_bfd, & link_info);
+  ret = bfd_elf_discard_info (&link_info);
   if (ret < 0)
     {
       einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
@@ -273,43 +269,12 @@ gld${EMULATION_NAME}_finish (void)
   finish_default ();
 }
 
-/* This is a convenient point to tell BFD about target specific flags.
-   After the output has been created, but before inputs are read.  */
-static void
-kvx_elf_create_output_section_statements (void)
-{
-  if (!(bfd_get_flavour (link_info.output_bfd) == bfd_target_elf_flavour
-        && elf_object_id (link_info.output_bfd) == KVX_ELF_DATA))
-    return;
-
-  stub_file = lang_add_input_file ("linker stubs",
-				   lang_input_file_is_fake_enum,
-				   NULL);
-  stub_file->the_bfd = bfd_create ("linker stubs", link_info.output_bfd);
-  if (stub_file->the_bfd == NULL
-      || ! bfd_set_arch_mach (stub_file->the_bfd,
-			      bfd_get_arch (link_info.output_bfd),
-			      bfd_get_mach (link_info.output_bfd)))
-    {
-      fatal (_("%P: can not create BFD %E\n"));
-      return;
-    }
-
-  stub_file->the_bfd->flags |= BFD_LINKER_CREATED;
-  ldlang_add_file (stub_file);
-
-  if (!kvx_elf${ELFSIZE}_init_stub_bfd (&link_info, stub_file->the_bfd))
-    fatal (_("%P: can not init BFD: %E\n"));
-}
-
-
 #define lang_for_each_input_file kvx_lang_for_each_input_file
 
 EOF
 
 LDEMUL_BEFORE_ALLOCATION=elf${ELFSIZE}_kvx_before_allocation
 LDEMUL_AFTER_ALLOCATION=gld${EMULATION_NAME}_after_allocation
-LDEMUL_CREATE_OUTPUT_SECTION_STATEMENTS=kvx_elf_create_output_section_statements
 
 # Call the extra arm-elf function
 LDEMUL_FINISH=gld${EMULATION_NAME}_finish

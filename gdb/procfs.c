@@ -224,7 +224,7 @@ procfs_target::auxv_parse (const gdb_byte **readptr,
 #define STATUS_PROC_NAME_FMT "/proc/%d/status"
 #define MAX_PROC_NAME_SIZE sizeof("/proc/999999/lwp/0123456789/lwpstatus")
 
-typedef struct procinfo {
+struct procinfo {
   struct procinfo *next;
   int pid;			/* Process ID    */
   int tid;			/* Thread/LWP id */
@@ -253,7 +253,7 @@ typedef struct procinfo {
   int gregs_valid  : 1;
   int fpregs_valid : 1;
   int threads_valid: 1;
-} procinfo;
+};
 
 /* Function prototypes for procinfo module: */
 
@@ -542,7 +542,7 @@ struct procinfo_deleter
   }
 };
 
-typedef std::unique_ptr<procinfo, procinfo_deleter> procinfo_up;
+using procinfo_up = std::unique_ptr<procinfo, procinfo_deleter>;
 
 enum { NOKILL, KILL };
 
@@ -589,7 +589,7 @@ static void
 proc_warn (procinfo *pi, const char *func, int line)
 {
   int saved_errno = errno;
-  warning ("procfs: %s line %d, %ps: %s",
+  warning (_("procfs: %s line %d, %ps: %s"),
 	   func, line, styled_string (file_name_style.style (),
 				      pi->pathname),
 	   safe_strerror (saved_errno));
@@ -599,7 +599,7 @@ static void
 proc_error (procinfo *pi, const char *func, int line)
 {
   int saved_errno = errno;
-  error ("procfs: %s line %d, %s: %s",
+  error (_("procfs: %s line %d, %s: %s"),
 	 func, line, pi->pathname, safe_strerror (saved_errno));
 }
 
@@ -891,7 +891,7 @@ proc_wait_for_stop (procinfo *pi)
 
   clear_sigint_trap ();
 
-  /* We been runnin' and we stopped -- need to update status.  */
+  /* We've been running and we stopped -- need to update status.  */
   pi->status_valid = 0;
 
   return win;
@@ -2854,7 +2854,7 @@ procfs_notice_thread (procinfo *pi, procinfo *thread, void *ptr)
   ptid_t gdb_threadid = ptid_t (pi->pid, thread->tid, 0);
 
   thread_info *thr = the_procfs_target.find_thread (gdb_threadid);
-  if (thr == NULL || thr->state == THREAD_EXITED)
+  if (thr == NULL || thr->state () == THREAD_EXITED)
     add_thread (&the_procfs_target, gdb_threadid);
 
   return 0;
@@ -3155,7 +3155,7 @@ find_memory_regions_callback (struct prmap *map, find_memory_region_ftype func)
 	       (map->pr_mflags & MA_WRITE) != 0,
 	       (map->pr_mflags & MA_EXEC) != 0,
 	       true, /* MODIFIED is unknown, pass it as true.  */
-	       false);
+	       false, false);
 }
 
 /* External interface.  Calls a callback function once for each
@@ -3205,8 +3205,7 @@ mappingflags (long flags)
    mappings'.  */
 
 static bool
-info_mappings_callback (struct prmap *map, find_memory_region_ftype ignore,
-			void *unused)
+info_mappings_callback (struct prmap *map, find_memory_region_ftype ignore)
 {
   unsigned int pr_off;
 
@@ -3254,7 +3253,7 @@ info_proc_mappings (procinfo *pi, int summary)
 		"    Offset",
 		"Flags");
 
-  iterate_over_mappings (pi, NULL, NULL, info_mappings_callback);
+  iterate_over_mappings (pi, NULL, info_mappings_callback);
   gdb_printf ("\n");
 }
 

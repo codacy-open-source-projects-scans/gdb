@@ -48,7 +48,7 @@ create_thread_object (struct thread_info *tp)
     return nullptr;
 
   thread_obj->thread = tp;
-  thread_obj->inf_obj = (PyObject *) inf_obj.release ();
+  thread_obj->inf_obj = inf_obj.release ();
   if (!thread_obj->allocate_dict ())
     return nullptr;
 
@@ -77,7 +77,7 @@ thpy_get_name (PyObject *self, void *ignore)
 
   const char *name = thread_name (thread_obj->thread);
   if (name == NULL)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   return PyUnicode_FromString (name);
 }
@@ -105,7 +105,7 @@ thpy_get_details (PyObject *self, void *ignore)
       return gdbpy_handle_gdb_exception (nullptr, except);
     }
   if (extra_info == nullptr)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   return PyUnicode_FromString (extra_info);
 }
@@ -246,7 +246,7 @@ thpy_switch (PyObject *self, PyObject *args)
       return gdbpy_handle_gdb_exception (nullptr, except);
     }
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Implementation of InferiorThread.is_stopped () -> Boolean.
@@ -260,9 +260,9 @@ thpy_is_stopped (PyObject *self, PyObject *args)
   THPY_REQUIRE_VALID (thread_obj);
 
   if (thread_obj->thread->state () == THREAD_STOPPED)
-    Py_RETURN_TRUE;
+    return py_true ().release ();
 
-  Py_RETURN_FALSE;
+  return py_false ().release ();
 }
 
 /* Implementation of InferiorThread.is_running () -> Boolean.
@@ -276,9 +276,9 @@ thpy_is_running (PyObject *self, PyObject *args)
   THPY_REQUIRE_VALID (thread_obj);
 
   if (thread_obj->thread->state () == THREAD_RUNNING)
-    Py_RETURN_TRUE;
+    return py_true ().release ();
 
-  Py_RETURN_FALSE;
+  return py_false ().release ();
 }
 
 /* Implementation of InferiorThread.is_exited () -> Boolean.
@@ -292,9 +292,9 @@ thpy_is_exited (PyObject *self, PyObject *args)
   THPY_REQUIRE_VALID (thread_obj);
 
   if (thread_obj->thread->state () == THREAD_EXITED)
-    Py_RETURN_TRUE;
+    return py_true ().release ();
 
-  Py_RETURN_FALSE;
+  return py_false ().release ();
 }
 
 /* Implementation of gdb.InfThread.is_valid (self) -> Boolean.
@@ -307,9 +307,9 @@ thpy_is_valid (PyObject *self, PyObject *args)
   thread_object *thread_obj = (thread_object *) self;
 
   if (! thread_obj->thread)
-    Py_RETURN_FALSE;
+    return py_false ().release ();
 
-  Py_RETURN_TRUE;
+  return py_true ().release ();
 }
 
 /* Implementation of gdb.InferiorThread.handle (self) -> handle. */
@@ -354,7 +354,7 @@ thpy_repr (PyObject *self)
 
   thread_info *thr = thread_obj->thread;
   return PyUnicode_FromFormat ("<%s id=%s target-id=\"%s\">",
-			       gdbpy_py_obj_tp_name (self),
+			       gdbpy_py_obj_tp_name (self).c_str (),
 			       print_full_thread_id (thr),
 			       target_pid_to_str (thr->ptid).c_str ());
 }
@@ -400,7 +400,7 @@ gdbpy_selected_thread (PyObject *self, PyObject *args)
   if (inferior_ptid != null_ptid)
     return thread_to_thread_object (inferior_thread ()).release ();
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 static int

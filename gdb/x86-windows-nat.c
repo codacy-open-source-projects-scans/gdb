@@ -42,6 +42,10 @@ enum
 
 #define DR6_CLEAR_VALUE 0xffff0ff0
 
+/* The CONTEXT_DEBUG_REGISTERS define without the arch-specific bit
+   (CONTEXT_i386 or CONTEXT_AMD64).  */
+#define CONTEXT_DEBUG_REG_FLAG (CONTEXT_DEBUG_REGISTERS & ~CONTEXT_CONTROL)
+
 struct x86_windows_per_inferior : public windows_per_inferior
 {
   /* The function to use in order to determine whether a register is
@@ -58,7 +62,7 @@ struct x86_windows_nat_target final : public x86_nat_target<windows_nat_target>
   void cleanup_windows_arch () override;
 
   void thread_context_continue (windows_thread_info *th, int killed) override;
-  void thread_context_step (windows_thread_info *th) override;
+  void thread_context_step (windows_thread_info *th, bool step) override;
 
   void fetch_one_register (struct regcache *regcache,
 			   windows_thread_info *th, int r) override;
@@ -142,7 +146,7 @@ x86_windows_nat_target::thread_context_continue (windows_thread_info *th,
 	{
 	  windows_process->fill_thread_context (th);
 
-	  gdb_assert ((context->ContextFlags & CONTEXT_DEBUG_REGISTERS) != 0);
+	  gdb_assert ((context->ContextFlags & CONTEXT_DEBUG_REG_FLAG) != 0);
 
 	  /* Check whether the thread has Dr6 set indicating a
 	     watchpoint hit, and we haven't seen the watchpoint event
@@ -173,13 +177,13 @@ x86_windows_nat_target::thread_context_continue (windows_thread_info *th,
 		     update the debug registers later when the thread
 		     is re-resumed by the core after the watchpoint
 		     event.  */
-		  context->ContextFlags &= ~CONTEXT_DEBUG_REGISTERS;
+		  context->ContextFlags &= ~CONTEXT_DEBUG_REG_FLAG;
 		}
 	    }
 	  else
 	    DEBUG_EVENTS ("0x%x has no dr6 set", th->tid);
 
-	  if ((context->ContextFlags & CONTEXT_DEBUG_REGISTERS) != 0)
+	  if ((context->ContextFlags & CONTEXT_DEBUG_REG_FLAG) != 0)
 	    {
 	      DEBUG_EVENTS ("0x%x changing dregs", th->tid);
 	      context->Dr0 = state->dr_mirror[0];
@@ -213,11 +217,15 @@ x86_windows_nat_target::thread_context_continue (windows_thread_info *th,
 /* See windows-nat.h.  */
 
 void
-x86_windows_nat_target::thread_context_step (windows_thread_info *th)
+x86_windows_nat_target::thread_context_step (windows_thread_info *th,
+					     bool enable)
 {
   x86_windows_process.with_context (th, [&] (auto *context)
     {
-      context->EFlags |= FLAG_TRACE_BIT;
+      if (enable)
+	context->EFlags |= FLAG_TRACE_BIT;
+      else
+	context->EFlags &= ~FLAG_TRACE_BIT;
     });
 }
 
@@ -346,8 +354,7 @@ windows_set_dr (int i, CORE_ADDR addr)
   if (i < 0 || i > 3)
     internal_error (_("Invalid register %d in windows_set_dr.\n"), i);
 
-  for (auto &th : x86_windows_process.thread_list)
-    th->debug_registers_changed = true;
+  windows_debug_registers_changed_all_threads ();
 }
 
 /* Pass the value VAL to the inferior in the DR7 debug control
@@ -356,8 +363,7 @@ windows_set_dr (int i, CORE_ADDR addr)
 static void
 windows_set_dr7 (unsigned long val)
 {
-  for (auto &th : x86_windows_process.thread_list)
-    th->debug_registers_changed = true;
+  windows_debug_registers_changed_all_threads ();
 }
 
 /* Get the value of debug register I from the inferior.  */
@@ -416,6 +422,7 @@ display_selector (HANDLE thread, DWORD sel)
     {
       return get_thread_selector_entry (context, thread, sel, &info);
     });
+  /* codespell:ignore-begin.  */
   if (ret)
     {
       int base, limit;
@@ -488,6 +495,7 @@ display_selector (HANDLE thread, DWORD sel)
 	gdb_printf ("Invalid selector 0x%x.\n", (unsigned) sel);
       return 0;
     }
+  /* codespell:ignore-end.  */
 }
 
 static void

@@ -19,6 +19,7 @@
 
 
 #include "amd-dbgapi-target.h"
+#include "amd-dbgapi-hdep.h"
 #include "amdgpu-tdep.h"
 #include "async-event.h"
 #include "breakpoint.h"
@@ -146,6 +147,17 @@ struct wave_coordinates
     : wave_id (wave_id)
   {}
 
+  /* Return the string showing the agent -> queue -> dispatch -> wave
+     hierarchy.  */
+  std::string hierarchy_str () const;
+
+  /* Return the workgroup coordinates as a string.  */
+  std::string workgroup_coord_str () const;
+
+  /* Return the dispatch position string for the wave this
+     wave_coordinates is for.  */
+  std::string dispatch_pos_str () const;
+
   /* Return the target ID string for the wave this wave_coordinates is
      for.  */
   std::string to_string () const;
@@ -203,7 +215,7 @@ struct amd_dbgapi_inferior_info
   amd_dbgapi_process_id_t process_id = AMD_DBGAPI_PROCESS_NONE;
 
   /* The amd_dbgapi_notifier_t for this inferior.  */
-  amd_dbgapi_notifier_t notifier = -1;
+  amd_dbgapi_notifier_t notifier = null_amd_dbgapi_notifier;
 
   /* The status of the inferior's runtime support.  */
   amd_dbgapi_runtime_state_t runtime_state = AMD_DBGAPI_RUNTIME_STATE_UNLOADED;
@@ -386,32 +398,56 @@ get_amd_dbgapi_inferior_info (inferior *inferior)
 static async_event_handler *amd_dbgapi_async_event_handler = nullptr;
 
 std::string
+wave_coordinates::hierarchy_str () const
+{
+  std::string str
+    = (agent_id != AMD_DBGAPI_AGENT_NONE
+       ? string_printf ("%s", pulongest (agent_id.handle))
+       : "?");
+
+  str += (queue_id != AMD_DBGAPI_QUEUE_NONE
+	  ? string_printf (":%s", pulongest (queue_id.handle))
+	  : ":?");
+
+  str += (dispatch_id != AMD_DBGAPI_DISPATCH_NONE
+	  ? string_printf (":%s", pulongest (dispatch_id.handle))
+	  : ":?");
+
+  str += string_printf (":%s", pulongest (wave_id.handle));
+
+  return str;
+}
+
+std::string
+wave_coordinates::workgroup_coord_str () const
+{
+  std::string str
+    = (group_ids[0] != UINT32_MAX
+       ? string_printf ("(%s,%s,%s)", pulongest (group_ids[0]),
+			pulongest (group_ids[1]), pulongest (group_ids[2]))
+       : "(?,?,?)");
+
+  return str;
+}
+
+std::string
+wave_coordinates::dispatch_pos_str () const
+{
+  std::string str = workgroup_coord_str ();
+  str += (wave_in_group != UINT32_MAX
+	  ? string_printf ("/%s", pulongest (wave_in_group))
+	  : "/?");
+
+  return str;
+}
+
+std::string
 wave_coordinates::to_string () const
 {
   std::string str = "AMDGPU Wave";
 
-  str += (agent_id != AMD_DBGAPI_AGENT_NONE
-	  ? string_printf (" %ld", agent_id.handle)
-	  : " ?");
-
-  str += (queue_id != AMD_DBGAPI_QUEUE_NONE
-	  ? string_printf (":%ld", queue_id.handle)
-	  : ":?");
-
-  str += (dispatch_id != AMD_DBGAPI_DISPATCH_NONE
-	  ? string_printf (":%ld", dispatch_id.handle)
-	  : ":?");
-
-  str += string_printf (":%ld", wave_id.handle);
-
-  str += (group_ids[0] != UINT32_MAX
-	  ? string_printf (" (%d,%d,%d)", group_ids[0], group_ids[1],
-			   group_ids[2])
-	  : " (?,?,?)");
-
-  str += (wave_in_group != UINT32_MAX
-	  ? string_printf ("/%d", wave_in_group)
-	  : "/?");
+  str += " " + hierarchy_str ();
+  str += " " + dispatch_pos_str ();
 
   return str;
 }
@@ -590,9 +626,10 @@ amd_dbgapi_target_breakpoint::check_status (struct bpstat *bs)
      &action);
 
   if (status != AMD_DBGAPI_STATUS_SUCCESS)
-    error (_("amd_dbgapi_report_breakpoint_hit failed for breakpoint %ld "
+    error (_("amd_dbgapi_report_breakpoint_hit failed for breakpoint %s "
 	     "at %s (%s)"),
-	   breakpoint_id.handle, paddress (inf->arch (), bs->bp_location_at->address),
+	   pulongest (breakpoint_id.handle),
+	   paddress (inf->arch (), bs->bp_location_at->address),
 	   get_status_string (status));
 
   if (action == AMD_DBGAPI_BREAKPOINT_ACTION_RESUME)
@@ -623,8 +660,9 @@ amd_dbgapi_target_breakpoint::check_status (struct bpstat *bs)
      for our breakpoint_id.  */
   if (resume_breakpoint_id != breakpoint_id)
     error (_("breakpoint resume event is not for this breakpoint. "
-	      "Expected breakpoint_%ld, got breakpoint_%ld"),
-	   breakpoint_id.handle, resume_breakpoint_id.handle);
+	      "Expected breakpoint_%s, got breakpoint_%s"),
+	   pulongest (breakpoint_id.handle),
+	   pulongest (resume_breakpoint_id.handle));
 
   amd_dbgapi_event_processed (resume_event_id);
 }
@@ -694,9 +732,31 @@ amd_dbgapi_target::xfer_partial (enum target_object object, const char *annex,
 {
   std::optional<scoped_restore_current_thread> maybe_restore_thread;
 
-  if (!ptid_is_gpu (inferior_ptid))
-    return beneath ()->xfer_partial (object, annex, readbuf, writebuf, offset,
-				     requested_len, xfered_len);
+  /* We want to handle most of the memory requests using amd_dbgapi.
+     This is because on Windows, memory allocated on the GPUs cannot
+     be accessed using the Win32 ReadProcessMemory/WriteProcessMemory
+     calls, in the Windows native target (windows_nat_target).  Even
+     if the current thread is a host thread, we might still need to
+     access some memory on the GPU, for example to access code objects
+     loaded on the device to place breakpoints.
+
+     For everything that is available on the host address space,
+     amd_dbgapi uses the amd_dbgapi_xfer_global_memory_callback
+     callback to do the xfer operation, which calls into whatever is
+     beneath us on the target stack.
+
+     There is one case where we do not want to use dbgapi to perform
+     the memory operations: when removing breakpoints from the child
+     process after a fork.  When this happens, the child does not have
+     an inferior of its own, so instead current_inferior() refers to
+     the parent, and inferior_ptid has the child's PTID.  We can use
+     the parent's process_stratum_target (the one below us) to do the
+     memory operation, but dbgapi knows nothing about the child and
+     would try to update the parent's memory.  */
+  if ((!ptid_is_gpu (inferior_ptid) && object != TARGET_OBJECT_MEMORY)
+      || inferior_ptid.pid () != current_inferior ()->pid)
+    return beneath ()->xfer_partial (object, annex, readbuf, writebuf,
+				     offset, requested_len, xfered_len);
 
   gdb_assert (requested_len > 0);
   gdb_assert (xfered_len != nullptr);
@@ -706,17 +766,23 @@ amd_dbgapi_target::xfer_partial (enum target_object object, const char *annex,
 
   amd_dbgapi_process_id_t process_id
     = get_amd_dbgapi_process_id (current_inferior ());
-  amd_dbgapi_wave_id_t wave_id = get_amd_dbgapi_wave_id (inferior_ptid);
+  amd_dbgapi_wave_id_t wave_id = (ptid_is_gpu (inferior_ptid)
+				  ? get_amd_dbgapi_wave_id (inferior_ptid)
+				  : AMD_DBGAPI_WAVE_NONE);
+  /* dbgapi requires LANE_NONE when wave is WAVE_NONE.  */
+  amd_dbgapi_lane_id_t lane_id = (wave_id != AMD_DBGAPI_WAVE_NONE
+				  ? 0
+				  : AMD_DBGAPI_LANE_NONE);
 
   size_t len = requested_len;
   amd_dbgapi_status_t status;
 
   if (readbuf != nullptr)
-    status = amd_dbgapi_read_memory (process_id, wave_id, 0,
+    status = amd_dbgapi_read_memory (process_id, wave_id, lane_id,
 				     AMD_DBGAPI_ADDRESS_SPACE_GLOBAL,
 				     offset, &len, readbuf);
   else
-    status = amd_dbgapi_write_memory (process_id, wave_id, 0,
+    status = amd_dbgapi_write_memory (process_id, wave_id, lane_id,
 				      AMD_DBGAPI_ADDRESS_SPACE_GLOBAL,
 				      offset, &len, writebuf);
 
@@ -1030,8 +1096,8 @@ amd_dbgapi_target::resume (ptid_t scope_ptid, int step, enum gdb_signal signo)
 	     indicate that the process has exited.  GDB treats resuming a
 	     thread that no longer exists as being successful.  */
 	  && status != AMD_DBGAPI_STATUS_ERROR_INVALID_WAVE_ID)
-	error (_("wave_resume for wave_%ld failed (%s)"), wave_id.handle,
-	       get_status_string (status));
+	error (_("wave_resume for wave_%s failed (%s)"),
+	       pulongest (wave_id.handle), get_status_string (status));
 
       wi.stopping = false;
     }
@@ -1090,25 +1156,27 @@ amd_dbgapi_target::stop (ptid_t ptid)
 				    sizeof (state), &state);
       if (status == AMD_DBGAPI_STATUS_SUCCESS)
 	{
-	  /* If the wave is already known to be stopped then do nothing.  */
-	  if (state == AMD_DBGAPI_WAVE_STATE_STOP)
+	  wave_info &wi = get_thread_wave_info (thread);
+
+	  /* If the wave is already known to be stopped or there is an
+	     outstanding stop request, then do nothing.  */
+	  if (state == AMD_DBGAPI_WAVE_STATE_STOP || wi.stopping)
 	    return;
 
 	  status = amd_dbgapi_wave_stop (wave_id);
 	  if (status == AMD_DBGAPI_STATUS_SUCCESS)
 	    {
-	      wave_info &wi = get_thread_wave_info (thread);
 	      wi.stopping = true;
 	      return;
 	    }
 
 	  if (status != AMD_DBGAPI_STATUS_ERROR_INVALID_WAVE_ID)
-	    error (_("wave_stop for wave_%ld failed (%s)"), wave_id.handle,
-		   get_status_string (status));
+	    error (_("wave_stop for wave_%s failed (%s)"),
+		   pulongest (wave_id.handle), get_status_string (status));
 	}
       else if (status != AMD_DBGAPI_STATUS_ERROR_INVALID_WAVE_ID)
-	error (_("wave_get_info for wave_%ld failed (%s)"), wave_id.handle,
-	       get_status_string (status));
+	error (_("wave_get_info for wave_%s failed (%s)"),
+	       pulongest (wave_id.handle), get_status_string (status));
 
       /* The status is AMD_DBGAPI_STATUS_ERROR_INVALID_WAVE_ID.  The wave
 	 could have terminated since the last time the wave list was
@@ -1118,9 +1186,9 @@ amd_dbgapi_target::stop (ptid_t ptid)
       wi.stopping = true;
 
       amd_dbgapi_debug_printf ("got AMD_DBGAPI_STATUS_ERROR_INVALID_WAVE_ID "
-			       "for wave_%ld, last_resume_mode=%s, "
+			       "for wave_%s, last_resume_mode=%s, "
 			       "report_thread_events=%d",
-			       wave_id.handle,
+			       pulongest (wave_id.handle),
 			       resume_mode_to_string (wi.last_resume_mode),
 			       m_report_thread_events);
 
@@ -1185,8 +1253,8 @@ struct scoped_amd_dbgapi_event_processed
   {
     amd_dbgapi_status_t status = amd_dbgapi_event_processed (m_event_id);
     if (status != AMD_DBGAPI_STATUS_SUCCESS)
-      warning (_("Failed to acknowledge amd-dbgapi event %" PRIu64),
-	       m_event_id.handle);
+      warning (_("Failed to acknowledge amd-dbgapi event %s"),
+	       pulongest (m_event_id.handle));
   }
 
   DISABLE_COPY_AND_ASSIGN (scoped_amd_dbgapi_event_processed);
@@ -1203,15 +1271,8 @@ dbgapi_notifier_handler (int err, gdb_client_data client_data)
 {
   amd_dbgapi_inferior_info &info
     = *static_cast<amd_dbgapi_inferior_info *> (client_data);
-  int ret;
 
-  /* Drain the notifier pipe.  */
-  do
-    {
-      char buf;
-      ret = read (info.notifier, &buf, 1);
-    }
-  while (ret >= 0 || (ret == -1 && errno == EINTR));
+  amd_dbgapi_notifier_clear (info.notifier);
 
   if (info.inf->target_is_pushed (&the_amd_dbgapi_target))
     {
@@ -1248,8 +1309,8 @@ dbgapi_notifier_handler (int err, gdb_client_data client_data)
 					  sizeof (runtime_state),
 					  &runtime_state);
       if (status != AMD_DBGAPI_STATUS_SUCCESS)
-	error (_("event_get_info for event_%ld failed (%s)"),
-	       event_id.handle, get_status_string (status));
+	error (_("event_get_info for event_%s failed (%s)"),
+	       pulongest (event_id.handle), get_status_string (status));
 
       switch (runtime_state)
 	{
@@ -1313,8 +1374,9 @@ amd_dbgapi_target::async (bool enable)
 	{
 	  amd_dbgapi_inferior_info &info = get_amd_dbgapi_inferior_info (inf);
 
-	  if (info.notifier != -1)
-	    add_file_handler (info.notifier, dbgapi_notifier_handler, &info,
+	  if (info.notifier != null_amd_dbgapi_notifier)
+	    add_file_handler (amd_dbgapi_notifier_get_fd (info.notifier),
+			      dbgapi_notifier_handler, &info,
 			      string_printf ("amd-dbgapi notifier for pid %d",
 					     inf->pid));
 	}
@@ -1337,8 +1399,8 @@ amd_dbgapi_target::async (bool enable)
 	  const amd_dbgapi_inferior_info &info
 	    = get_amd_dbgapi_inferior_info (inf);
 
-	  if (info.notifier != -1)
-	    delete_file_handler (info.notifier);
+	  if (info.notifier != null_amd_dbgapi_notifier)
+	    delete_file_handler (amd_dbgapi_notifier_get_fd (info.notifier));
 	}
 
       delete_async_event_handler (&amd_dbgapi_async_event_handler);
@@ -1350,7 +1412,7 @@ amd_dbgapi_target::async (bool enable)
 static ptid_t
 make_gpu_ptid (ptid_t::pid_type pid, amd_dbgapi_wave_id_t wave_id)
 {
- return ptid_t (pid, 1, wave_id.handle);
+  return ptid_t (pid, 1, wave_id.handle);
 }
 
 /* When a thread is deleted, remove its wave_info from the inferior's
@@ -1383,7 +1445,7 @@ add_gpu_thread (inferior *inf, ptid_t wave_ptid)
 
   if (!info.wave_info_map.try_emplace (wave_id.handle,
 					wave_info (wave_id)).second)
-    internal_error ("wave ID %ld already in map", wave_id.handle);
+    internal_error ("wave ID %s already in map", pulongest (wave_id.handle));
 
   /* Create new GPU threads silently to avoid spamming the terminal
      with thousands of "[New Thread ...]" messages.  */
@@ -1415,8 +1477,8 @@ process_one_event (amd_dbgapi_inferior_info &info,
 	  = amd_dbgapi_event_get_info (event_id, AMD_DBGAPI_EVENT_INFO_WAVE,
 				       sizeof (wave_id), &wave_id);
 	if (status != AMD_DBGAPI_STATUS_SUCCESS)
-	  error (_("event_get_info for event_%ld failed (%s)"),
-		 event_id.handle, get_status_string (status));
+	  error (_("event_get_info for event_%s failed (%s)"),
+		 pulongest (event_id.handle), get_status_string (status));
 
 	ptid_t event_ptid = make_gpu_ptid (info.inf->pid, wave_id);
 	target_waitstatus ws;
@@ -1447,6 +1509,8 @@ process_one_event (amd_dbgapi_inferior_info &info,
 			| AMD_DBGAPI_WAVE_STOP_REASON_FP_INVALID_OPERATION
 			| AMD_DBGAPI_WAVE_STOP_REASON_INT_DIVIDE_BY_0))
 	      ws.set_stopped (GDB_SIGNAL_FPE);
+	    else if (stop_reason & AMD_DBGAPI_WAVE_STOP_REASON_ASSERT_TRAP)
+	      ws.set_stopped (GDB_SIGNAL_ABRT);
 	    else if (stop_reason
 		     & (AMD_DBGAPI_WAVE_STOP_REASON_BREAKPOINT
 			| AMD_DBGAPI_WAVE_STOP_REASON_WATCHPOINT
@@ -1454,8 +1518,6 @@ process_one_event (amd_dbgapi_inferior_info &info,
 			| AMD_DBGAPI_WAVE_STOP_REASON_DEBUG_TRAP
 			| AMD_DBGAPI_WAVE_STOP_REASON_TRAP))
 	      ws.set_stopped (GDB_SIGNAL_TRAP);
-	    else if (stop_reason & AMD_DBGAPI_WAVE_STOP_REASON_ASSERT_TRAP)
-	      ws.set_stopped (GDB_SIGNAL_ABRT);
 	    else
 	      ws.set_stopped (GDB_SIGNAL_0);
 
@@ -1481,8 +1543,8 @@ process_one_event (amd_dbgapi_inferior_info &info,
 	      }
 	  }
 	else
-	  error (_("wave_get_info for wave_%ld failed (%s)"),
-		 wave_id.handle, get_status_string (status));
+	  error (_("wave_get_info for wave_%s failed (%s)"),
+		 pulongest (wave_id.handle), get_status_string (status));
 
 	info.wave_events.emplace_back (event_ptid, ws);
 	break;
@@ -1521,8 +1583,8 @@ process_one_event (amd_dbgapi_inferior_info &info,
 				       AMD_DBGAPI_EVENT_INFO_RUNTIME_STATE,
 				       sizeof (runtime_state), &runtime_state);
 	if (status != AMD_DBGAPI_STATUS_SUCCESS)
-	  error (_("event_get_info for event_%ld failed (%s)"),
-		 event_id.handle, get_status_string (status));
+	  error (_("event_get_info for event_%s failed (%s)"),
+		 pulongest (event_id.handle), get_status_string (status));
 
 	gdb_assert (runtime_state == AMD_DBGAPI_RUNTIME_STATE_UNLOADED);
 	gdb_assert
@@ -1599,9 +1661,9 @@ process_event_queue (amd_dbgapi_inferior_info &info,
 
       if (event_kind != AMD_DBGAPI_EVENT_KIND_NONE)
 	amd_dbgapi_debug_printf ("Pulled event from dbgapi: "
-				 "event_id.handle = %" PRIu64 ", "
+				 "event_id.handle = %s, "
 				 "event_kind = %s",
-				 event_id.handle,
+				 pulongest (event_id.handle),
 				 event_kind_str (event_kind));
 
       if (event_id == AMD_DBGAPI_EVENT_NONE || event_kind == until_event_kind)
@@ -1669,7 +1731,8 @@ amd_dbgapi_target::wait (ptid_t ptid, struct target_waitstatus *ws,
   amd_dbgapi_debug_printf ("ptid = %s", ptid.to_string ().c_str ());
 
   ptid_t event_ptid = beneath ()->wait (ptid, ws, target_options);
-  if (event_ptid != minus_one_ptid)
+  if (ws->kind () != TARGET_WAITKIND_NO_RESUMED
+      && ws->kind () != TARGET_WAITKIND_IGNORE)
     {
       if (ws->kind () == TARGET_WAITKIND_EXITED
 	  || ws->kind () == TARGET_WAITKIND_SIGNALLED)
@@ -1681,9 +1744,6 @@ amd_dbgapi_target::wait (ptid_t ptid, struct target_waitstatus *ws,
        }
       return event_ptid;
     }
-
-  gdb_assert (ws->kind () == TARGET_WAITKIND_NO_RESUMED
-	      || ws->kind () == TARGET_WAITKIND_IGNORE);
 
   /* Flush the async handler first.  */
   if (target_is_async_p ())
@@ -1841,8 +1901,8 @@ attach_amd_dbgapi (inferior *inf)
   /* Are we already attached?  */
   if (info.process_id != AMD_DBGAPI_PROCESS_NONE)
     {
-      amd_dbgapi_debug_printf
-	("already attached: process_id = %" PRIu64, info.process_id.handle);
+      amd_dbgapi_debug_printf ("already attached: process_id = %s",
+			       pulongest (info.process_id.handle));
       return;
     }
 
@@ -1876,8 +1936,9 @@ attach_amd_dbgapi (inferior *inf)
       return;
     }
 
-  amd_dbgapi_debug_printf ("process_id = %" PRIu64 ", notifier fd = %d",
-			   info.process_id.handle, info.notifier);
+  amd_dbgapi_debug_printf ("process_id = %s, notifier fd = %d",
+			   pulongest (info.process_id.handle),
+			   amd_dbgapi_notifier_get_fd (info.notifier));
 
   set_process_memory_precision (info);
 
@@ -1886,15 +1947,15 @@ attach_amd_dbgapi (inferior *inf)
      target.  */
   dbgapi_notifier_handler (0, &info);
 
-  add_file_handler (info.notifier, dbgapi_notifier_handler, &info,
-		    "amd-dbgapi notifier");
+  add_file_handler (amd_dbgapi_notifier_get_fd (info.notifier),
+		    dbgapi_notifier_handler, &info, "amd-dbgapi notifier");
 }
 
 static void maybe_reset_amd_dbgapi ();
 
 /* Make the amd-dbgapi library detach from INF.
 
-   Note that this us unrelated to the "detach" GDB concept / command.
+   Note that this is unrelated to the "detach" GDB concept / command.
 
    This undoes what attach_amd_dbgapi does.  */
 
@@ -1915,8 +1976,9 @@ detach_amd_dbgapi (inferior *inf)
     warning (_("amd-dbgapi: could not detach from process %d (%s)"),
 	     inf->pid, get_status_string (status));
 
-  gdb_assert (info.notifier != -1);
-  delete_file_handler (info.notifier);
+  gdb_assert (info.notifier != null_amd_dbgapi_notifier);
+  delete_file_handler (amd_dbgapi_notifier_get_fd (info.notifier));
+  amd_dbgapi_notifier_release (info.notifier);
 
   /* This is a noop if the target is not pushed.  */
   inf->unpush_target (&the_amd_dbgapi_target);
@@ -1968,10 +2030,12 @@ amd_dbgapi_target::fetch_registers (struct regcache *regcache, int regno)
   amdgpu_gdbarch_tdep *tdep = get_amdgpu_gdbarch_tdep (gdbarch);
   amd_dbgapi_wave_id_t wave_id = get_amd_dbgapi_wave_id (regcache->ptid ());
   gdb_byte raw[AMDGPU_MAX_REGISTER_SIZE];
+  ULONGEST reg_size = register_type (gdbarch, regno)->length ();
+  gdb_assert (reg_size <= AMDGPU_MAX_REGISTER_SIZE);
+
   amd_dbgapi_status_t status
     = amd_dbgapi_read_register (wave_id, tdep->register_ids[regno], 0,
-				register_type (gdbarch, regno)->length (),
-				raw);
+				reg_size, raw);
 
   if (status == AMD_DBGAPI_STATUS_SUCCESS)
     regcache->raw_supply (regno, raw);
@@ -1994,6 +2058,8 @@ amd_dbgapi_target::store_registers (struct regcache *regcache, int regno)
   gdb_assert (is_amdgpu_arch (gdbarch));
 
   gdb_byte raw[AMDGPU_MAX_REGISTER_SIZE];
+  ULONGEST reg_size = register_type (gdbarch, regno)->length ();
+  gdb_assert (reg_size <= AMDGPU_MAX_REGISTER_SIZE);
   regcache->raw_collect (regno, &raw);
 
   amdgpu_gdbarch_tdep *tdep = get_amdgpu_gdbarch_tdep (gdbarch);
@@ -2018,8 +2084,7 @@ amd_dbgapi_target::store_registers (struct regcache *regcache, int regno)
   amd_dbgapi_wave_id_t wave_id = get_amd_dbgapi_wave_id (regcache->ptid ());
   amd_dbgapi_status_t status
     = amd_dbgapi_write_register (wave_id, tdep->register_ids[regno], 0,
-				 register_type (gdbarch, regno)->length (),
-				 raw);
+				 reg_size, raw);
 
   if (status != AMD_DBGAPI_STATUS_SUCCESS)
     warning (_("Couldn't write register %s (#%d)."),
@@ -2045,15 +2110,16 @@ amd_dbgapi_target::thread_architecture (ptid_t ptid)
 				     sizeof (architecture_id),
 				     &architecture_id);
   if (status != AMD_DBGAPI_STATUS_SUCCESS)
-    error (_("Couldn't get architecture for wave_%ld"), ptid.tid ());
+    error (_("Couldn't get architecture for wave_%s"),
+	   pulongest (wave_id.handle));
 
   uint32_t elf_amdgpu_machine;
   status = amd_dbgapi_architecture_get_info
     (architecture_id, AMD_DBGAPI_ARCHITECTURE_INFO_ELF_AMDGPU_MACHINE,
      sizeof (elf_amdgpu_machine), &elf_amdgpu_machine);
   if (status != AMD_DBGAPI_STATUS_SUCCESS)
-    error (_("Couldn't get elf_amdgpu_machine for architecture_%ld"),
-	   architecture_id.handle);
+    error (_("Couldn't get elf_amdgpu_machine for architecture_%s"),
+	   pulongest (architecture_id.handle));
 
   struct gdbarch_info info;
   info.bfd_arch_info = bfd_lookup_arch (bfd_arch_amdgcn, elf_amdgpu_machine);
@@ -2130,16 +2196,16 @@ amd_dbgapi_target::update_thread_list ()
 		    || wi.stopping)
 		  {
 		    amd_dbgapi_debug_printf
-		      ("wave_%ld disappeared, keeping it"
+		      ("wave_%s disappeared, keeping it"
 		       " (last_resume_mode=%s, stopping=%d)",
-		       wave_id.handle,
+		       pulongest (wave_id.handle),
 		       resume_mode_to_string (wi.last_resume_mode),
 		       wi.stopping);
 		  }
 		else
 		  {
-		    amd_dbgapi_debug_printf ("wave_%ld disappeared, deleting it",
-					     wave_id.handle);
+		    amd_dbgapi_debug_printf ("wave_%s disappeared, deleting it",
+					     pulongest (wave_id.handle));
 		    delete_thread_silent (&tp);
 		  }
 	      }
@@ -2259,8 +2325,8 @@ amd_dbgapi_target::displaced_step_finish (thread_info *thread,
 				sizeof (stop_reason), &stop_reason);
 
   if (status != AMD_DBGAPI_STATUS_SUCCESS)
-    error (_("wave_get_info for wave_%ld failed (%s)"), wave_id.handle,
-	   get_status_string (status));
+    error (_("wave_get_info for wave_%s failed (%s)"),
+	   pulongest (wave_id.handle), get_status_string (status));
 
   status = amd_dbgapi_displaced_stepping_complete (wave_id, stepping_id);
 
@@ -2330,7 +2396,8 @@ amd_dbgapi_inferior_execd (inferior *exec_inf, inferior *follow_inf)
 
 static void
 amd_dbgapi_inferior_forked (inferior *parent_inf, inferior *child_inf,
-			    target_waitkind fork_kind)
+			    target_waitkind fork_kind, bool detach_on_fork,
+			    bool follow_child)
 {
   if (child_inf != nullptr)
     {
@@ -2488,9 +2555,16 @@ amd_dbgapi_xfer_global_memory_callback
   set_current_inferior (inf);
   set_current_program_space (inf->pspace);
 
+  /* To ensure that the callback request is not routed back to dbgapi,
+     route the request to whichever target sits below the amd-dbgapi
+     target on the target stack.  */
+  target_ops *handler = (inf->target_is_pushed (&the_amd_dbgapi_target)
+			 ? inf->find_target_beneath (&the_amd_dbgapi_target)
+			 : inf->top_target ());
+
   target_xfer_status status
-    = target_xfer_partial (inf->top_target (), TARGET_OBJECT_RAW_MEMORY,
-			   nullptr, static_cast<gdb_byte *> (read_buffer),
+    = target_xfer_partial (handler, TARGET_OBJECT_RAW_MEMORY, nullptr,
+			   static_cast<gdb_byte *> (read_buffer),
 			   static_cast<const gdb_byte *> (write_buffer),
 			   global_address, *value_size, value_size);
 

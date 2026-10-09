@@ -1539,16 +1539,24 @@ non-steppable watchpoints.
 )
 
 Function(
-    type="type_instance_flags",
-    name="address_class_type_flags",
+    comment="""
+Given the DWARF identifier for an architecture-specific address class,
+return the id of that address class.
+""",
+    type="unsigned int",
+    name="address_class_dwarf_to_id",
     params=[("int", "byte_size"), ("int", "dwarf2_addr_class")],
     predicate=True,
 )
 
 Method(
+    comment="""
+Given an architecture-specific address class identifier, return the
+name of that address class.
+""",
     type="const char *",
-    name="address_class_type_flags_to_name",
-    params=[("type_instance_flags", "type_flags")],
+    name="address_class_id_to_name",
+    params=[("unsigned int", "address_class")],
     predicate=True,
 )
 
@@ -1566,13 +1574,13 @@ FS are passed from the generic execute_cfa_program function.
 
 Method(
     comment="""
-Return the appropriate type_flags for the supplied address class.
+Return the appropriate address class id for the supplied address class name.
 This function should return true if the address class was recognized and
-type_flags was set, false otherwise.
+address_class was set, false otherwise.
 """,
     type="bool",
-    name="address_class_name_to_type_flags",
-    params=[("const char *", "name"), ("type_instance_flags *", "type_flags_ptr")],
+    name="address_class_name_to_id",
+    params=[("const char *", "name"), ("unsigned int &", "address_class")],
     predicate=True,
 )
 
@@ -2706,7 +2714,6 @@ Read core file mappings
     name="read_core_file_mappings",
     params=[
         ("struct bfd *", "cbfd"),
-        ("read_core_file_mappings_pre_loop_ftype", "pre_loop_cb"),
         ("read_core_file_mappings_loop_ftype", "loop_cb"),
     ],
     predefault="default_read_core_file_mappings",
@@ -2780,5 +2787,33 @@ SHADOW_STACK_ENABLED to false.
     name="get_shadow_stack_pointer",
     params=[("regcache *", "regcache"), ("bool &", "shadow_stack_enabled")],
     predefault="default_get_shadow_stack_pointer",
+    invalid=False,
+)
+
+Value(
+    comment="""
+True if architecture has imprecise page fault reporting, where a
+memory access violation may be reported several instructions after the
+faulting instruction.
+
+On such architectures, if an instruction causes a memory access violation,
+the backend may report the stop at a later instruction where a breakpoint
+happens to be installed.  GDB's normal logic would incorrectly assume that
+the SIGSEGV was caused by hitting the breakpoint and convert it to SIGTRAP.
+
+However, if an architecture never reports breakpoints via SIGSEGV (e.g.,
+breakpoints are always reported via a dedicated mechanism), then receiving
+a SIGSEGV at a breakpoint location means we have a genuine SIGSEGV, not a
+breakpoint hit.
+
+Set to true for architectures with imprecise fault reporting to disable the
+SIGSEGV-to-SIGTRAP conversion.  The default is false (conversion enabled)
+to preserve existing behavior for architectures where breakpoints may be
+reported as SIGSEGV (e.g., executing a breakpoint instruction on a
+non-executable stack).
+""",
+    type="bool",
+    name="imprecise_pagefault_reporting",
+    predefault="false",
     invalid=False,
 )

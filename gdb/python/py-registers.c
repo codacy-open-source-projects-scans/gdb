@@ -25,7 +25,7 @@
 #include "gdbsupport/unordered_map.h"
 
 /* Per-gdbarch data type.  */
-typedef std::vector<gdbpy_ref<>> gdbpy_register_type;
+using gdbpy_register_type = std::vector<gdbpy_ref<>>;
 
 /* Token to access per-gdbarch data related to register descriptors.  */
 static const registry<gdbarch>::key<gdbpy_register_type>
@@ -45,6 +45,8 @@ struct register_descriptor_iterator_object : public PyObject
   struct gdbarch *gdbarch;
 };
 
+static_assert (gdb::is_python_allocatable_v<register_descriptor_iterator_object>);
+
 extern PyTypeObject register_descriptor_iterator_object_type;
 
 /* A register descriptor.  */
@@ -56,6 +58,8 @@ struct register_descriptor_object : public PyObject
   /* The architecture this is a register for.  */
   struct gdbarch *gdbarch;
 };
+
+static_assert (gdb::is_python_allocatable_v<register_descriptor_object>);
 
 extern PyTypeObject register_descriptor_object_type;
 
@@ -69,6 +73,8 @@ struct reggroup_iterator_object : public PyObject
   struct gdbarch *gdbarch;
 };
 
+static_assert (gdb::is_python_allocatable_v<reggroup_iterator_object>);
+
 extern PyTypeObject reggroup_iterator_object_type;
 
 /* A register group object.  */
@@ -77,6 +83,8 @@ struct reggroup_object : public PyObject
   /* The register group being described.  */
   const struct reggroup *reggroup;
 };
+
+static_assert (gdb::is_python_allocatable_v<reggroup_object>);
 
 extern PyTypeObject reggroup_object_type;
 
@@ -236,7 +244,7 @@ gdbpy_new_reggroup_iterator (struct gdbarch *gdbarch)
     return NULL;
   iter->index = 0;
   iter->gdbarch = gdbarch;
-  return (PyObject *) iter;
+  return iter;
 }
 
 /* Create and return a new gdb.RegisterDescriptorIterator object which
@@ -278,7 +286,7 @@ gdbpy_new_register_descriptor_iterator (struct gdbarch *gdbarch,
   gdb_assert (grp != NULL);
   iter->reggroup = grp;
 
-  return (PyObject *) iter;
+  return iter;
 }
 
 /* Return a reference to the gdb.RegisterDescriptorIterator object.  */
@@ -348,7 +356,7 @@ register_descriptor_iter_find (PyObject *self, PyObject *args, PyObject *kw)
 	return gdbpy_get_register_descriptor (gdbarch, regnum).release ();
     }
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* See python-internal.h.  */

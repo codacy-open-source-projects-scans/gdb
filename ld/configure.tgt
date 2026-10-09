@@ -128,7 +128,7 @@ aarch64-*-nto*)		targ_emul=aarch64nto
 aarch64-*-pe* | aarch64-*-mingw*)
 			targ_emul=aarch64pe
 			targ_extra_emuls="arm64pe"
-			targ_extra_ofiles="deffilep.o pep-dll-aarch64.o pe-dll.o pdb.o"
+			targ_extra_ofiles="deffilep.o pep-dll.o pe-dll.o pdb.o"
 			;;
 alpha*-*-freebsd* | alpha*-*-kfreebsd*-gnu)
 			targ_emul=elf64alpha_fbsd
@@ -313,12 +313,12 @@ ft32-*-*)		targ_emul=elf32ft32
 			targ_extra_ofiles=ldelfgen.o
 			;;
 h8300-*-elf* | h8300-*-rtems*)
-			targ_emul=h8300elf;
-			targ_extra_emuls="h8300helf h8300self h8300hnelf h8300snelf h8300sxelf h8300sxnelf"
+			targ_emul=h8300helf;
+			targ_extra_emuls="h8300self h8300hnelf h8300snelf h8300sxelf h8300sxnelf h8300elf"
 			;;
 h8300-*-linux*)
-			targ_emul=h8300elf_linux;
-			targ_extra_emuls="h8300helf_linux h8300self_linux h8300sxelf_linux"
+			targ_emul=h8300helf_linux;
+			targ_extra_emuls="h8300self_linux h8300sxelf_linux h8300elf_linux"
 			;;
 hppa*64*-*-linux-*)	targ_emul=hppa64linux
 			;;
@@ -369,10 +369,6 @@ i[3-7]86-*-solaris2*)
 			targ64_extra_libpath=elf_x86_64_sol2
 			targ64_extra_emuls=elf_x86_64
 			;;
-i[3-7]86-*-solaris*)
-			targ_emul=elf_i386_sol2
-			targ_extra_emuls=elf_i386
-			;;
 i[3-7]86-*-netbsd* | \
 i[3-7]86-*-netbsd*-gnu* | \
 i[3-7]86-*-knetbsd*-gnu | \
@@ -417,11 +413,6 @@ i[3-7]86-*-mingw32*)	targ_emul=i386pe ;
 			;;
 i[3-7]86-*-interix*)	targ_emul=i386pe_posix;
 			targ_extra_ofiles="deffilep.o pe-dll.o"
-			;;
-i[3-7]86-*-beospe*)	targ_emul=i386beos
-			targ_extra_ofiles=
-			;;
-i[3-7]86-*-beos*)	targ_emul=elf_i386_be
 			;;
 i[3-7]86-*-haiku*)	targ_emul=elf_i386_haiku
 			;;
@@ -762,9 +753,6 @@ powerpc-*-aix[5-9]*)	targ_emul=aix5ppc
 powerpc-*-aix*)		targ_emul=aixppc
 			targ_extra_ofiles=
 			;;
-powerpc-*-beos*)	targ_emul=aixppc
-			targ_extra_ofiles=
-			;;
 powerpc-*-haiku*)	targ_emul=elf32ppchaiku
 			;;
 powerpc-*-windiss*)	targ_emul=elf32ppcwindiss
@@ -898,10 +886,6 @@ sparc-*-solaris2*)
 			targ64_extra_libpath=elf64_sparc_sol2
 			targ64_extra_emuls=elf64_sparc
 			;;
-sparc*-*-solaris*)
-			targ_emul=elf32_sparc_sol2
-			targ_extra_emuls=elf32_sparc
-			;;
 sparc*-*-vxworks*)	targ_emul=elf32_sparc_vxworks
 			;;
 sparc*-*-*)		targ_emul=elf32_sparc
@@ -991,7 +975,7 @@ x86_64-*-freebsd* | x86_64-*-kfreebsd*-gnu)
 			;;
 x86_64-*-pe | x86_64-*-pep) targ_emul=i386pep ;
 			targ_extra_emuls=i386pe ;
-			targ_extra_ofiles="deffilep.o pdb.o pep-dll-x86_64.o pe-dll.o"
+			targ_extra_ofiles="deffilep.o pdb.o pep-dll.o pe-dll.o"
 			;;
 x86_64-*-cygwin)	targ_emul=i386pep ;
 			targ_extra_emuls=i386pe
@@ -1024,8 +1008,10 @@ z8k-*-coff)		targ_emul=z8002
 			targ_extra_ofiles=
 			;;
 loongarch32-*)		targ_emul=elf32loongarch
+			targ_extra_libpath=elf64loongarch
 			;;
 loongarch64-*)		targ_emul=elf64loongarch
+			targ_extra_libpath=elf32loongarch
 			;;
 *-*-ieee*)		targ_emul=vanilla
 			targ_extra_ofiles=

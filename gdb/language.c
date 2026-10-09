@@ -42,6 +42,7 @@
 #include "cp-support.h"
 #include "frame.h"
 #include "c-lang.h"
+#include "c-exp-parser.h"
 #include <algorithm>
 #include "gdbarch.h"
 
@@ -174,7 +175,7 @@ show_language_command (struct ui_file *file, int from_tty,
     {
       frame_info_ptr frame;
 
-      frame = get_selected_frame (NULL);
+      frame = get_selected_frame ();
       flang = get_frame_language (frame);
       if (flang != language_unknown
 	  && language_mode == language_mode_manual
@@ -200,7 +201,7 @@ set_language (const char *language)
 	{
 	  frame_info_ptr frame;
 
-	  frame = get_selected_frame (NULL);
+	  frame = get_selected_frame ();
 	  flang = get_frame_language (frame);
 	}
       catch (const gdb_exception_error &ex)
@@ -610,7 +611,7 @@ default_word_break_characters (void)
 void
 language_defn::print_array_index (struct type *index_type, LONGEST index,
 				  struct ui_file *stream,
-				  const value_print_options *options) const
+				  const value_print_options &options) const
 {
   struct value *index_value = value_from_longest (index_type, index);
 
@@ -635,7 +636,7 @@ language_defn::watch_location_expression (struct type *type,
 
 void
 language_defn::value_print (struct value *val, struct ui_file *stream,
-	       const struct value_print_options *options) const
+	       const value_print_options &options) const
 {
   return c_value_print (val, stream, options);
 }
@@ -653,7 +654,7 @@ language_defn::parser (struct parser_state *ps) const
 void
 language_defn::value_print_inner
 	(struct value *val, struct ui_file *stream, int recurse,
-	 const struct value_print_options *options) const
+	 const value_print_options &options) const
 {
   return c_value_print_inner (val, stream, recurse, options);
 }
@@ -774,7 +775,7 @@ public:
   /* See language.h.  */
 
   void value_print (struct value *val, struct ui_file *stream,
-		    const struct value_print_options *options) const override
+		    const value_print_options &options) const override
   {
     error (_("value printing not implemented for language \"%s\""),
 	   natural_name ());
@@ -784,7 +785,7 @@ public:
 
   void value_print_inner
 	(struct value *val, struct ui_file *stream, int recurse,
-	 const struct value_print_options *options) const override
+	 const value_print_options &options) const override
   {
     error (_("inner value printing not implemented for language \"%s\""),
 	   natural_name ());
@@ -812,7 +813,7 @@ public:
   void printstr (struct ui_file *stream, struct type *elttype,
 		 const gdb_byte *string, unsigned int length,
 		 const char *encoding, int force_ellipses,
-		 const struct value_print_options *options) const override
+		 const value_print_options &options) const override
   {
     error (_("print string not implemented for language \"%s\""),
 	   natural_name ());
@@ -913,6 +914,14 @@ language_defn::value_string (struct gdbarch *gdbarch,
 {
   struct type *type = language_string_char_type (this, gdbarch);
   return value_cstring (ptr, len, type);
+}
+
+/* See language.h.  */
+
+frame_info_ptr
+language_defn::follow_static_link (const frame_info_ptr &frame) const
+{
+  return {};
 }
 
 /* See language.h.  */
@@ -1080,6 +1089,26 @@ language_lookup_primitive_type_as_symbol (const struct language_defn *la,
      lookup is extended to allow for BLOCK_FOUND to be NULL.  */
 
   return sym;
+}
+
+/* See language.h.  */
+
+lang_vars_shadowing get_lang_vars_shadowing_option (enum language lang)
+{
+  switch (lang)
+    {
+    case language_c:
+    case language_cplus:
+    case language_fortran:
+    case language_ada:
+      return lang_vars_shadowing::PRINT;
+
+    case language_rust:
+      return lang_vars_shadowing::HIDE;
+
+    default:
+      return lang_vars_shadowing::NONE;
+    }
 }
 
 /* Initialize the language routines.  */

@@ -554,7 +554,7 @@ ada_get_tcb_types_info (void)
   /* Get the type for Ada_Task_Control_Block.Common.  */
   common_type = common_atcb_sym->type ();
 
-  /* Get the type for Ada_Task_Control_Bloc.Common.Call.LL.  */
+  /* Get the type for Ada_Task_Control_Block.Common.Call.LL.  */
   ll_type = private_data_sym->type ();
 
   /* Get the type for Common_ATCB.Call.all.  */
@@ -1137,7 +1137,7 @@ print_ada_task_info (struct ui_out *uiout,
       if (taskno_arg && taskno != taskno_arg)
 	continue;
 
-      ui_out_emit_tuple tuple_emitter (uiout, NULL);
+      ui_out_emit_tuple tuple_emitter (uiout);
 
       /* Print a star if this task is the current task (or the task
 	 currently selected).  */
@@ -1382,11 +1382,11 @@ task_command_1 (const char *taskno_str, int from_tty, struct inferior *inf)
 	   task_to_str (taskno, task_info).c_str ());
 
   switch_to_thread (tp);
-  ada_find_printable_frame (get_selected_frame (NULL));
+  ada_find_printable_frame (get_selected_frame ());
   gdb_printf (_("[Switching to task %s]\n"),
 	      task_to_str (taskno, task_info).c_str ());
-  print_stack_frame (get_selected_frame (NULL),
-		     frame_relative_level (get_selected_frame (NULL)),
+  print_stack_frame (get_selected_frame (),
+		     frame_relative_level (get_selected_frame ()),
 		     SRC_AND_LOC, 1);
 }
 

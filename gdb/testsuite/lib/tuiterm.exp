@@ -56,15 +56,12 @@ proc Term::_log_cur { what body } {
     set orig_cur_row $_cur_row
     set orig_cur_col $_cur_col
 
-    set code [catch {uplevel $body} result]
-
-    _log "$what, cursor: ($orig_cur_row, $orig_cur_col) -> ($_cur_row, $_cur_col)"
-
-    if { $code == 1 } {
-	global errorInfo errorCode
-	return -code $code -errorinfo $errorInfo -errorcode $errorCode $result
-    } else {
-	return -code $code $result
+    try {
+	transparent_uplevel $body
+    } finally {
+	set before "($orig_cur_row, $orig_cur_col)"
+	set after "($_cur_row, $_cur_col)"
+	_log "$what, cursor: $before -> $after"
     }
 }
 
@@ -165,6 +162,7 @@ proc Term::_ctl_0x0a {} {
 	    }
 
 	    incr _cur_row -1
+	    _clear_lines $_cur_row $_rows
 	}
     }
 }
@@ -1193,7 +1191,7 @@ proc Term::wait_for {wait_for} {
 }
 
 # Accept some output from gdb and update the screen.  Wait for the screen
-# region X/Y/WIDTH/HEIGTH to matches REGEXP.  Return 0 on timeout, 1 on
+# region X/Y/WIDTH/HEIGHT to matches REGEXP.  Return 0 on timeout, 1 on
 # success.
 proc Term::wait_for_region_contents {x y width height regexp} {
     while 1 {
@@ -1491,7 +1489,7 @@ proc Term::_check_box {x y width height} {
 	return "lr corner is $c, not +"
     }
 
-    # Note we do not check the full horizonal borders of the box.
+    # Note we do not check the full horizontal borders of the box.
     # The top will contain a title, and the bottom may as well, if
     # it is overlapped by some other border.  However, at most a
     # title should appear as '+-VERY LONG TITLE-+', so we can

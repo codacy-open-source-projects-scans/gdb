@@ -813,7 +813,7 @@ v850_elf_perform_relocation (bfd *abfd,
 /* Insert the addend into the instruction.  */
 
 static bfd_reloc_status_type
-v850_elf_reloc (bfd *abfd ATTRIBUTE_UNUSED,
+v850_elf_reloc (bfd *abfd,
 		arelent *reloc,
 		asymbol *symbol,
 		void * data ATTRIBUTE_UNUSED,
@@ -845,8 +845,8 @@ v850_elf_reloc (bfd *abfd ATTRIBUTE_UNUSED,
 
   /* We handle final linking of some relocs ourselves.  */
 
-  /* Is the address of the relocation really within the section?  */
-  if (reloc->address > bfd_get_section_limit (abfd, isection))
+  if (!bfd_reloc_offset_in_range (reloc->howto, abfd,
+				  isection, reloc->address))
     return bfd_reloc_outofrange;
 
   /* Work out which section the relocation is targeted at and the
@@ -2171,8 +2171,7 @@ v850_elf_final_link_relocate (reloc_howto_type *howto,
 /* Relocate an V850 ELF section.  */
 
 static int
-v850_elf_relocate_section (bfd *output_bfd,
-			   struct bfd_link_info *info,
+v850_elf_relocate_section (struct bfd_link_info *info,
 			   bfd *input_bfd,
 			   asection *input_section,
 			   bfd_byte *contents,
@@ -2227,7 +2226,8 @@ v850_elf_relocate_section (bfd *output_bfd,
 	{
 	  sym = local_syms + r_symndx;
 	  sec = local_sections[r_symndx];
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 	}
       else
 	{
@@ -2260,7 +2260,7 @@ v850_elf_relocate_section (bfd *output_bfd,
 	continue;
 
       /* FIXME: We should use the addend, but the COFF relocations don't.  */
-      r = v850_elf_final_link_relocate (howto, input_bfd, output_bfd,
+      r = v850_elf_final_link_relocate (howto, input_bfd, info->output_bfd,
 					input_section,
 					contents, rel->r_offset,
 					relocation, rel->r_addend,

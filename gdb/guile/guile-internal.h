@@ -51,7 +51,7 @@ struct symbol;
 
 /* A function to pass to the safe-call routines to ignore things like
    memory errors.  */
-typedef int excp_matcher_func (SCM key);
+using excp_matcher_func = int (SCM key);
 
 /* Scheme variables to define during initialization.  */
 
@@ -278,7 +278,7 @@ struct objfile;
 
 /* A predicate that returns non-zero if an object is a particular kind
    of gsmob.  */
-typedef int (gsmob_pred_func) (SCM);
+using gsmob_pred_func = int (SCM);
 
 extern scm_t_bits gdbscm_make_smob_type (const char *name, size_t size);
 
@@ -500,7 +500,7 @@ extern struct value *lsscm_safe_lazy_string_to_value (SCM string,
 
 extern void lsscm_val_print_lazy_string
   (SCM string, struct ui_file *stream,
-   const struct value_print_options *options);
+   const value_print_options &options);
 
 /* scm-objfile.c */
 
@@ -594,7 +594,7 @@ extern struct value *vlscm_convert_value_from_scheme
   (const char *func_name, int obj_arg_pos, SCM obj, SCM *except_scmp,
    struct gdbarch *gdbarch, const struct language_defn *language);
 
-/* stript_lang methods */
+/* script_lang methods */
 
 extern objfile_script_sourcer_func gdbscm_source_objfile_script;
 extern objfile_script_executor_func gdbscm_execute_objfile_script;
@@ -612,7 +612,7 @@ extern enum ext_lang_rc gdbscm_apply_val_pretty_printer
   (const struct extension_language_defn *,
    struct value *val,
    struct ui_file *stream, int recurse,
-   const struct value_print_options *options,
+   const value_print_options &options,
    const struct language_defn *language);
 
 extern int gdbscm_breakpoint_has_cond (const struct extension_language_defn *,

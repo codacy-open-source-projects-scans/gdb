@@ -198,7 +198,7 @@ or1k_analyse_l_addi (uint32_t inst, unsigned int *rd_ptr,
     return false; /* Failure */
 }
 
-/* This is used to to parse store instructions during various prologue
+/* This is used to parse store instructions during various prologue
    analysis routines.  The l.sw instruction has semantics:
 
      assembly:        l.sw  I(rA),rB
@@ -344,7 +344,7 @@ or1k_return_value (struct gdbarch *gdbarch, struct value *functype,
 
 constexpr gdb_byte or1k_break_insn[] = {0x21, 0x00, 0x00, 0x01};
 
-typedef BP_MANIPULATION (or1k_break_insn) or1k_breakpoint;
+using or1k_breakpoint = BP_MANIPULATION (or1k_break_insn);
 
 static bool
 or1k_delay_slot_p (struct gdbarch *gdbarch, CORE_ADDR pc)
@@ -468,9 +468,8 @@ or1k_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
       if (0 != prologue_end)
 	{
 	  struct symtab_and_line prologue_sal = find_sal_for_pc (start_pc, 0);
-	  struct compunit_symtab *compunit
-	    = prologue_sal.symtab->compunit ();
-	  const char *debug_format = compunit->debugformat ();
+	  const char *debug_format
+	    = prologue_sal.symtab->compunit ().debugformat ();
 
 	  if ((NULL != debug_format)
 	      && (strlen ("dwarf") <= strlen (debug_format))

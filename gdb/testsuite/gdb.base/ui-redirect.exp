@@ -17,11 +17,11 @@
 require !gdb_debug_enabled
 
 if { [prepare_for_testing "failed to prepare" ui-redirect start.c] } {
-    return -1
+    return
 }
 
 if {![runto_main]} {
-    return -1
+    return
 }
 
 set test "commands"
@@ -135,11 +135,17 @@ with_test_prefix "redirect debugging" {
     "Copying output to /dev/null.*Redirecting debug output to /dev/null\\."
     gdb_test "continue" "Continuing.*((?!infrun).).*Breakpoint ${::decimal}, bar.*"
     gdb_test "set debug infrun 0"
+
+    # The trace should be sent to the log, not stdout.
+    gdb_test_no_output "set trace-commands on"
+    gdb_test_no_output {printf ""}
+    gdb_test_no_output "set trace-commands off"
+
     gdb_test "set logging enabled off" "Done logging to /dev/null\\."
     gdb_test "help" "List of classes of commands:.*"
 }
 
-with_test_prefix "redirect logging and debuging" {
+with_test_prefix "redirect logging and debugging" {
     gdb_test_no_output "set logging redirect on"
     gdb_test_no_output "set logging debugredirect on"
     gdb_test "set logging enabled on" \

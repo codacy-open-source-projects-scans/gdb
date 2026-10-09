@@ -75,9 +75,6 @@ extern bool loongarch_frag_align_code (int, int);
 #define TC_FORCE_RELOCATION(FIX) loongarch_force_relocation (FIX)
 extern int loongarch_force_relocation (struct fix *);
 
-/* If subsy of BFD_RELOC32/64 and PC in same segment, and without relax
-   or PC at start of subsy or with relax but sub_symbol_segment not in
-   SEC_CODE, we generate 32/64_PCREL.  */
 extern bool loongarch_force_relocation_sub_local (struct fix *, asection *);
 #define TC_FORCE_RELOCATION_SUB_LOCAL(FIX, SEC) \
   loongarch_force_relocation_sub_local (FIX, SEC)
@@ -101,8 +98,14 @@ extern bool loongarch_force_relocation_sub_same(struct fix *, asection *);
 #define MD_APPLY_SYM_VALUE(FIX) 0
 
 #define TARGET_USE_CFIPOP 1
-/* Adjust debug_line after relaxation.  */
-#define DWARF2_USE_FIXED_ADVANCE_PC   1
+
+extern bool loongarch_fixed_advance_pc (symbolS *, symbolS *);
+#define DWARF2_USE_FIXED_ADVANCE_PC(FROM, TO) \
+  loongarch_fixed_advance_pc (FROM, TO)
+
+extern bool loongarch_fixed_advance_pc_frag (fragS *);
+#define DWARF2_USE_FIXED_ADVANCE_PC_FRAG(FRAG) \
+  loongarch_fixed_advance_pc_frag (FRAG)
 
 /* FDE Data Alignment Factor.
    FDE Code Alignment Factor (DWARF2_LINE_MIN_INSN_LENGTH) should be 1
@@ -121,12 +124,12 @@ extern void tc_loongarch_parse_to_dw2regnum (expressionS *);
 
 extern int tc_loongarch_regname_to_dw2regnum (char *);
 
-#define tc_symbol_new_hook(sym) \
-  if (0 == strcmp (sym->bsym->name, FAKE_LABEL_NAME)) \
-    S_SET_OTHER (sym, STV_HIDDEN);
-
 extern void loongarch_pre_output_hook (void);
 #define md_pre_output_hook loongarch_pre_output_hook ()
+
+extern void loongarch_frob_file_before_fix (void);
+#define tc_frob_file_before_fix loongarch_frob_file_before_fix
+
 #define GAS_SORT_RELOCS 1
 
 #define SUB_SEGMENT_ALIGN(SEG, FRCHAIN) 0
@@ -151,5 +154,16 @@ extern void loongarch_md_finish (void);
 
 /* The target supports Object Attributes v1.  */
 #define TC_OBJ_ATTR_v1 1
+
+
+/* Define target fragment type.  */
+#define TC_FRAG_TYPE struct loongarch_frag_type
+struct loongarch_frag_type
+{
+  bool linker_relax;
+};
+
+#define TC_FRAG_INIT(FRAGP, MAX_BYTES) \
+  do { (FRAGP)->tc_frag_data.linker_relax = false; } while (0)
 
 #endif

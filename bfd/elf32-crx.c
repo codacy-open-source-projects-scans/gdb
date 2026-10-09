@@ -37,12 +37,12 @@ static bfd_reloc_status_type crx_elf_final_link_relocate
    bfd_byte *, bfd_vma, bfd_vma, bfd_vma,
    struct bfd_link_info *, asection *, int);
 static int elf32_crx_relocate_section
-  (bfd *, struct bfd_link_info *, bfd *, asection *, bfd_byte *,
+  (struct bfd_link_info *, bfd *, asection *, bfd_byte *,
    Elf_Internal_Rela *, Elf_Internal_Sym *, asection **);
 static bool elf32_crx_relax_section
   (bfd *, asection *, struct bfd_link_info *, bool *);
 static bfd_byte * elf32_crx_get_relocated_section_contents
-  (bfd *, struct bfd_link_info *, struct bfd_link_order *,
+  (bfd *, struct bfd_link_info *, const struct bfd_link_order *,
    bfd_byte *, bool, asymbol **);
 
 /* crx_reloc_map array maps BFD relocation enum into a CRGAS relocation type.  */
@@ -717,12 +717,13 @@ elf32_crx_relax_delete_bytes (struct bfd_link_info *link_info, bfd *abfd,
    which uses elf32_crx_relocate_section.  */
 
 static bfd_byte *
-elf32_crx_get_relocated_section_contents (bfd *output_bfd,
-					  struct bfd_link_info *link_info,
-					  struct bfd_link_order *link_order,
-					  bfd_byte *data,
-					  bool relocatable,
-					  asymbol **symbols)
+elf32_crx_get_relocated_section_contents
+  (bfd *output_bfd,
+   struct bfd_link_info *link_info,
+   const struct bfd_link_order *link_order,
+   bfd_byte *data,
+   bool relocatable,
+   asymbol **symbols)
 {
   Elf_Internal_Shdr *symtab_hdr;
   asection *input_section = link_order->u.indirect.section;
@@ -800,9 +801,9 @@ elf32_crx_get_relocated_section_contents (bfd *output_bfd,
 	  *secpp = isec;
 	}
 
-      if (! elf32_crx_relocate_section (output_bfd, link_info, input_bfd,
-				     input_section, data, internal_relocs,
-				     isymbuf, sections))
+      if (!elf32_crx_relocate_section (link_info, input_bfd,
+				       input_section, data, internal_relocs,
+				       isymbuf, sections))
 	goto error_return;
 
       free (sections);
@@ -828,7 +829,7 @@ elf32_crx_get_relocated_section_contents (bfd *output_bfd,
 /* Relocate a CRX ELF section.  */
 
 static int
-elf32_crx_relocate_section (bfd *output_bfd, struct bfd_link_info *info,
+elf32_crx_relocate_section (struct bfd_link_info *info,
 			    bfd *input_bfd, asection *input_section,
 			    bfd_byte *contents, Elf_Internal_Rela *relocs,
 			    Elf_Internal_Sym *local_syms,
@@ -865,7 +866,8 @@ elf32_crx_relocate_section (bfd *output_bfd, struct bfd_link_info *info,
 	{
 	  sym = local_syms + r_symndx;
 	  sec = local_sections[r_symndx];
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 	}
       else
 	{
@@ -885,11 +887,11 @@ elf32_crx_relocate_section (bfd *output_bfd, struct bfd_link_info *info,
       if (bfd_link_relocatable (info))
 	continue;
 
-      r = crx_elf_final_link_relocate (howto, input_bfd, output_bfd,
-					input_section,
-					contents, rel->r_offset,
-					relocation, rel->r_addend,
-					info, sec, h == NULL);
+      r = crx_elf_final_link_relocate (howto, input_bfd, info->output_bfd,
+				       input_section,
+				       contents, rel->r_offset,
+				       relocation, rel->r_addend,
+				       info, sec, h == NULL);
 
       if (r != bfd_reloc_ok)
 	{

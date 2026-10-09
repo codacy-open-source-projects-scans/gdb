@@ -406,12 +406,25 @@ core_target::build_file_mappings ()
   gdb::unordered_string_map<struct bfd *> bfd_map;
   gdb::unordered_set<std::string> unavailable_paths;
 
-  /* All files mapped into the core file.  The key is the filename.  */
+  /* All files mapped into the core file.  */
   std::vector<core_mapped_file> mapped_files
     = gdb_read_core_file_mappings (m_core_gdbarch, this->core_bfd ());
 
   for (const core_mapped_file &file_data : mapped_files)
     {
+      /* A mapping without a filename can still have a build-id.  Tracking
+	 these mappings is useful as when the shared libraries are loaded,
+	 if the shared library is within this anonymous region, we can
+	 validate the build-id of the shared library being loaded.  */
+      if (file_data.filename.empty ())
+	{
+	  gdb_assert (file_data.build_id != nullptr);
+	  std::vector<mem_range> ranges = file_data.mem_ranges ();
+	  m_mapped_file_info.add (nullptr, nullptr, nullptr,
+				  std::move (ranges), file_data.build_id);
+	  continue;
+	}
+
       /* If this mapped file is marked as the main executable then record
 	 the filename as we can use this later.  */
       if (file_data.is_main_exec && m_expected_exec_filename.empty ())
@@ -437,7 +450,7 @@ core_target::build_file_mappings ()
 	    = gdb_bfd_open (expanded_fname.get (), gnutarget);
 
 	  if (tmp_bfd != nullptr
-	      && bfd_check_format (tmp_bfd.get (), bfd_object)
+	      && gdb_bfd_check_format (tmp_bfd.get (), bfd_object)
 	      && build_id_bfd_get (tmp_bfd.get ()) != nullptr)
 	    {
 	      /* The newly opened TMP_BFD has a build-id, and this mapped
@@ -456,7 +469,7 @@ core_target::build_file_mappings ()
 
       if ((expanded_fname == nullptr
 	   || abfd == nullptr
-	   || !bfd_check_format (abfd.get (), bfd_object))
+	   || !gdb_bfd_check_format (abfd.get (), bfd_object))
 	  && file_data.build_id != nullptr)
 	{
 	  abfd = find_objfile_by_build_id (current_program_space,
@@ -477,13 +490,9 @@ core_target::build_file_mappings ()
 	    }
 	}
 
-      std::vector<mem_range> ranges;
-      for (const core_mapped_file::region &region : file_data.regions)
-	ranges.emplace_back (region.start, region.end - region.start);
-
       if (expanded_fname == nullptr
 	  || abfd == nullptr
-	  || !bfd_check_format (abfd.get (), bfd_object))
+	  || !gdb_bfd_check_format (abfd.get (), bfd_object))
 	{
 	  /* If ABFD was opened, but the wrong format, close it now.  */
 	  abfd = nullptr;
@@ -593,7 +602,7 @@ core_target::build_file_mappings ()
 	 libraries.  */
       if (file_data.build_id != nullptr)
 	{
-	  normalize_mem_ranges (&ranges);
+	  std::vector<mem_range> ranges = file_data.mem_ranges ();
 
 	  const char *actual_filename = nullptr;
 	  gdb::unique_xmalloc_ptr<char> soname;
@@ -620,10 +629,6 @@ core_target::build_file_mappings ()
 void
 core_target::exit_core_file_inferior ()
 {
-  /* Opening a core file ensures that some thread, even if it's just a
-     "fake" thread, will have been selected.  */
-  gdb_assert (inferior_ptid != null_ptid);
-
   /* Avoid confusion from thread stuff.  */
   switch_to_no_thread ();
 
@@ -656,10 +661,11 @@ core_target::close ()
      mostly harmless except it causes two 'exited' events to be emitted in
      the Python API, which isn't ideal.
 
-     As opening a core_target always ensures that some thread is selected,
-     then we can tell if exit_core_file_inferior has already been called by
-     checking if no thread is now selected.  */
-  if (inferior_ptid != null_ptid)
+     As opening a core_target always ensures that a pid is assigned to the
+     core file inferior, even if it is the fake CORELOW_PID, then we can
+     tell if exit_core_file_inferior has already been called by checking if
+     the inferior has a non-zero pid or not.  */
+  if (current_inferior ()->pid != 0)
     exit_core_file_inferior ();
 
   /* Core targets are heap-allocated (see core_target_open), so here
@@ -1062,7 +1068,7 @@ core_target_open (const char *arg, int from_tty)
   if (temp_bfd == NULL)
     perror_with_name (filename.c_str ());
 
-  if (!bfd_check_format (temp_bfd.get (), bfd_core))
+  if (!gdb_bfd_check_format (temp_bfd.get (), bfd_core))
     {
       /* Do it after the err msg */
       /* FIXME: should be checking for errors from bfd_close (for one
@@ -1243,7 +1249,7 @@ core_target_open (const char *arg, int from_tty)
 
   /* Now, set up the frame cache, and print the top of stack.  */
   reinit_frame_cache ();
-  print_stack_frame (get_selected_frame (NULL), 1, SRC_AND_LOC, 1);
+  print_stack_frame (get_selected_frame (), 1, SRC_AND_LOC, 1);
 
   /* Current thread should be NUM 1 but the user does not know that.
      If a program is single threaded gdb in general does not mention
@@ -1934,7 +1940,7 @@ core_target::info_proc_mappings (struct gdbarch *gdbarch)
       ULONGEST file_ofs = tsp.the_bfd_section->filepos;
       const char *filename = bfd_get_filename (tsp.the_bfd_section->owner);
 
-      ui_out_emit_tuple tuple_emitter (current_uiout, nullptr);
+      ui_out_emit_tuple tuple_emitter (current_uiout);
       current_uiout->field_core_addr ("start", gdbarch, start);
       current_uiout->field_core_addr ("end", gdbarch, end);
       /* These next two aren't really addresses and so shouldn't be
@@ -1977,7 +1983,10 @@ maintenance_print_core_file_backed_mappings (const char *args, int from_tty)
    DT_SONAME attribute.
 
    EXPECTED_FILENAME is the name of the file that was mapped into the
-   inferior as extracted from the core file, this should never be nullptr.
+   inferior as extracted from the core file, this can be nullptr if the
+   filename is unknown.  This can happen on Linux if there is no NT_FILE
+   note, and we are building the mapped_file_info using just the segment
+   table from the core file.
 
    ACTUAL_FILENAME is the name of the actual file GDB found to provide the
    mapped file information, this can be nullptr if GDB failed to find a
@@ -2001,7 +2010,6 @@ mapped_file_info::add (const char *soname,
 		       const bfd_build_id *build_id)
 {
   gdb_assert (build_id != nullptr);
-  gdb_assert (expected_filename != nullptr);
 
   if (soname != nullptr)
     {
@@ -2021,13 +2029,17 @@ mapped_file_info::add (const char *soname,
 	m_soname_to_build_id_map[soname] = build_id;
     }
 
-  /* When the core file is initially opened and the mapped files are
-     parsed, we group the build-id information based on the file name.  As
-     a consequence, we should see each EXPECTED_FILENAME value exactly
-     once.  This means that each insertion should always succeed.  */
-  const auto inserted
-    = m_filename_to_build_id_map.emplace (expected_filename, build_id).second;
-  gdb_assert (inserted);
+  /* Ignore empty filenames.  */
+  if (expected_filename != nullptr)
+    {
+      /* When the core file is initially opened and the mapped files are
+	 parsed, we group the build-id information based on the file name.  As
+	 a consequence, we should see each EXPECTED_FILENAME value exactly
+	 once.  This means that each insertion should always succeed.  */
+      const auto inserted
+	= m_filename_to_build_id_map.emplace (expected_filename, build_id).second;
+      gdb_assert (inserted);
+    }
 
   /* Setup the reverse build-id to file name map.  */
   if (actual_filename != nullptr)
@@ -2168,20 +2180,24 @@ gdb_read_core_file_mappings (struct gdbarch *gdbarch, struct bfd *cbfd)
   /* See linux_read_core_file_mappings() in linux-tdep.c for an example
      read_core_file_mappings method.  */
   gdbarch_read_core_file_mappings (gdbarch, cbfd,
-    /* After determining the number of mappings, read_core_file_mappings
-       will invoke this lambda.  */
-    [&] (ULONGEST)
-      {
-      },
-
-    /* read_core_file_mappings will invoke this lambda for each mapping
-       that it finds.  */
-    [&] (int num, ULONGEST start, ULONGEST end, ULONGEST file_ofs,
+    /* gdbarch_read_core_file_mappings will invoke this lambda for each
+       mapping that it finds.  */
+    [&] (ULONGEST start, ULONGEST end, ULONGEST file_ofs,
 	 const char *filename, const bfd_build_id *build_id)
       {
-	/* Architecture-specific read_core_mapping methods are expected to
-	   weed out non-file-backed mappings.  */
-	gdb_assert (filename != nullptr);
+	if (filename == nullptr)
+	  {
+	    /* A mapping without a filename MUST have a build-id, and the
+	       file_ofs MUST be 0, but the file_ofs is actually meaningless
+	       in this case.  */
+	    gdb_assert (build_id != nullptr);
+	    gdb_assert (file_ofs == 0);
+
+	    results.emplace_back ();
+	    results.back ().build_id = build_id;
+	    results.back ().regions.emplace_back (start, end, file_ofs);
+	    return;
+	  }
 
 	/* Add this mapped region to the data for FILENAME.  */
 	auto iter = mapped_files.find (filename);

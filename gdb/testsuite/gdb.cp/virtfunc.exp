@@ -25,7 +25,7 @@ load_lib "cp-support.exp"
 standard_testfile .cc
 
 if {[prepare_for_testing "failed to prepare" $testfile $srcfile {debug c++}]} {
-    return -1
+    return
 }
 
 proc test_ptype_of_classes {} {
@@ -241,8 +241,6 @@ proc make_one_vtable_result {name args} {
     if {$count > 0} {
 	set result [string range $result 0 end-[string length $nls]]
     }
-
-    verbose -log "APB: result: '$result'"
 
     return $result
 }

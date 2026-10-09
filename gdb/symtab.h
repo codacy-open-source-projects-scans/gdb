@@ -391,10 +391,9 @@ private:
    LOOKUP_NAME.  E.g., in C++, in linespec/wild mode, if the symbol is
    "foo::function()" and LOOKUP_NAME is "function(", MATCH_FOR_LCD
    points to "function()" inside SYMBOL_SEARCH_NAME.  */
-typedef bool (symbol_name_matcher_ftype)
-  (const char *symbol_search_name,
-   const lookup_name_info &lookup_name,
-   completion_match_result *comp_match_res);
+using symbol_name_matcher_ftype
+  = bool (const char *symbol_search_name, const lookup_name_info &lookup_name,
+	  completion_match_result *comp_match_res);
 
 /* Some of the structures in this file are space critical.
    The space-critical structures are:
@@ -404,11 +403,11 @@ typedef bool (symbol_name_matcher_ftype)
      struct partial_symbol
 
    These structures are laid out to encourage good packing.
-   They use ENUM_BITFIELD and short int fields, and they order the
+   They use bitfields and short int fields, and they order the
    structure members so that fields less than a word are next
    to each other so they can be packed together.  */
 
-/* Rearranged: used ENUM_BITFIELD and rearranged field order in
+/* Rearranged: used bitfields and rearranged field order in
    all the space critical structures (plus struct minimal_symbol).
    Memory usage dropped from 99360768 bytes to 90001408 bytes.
    I measured this with before-and-after tests of
@@ -586,7 +585,7 @@ struct general_symbol_info
      This is used to select one of the fields from the language specific
      union above.  */
 
-  ENUM_BITFIELD(language) m_language : LANGUAGE_BITS;
+  enum language m_language : LANGUAGE_BITS;
 
   /* This is only used by Ada.  If set, then the 'demangled_name' field
      of language_specific is valid.  Otherwise, the 'obstack' field is
@@ -620,7 +619,7 @@ struct general_symbol_info
   struct obj_section *obj_section (const struct objfile *objfile) const;
 };
 
-extern CORE_ADDR symbol_overlayed_address (CORE_ADDR, struct obj_section *);
+extern CORE_ADDR symbol_overlaid_address (CORE_ADDR, struct obj_section *);
 
 /* Try to determine the demangled name for a symbol, based on the
    language of that symbol.  If the language is set to language_auto,
@@ -804,9 +803,7 @@ struct minimal_symbol : public general_symbol_info
     m_target_flag_2 = target_flag_2;
   }
 
-  /* Size of this symbol.  stabs_end_psymtab in stabsread.c uses this
-     information to calculate the end of the partial symtab based on the
-     address of the last symbol plus the size of the last symbol.  */
+  /* Size of this symbol.  */
 
   unsigned long m_size;
 
@@ -815,7 +812,7 @@ struct minimal_symbol : public general_symbol_info
 
   /* Classification type for this minimal symbol.  */
 
-  ENUM_BITFIELD(minimal_symbol_type) m_type : MINSYM_TYPE_BITS;
+  minimal_symbol_type m_type : MINSYM_TYPE_BITS;
 
   /* Non-zero if this symbol was created by gdb.
      Such symbols do not appear in the output of "info var|fun".  */
@@ -1154,12 +1151,11 @@ struct symbol_computed_ops
 
 struct symbol_block_ops
 {
-  /* Fill in *START and *LENGTH with DWARF block data of function
-     FRAMEFUNC valid for inferior context address PC.  Set *LENGTH to
-     zero if such location is not valid for PC; *START is left
-     uninitialized in such case.  */
-  void (*find_frame_base_location) (struct symbol *framefunc, CORE_ADDR pc,
-				    const gdb_byte **start, size_t *length);
+  /* Return the DWARF block data of function FRAMEFUNC valid for inferior
+     context address PC.  Return an empty view if no such location is
+     valid for PC.  */
+  gdb::array_view<const gdb_byte> (*find_frame_base_location)
+    (struct symbol *framefunc, CORE_ADDR pc);
 
   /* Return the frame base address.  FRAME is the frame for which we want to
      compute the base address while FRAMEFUNC is the symbol for the
@@ -1469,7 +1465,7 @@ struct symbol : public general_symbol_info, public allocate_on_obstack<symbol>
 
   /* Domain code.  */
 
-  ENUM_BITFIELD(domain_enum) m_domain : SYMBOL_DOMAIN_BITS;
+  domain_enum m_domain : SYMBOL_DOMAIN_BITS;
 
   /* Location class.  This holds an index into the 'symbol_impls'
      table.  The actual location_class value is stored there,
@@ -1499,7 +1495,7 @@ struct symbol : public general_symbol_info, public allocate_on_obstack<symbol>
 
   /* The concrete type of this symbol.  */
 
-  ENUM_BITFIELD (symbol_subclass_kind) subclass : 2;
+  symbol_subclass_kind subclass : 2;
 
   /* Whether this symbol is artificial.  */
 
@@ -1672,21 +1668,20 @@ struct linetable
 
 struct symtab
 {
-  symtab (struct compunit_symtab *cust, const char *filename,
+  symtab (struct compunit_symtab &cust, const char *filename,
 	  const char *filename_for_id, enum language language)
     : m_filename (filename),
       m_filename_for_id (filename_for_id),
-      m_compunit (cust),
+      m_compunit (&cust),
       m_language (language)
   {
     gdb_assert (m_filename != nullptr);
     gdb_assert (m_filename_for_id != nullptr);
-    gdb_assert (m_compunit != nullptr);
   }
 
-  struct compunit_symtab *compunit () const
+  struct compunit_symtab &compunit () const
   {
-    return m_compunit;
+    return *m_compunit;
   }
 
   const struct linetable *linetable () const
@@ -2029,7 +2024,7 @@ struct compunit_symtab : intrusive_list_node<compunit_symtab>
 static inline bool
 is_main_symtab_of_compunit_symtab (struct symtab *symtab)
 {
-  return symtab == symtab->compunit ()->primary_filetab ();
+  return symtab == symtab->compunit ().primary_filetab ();
 }
 
 /* Return true if epilogue unwind info of CUST is valid.  */
@@ -2591,15 +2586,41 @@ private:
 				  const symbol_search &sym_b);
 };
 
+/* The kind of symbols searched for by global_symbol_searcher.  */
+
+enum class symbol_search_kind
+{
+  /* Variables, excluding enum constants.  */
+  VARIABLE,
+
+  /* Functions.  */
+  FUNCTION,
+
+  /* Type names, including those with a struct/union/enum prefix (STRUCT
+     domain).  */
+  TYPE,
+
+  /* Fortran modules.  */
+  MODULE,
+};
+
+/* Compile REGEXP, a regexp used to match symbol names or types.  The regexp
+   is case-insensitive if case sensitivity is off.
+
+   If REGEXP is nullptr, return an empty optional.  */
+
+extern std::optional<compiled_regex> compile_symbol_search_regex
+  (const char *regexp);
+
 /* In order to search for global symbols of a particular kind matching
-   particular regular expressions, create an instance of this structure and
-   call the SEARCH member function.  */
+   particular regular expressions, create an instance of this class and call
+   the SEARCH member function.  */
 class global_symbol_searcher
 {
 public:
 
   /* Constructor.  */
-  global_symbol_searcher (domain_search_flags kind,
+  global_symbol_searcher (symbol_search_kind kind,
 			  const char *symbol_name_regexp)
     : m_kind (kind),
       m_symbol_name_regexp (symbol_name_regexp)
@@ -2640,14 +2661,8 @@ private:
   /* The set of source files to search in for matching symbols.  */
   std::vector<gdb::unique_xmalloc_ptr<char>> m_filenames;
 
-  /* The kind of symbols are we searching for.
-     VARIABLES_DOMAIN - Search all symbols, excluding functions, type
-			names, and constants (enums).
-     FUNCTIONS_DOMAIN - Search all functions..
-     TYPES_DOMAIN     - Search all type names.
-     MODULES_DOMAIN   - Search all Fortran modules.
-     ALL_DOMAIN       - Not valid for this function.  */
-  domain_search_flags m_kind;
+  /* The kind of symbols we are searching for.  */
+  symbol_search_kind m_kind;
 
   /* Regular expression to match against the symbol name.  */
   const char *m_symbol_name_regexp = nullptr;
@@ -2655,51 +2670,77 @@ private:
   /* Regular expression to match against the symbol type.  */
   const char *m_symbol_type_regexp = nullptr;
 
-  /* When this flag is false then minsyms that match M_SYMBOL_REGEXP will
-     be included in the results, otherwise they are excluded.  */
+  /* When this flag is false then minsyms that match M_SYMBOL_NAME_REGEXP
+     will be included in the results, otherwise they are excluded.  */
   bool m_exclude_minsyms = false;
 
   /* Maximum number of search results.  We currently impose a hard limit
      of SIZE_MAX, there is no "unlimited".  */
   size_t m_max_search_results = SIZE_MAX;
 
-  /* Expand symtabs in OBJFILE that match PREG, are of type M_KIND.  Return
-     true if any msymbols were seen that we should later consider adding to
-     the results list.  */
-  bool expand_symtabs (objfile *objfile,
-		       const std::optional<compiled_regex> &preg) const;
+  /* Compile M_SYMBOL_NAME_REGEXP, if set.
 
-  /* Add symbols from symtabs in OBJFILE that match PREG, and TREG, and are
-     of type M_KIND, to the results set RESULTS_SET.  Return false if we
-     stop adding results early due to having already found too many results
-     (based on M_MAX_SEARCH_RESULTS limit), otherwise return true.
+     This function normalizes the spacing when it detects a C++ operator in the
+     regexp.  */
+  std::optional<compiled_regex> compile_name_regex () const;
+
+  /* Compile M_SYMBOL_TYPE_REGEXP, if set.  */
+  std::optional<compiled_regex> compile_type_regex () const;
+
+  /* Return true if SYMTAB matches one of M_FILENAMES.  */
+  bool symtab_matches_filenames (symtab *symtab) const;
+
+  /* Return true if SYM is of kind M_KIND, is in a file matching
+     M_FILENAMES, and matches NAME_REGEX and TYPE_REGEX.  */
+  bool symbol_matches (const symbol *sym,
+		       const std::optional<compiled_regex> &name_regex,
+		       const std::optional<compiled_regex> &type_regex) const;
+
+  /* Return true if MSYMBOL is of kind M_KIND and matches NAME_REGEX.
+
+     This function also filters out the minimal symbols artificially created by
+     GDB.  */
+  bool msymbol_matches (const minimal_symbol *msymbol,
+			const std::optional<compiled_regex> &name_regex) const;
+
+  /* Expand symtabs in OBJFILE that match NAME_REGEX and are of type M_KIND.
+     Return true if a matching function msymbol without debug info was
+     seen, meaning that msymbols should later be considered for the results
+     list.  */
+  bool expand_symtabs (objfile &objfile,
+		       const std::optional<compiled_regex> &name_regex) const;
+
+  /* Add symbols from symtabs in OBJFILE that match NAME_REGEX, and
+     TYPE_REGEX, and are of type M_KIND, to the results set RESULT_SET.
+     Return false if we stop adding results early due to having already
+     found too many results (based on M_MAX_SEARCH_RESULTS limit),
+     otherwise return true.
      Returning true does not indicate that any results were added, just
-     that we didn't _not_ add a result due to reaching MAX_SEARCH_RESULTS.  */
-  bool add_matching_symbols (objfile *objfile,
-			     const std::optional<compiled_regex> &preg,
-			     const std::optional<compiled_regex> &treg,
-			     std::set<symbol_search> *result_set) const;
+     that we didn't _not_ add a result due to reaching M_MAX_SEARCH_RESULTS.  */
+  bool add_matching_symbols (objfile &objfile,
+			     const std::optional<compiled_regex> &name_regex,
+			     const std::optional<compiled_regex> &type_regex,
+			     std::set<symbol_search> &result_set) const;
 
-  /* Add msymbols from OBJFILE that match PREG and M_KIND, to the results
-     vector RESULTS.  Return false if we stop adding results early due to
-     having already found too many results (based on max search results
-     limit M_MAX_SEARCH_RESULTS), otherwise return true.  Returning true
-     does not indicate that any results were added, just that we didn't
-     _not_ add a result due to reaching MAX_SEARCH_RESULTS.  */
-  bool add_matching_msymbols (objfile *objfile,
-			      const std::optional<compiled_regex> &preg,
-			      std::vector<symbol_search> *results) const;
+  /* Add msymbols from OBJFILE that match NAME_REGEX and M_KIND, to the
+     results vector RESULTS.  Return false if we stop adding results early
+     due to having already found too many results (based on max search
+     results limit M_MAX_SEARCH_RESULTS), otherwise return true.  Returning
+     true does not indicate that any results were added, just that we
+     didn't _not_ add a result due to reaching M_MAX_SEARCH_RESULTS.  */
+  bool add_matching_msymbols (objfile &objfile,
+			      const std::optional<compiled_regex> &name_regex,
+			      std::vector<symbol_search> &results) const;
 
-  /* Return true if MSYMBOL is of type KIND.  */
-  static bool is_suitable_msymbol (const domain_search_flags kind,
-				   const minimal_symbol *msymbol);
+  /* Return true if MSYMBOL is of type M_KIND.  */
+  bool is_suitable_msymbol (const minimal_symbol *msymbol) const;
 };
 
 /* When searching for Fortran symbols within modules (functions/variables)
    we return a vector of this type.  The first item in the pair is the
    module symbol, and the second item is the symbol for the function or
    variable we found.  */
-typedef std::pair<symbol_search, symbol_search> module_symbol_search;
+using module_symbol_search = std::pair<symbol_search, symbol_search>;
 
 /* Searches the symbols to find function and variables symbols (depending
    on KIND) within Fortran modules.  The MODULE_REGEXP matches against the
@@ -2708,7 +2749,7 @@ typedef std::pair<symbol_search, symbol_search> module_symbol_search;
    within the module.  */
 extern std::vector<module_symbol_search> search_module_symbols
 	(const char *module_regexp, const char *regexp,
-	 const char *type_regexp, domain_search_flags kind);
+	 const char *type_regexp, symbol_search_kind kind);
 
 /* Convert a global or static symbol SYM (based on BLOCK, which should be
    either GLOBAL_BLOCK or STATIC_BLOCK) into a string for use in 'info'
@@ -2716,8 +2757,11 @@ extern std::vector<module_symbol_search> search_module_symbols
 
 extern std::string symbol_to_info_string (struct symbol *sym, int block);
 
-extern bool treg_matches_sym_type_name (const compiled_regex &treg,
-					const struct symbol *sym);
+/* Returns true if the SYM's type name matches TYPE_REGEX.
+   If SYM has no type name, returns false.  */
+
+extern bool regex_matches_sym_type_name (const compiled_regex &type_regex,
+					 const symbol *sym);
 
 /* The name of the ``main'' function.  */
 extern const char *main_name ();

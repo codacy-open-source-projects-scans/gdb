@@ -22,16 +22,16 @@ require gdb_trace_common_supports_arch
 
 if {[prepare_for_testing "failed to prepare" $executable $srcfile \
 	 [list debug]]} {
-    return -1
+    return
 }
 
 if {![runto_main]} {
-    return -1
+    return
 }
 
 if {![gdb_target_supports_trace]} {
     unsupported "target does not support trace"
-    return -1
+    return
 }
 
 set tstatus_output ""
@@ -120,9 +120,9 @@ proc run_trace_experiment {} {
 proc test_tracepoints {} {
     global gdb_prompt
 
-    gdb_breakpoint "begin" qualified
+    gdb_breakpoint "begin" -qualified
 
-    gdb_breakpoint "end" qualified
+    gdb_breakpoint "end" -qualified
 
     gdb_test "trace gdb_c_test" "Tracepoint .*" \
 	"tracepoint at gdb_c_test"
@@ -142,10 +142,6 @@ set tracefile [standard_output_file ${testfile}]
 gdb_test "tsave ${tracefile}.tf" \
     "Trace data saved to file '${tracefile}.tf'.*" \
     "save tfile trace file"
-# Save trace frames to CTF.
-gdb_test "tsave -ctf ${tracefile}.ctf" \
-    "Trace data saved to directory '${tracefile}.ctf'.*" \
-    "save ctf trace file"
 
 # Change target to tfile.
 set test "change to tfile target"
@@ -166,13 +162,3 @@ set tstatus_output [string map {\) \\)} $tstatus_output]
 # The status should be identical to the status of live inferior.
 gdb_test "tstatus" "Using a trace file\.\r\n${tstatus_output}.*" \
     "tstatus on tfile target"
-
-# Change target to ctf if GDB supports.
-gdb_test_multiple "target ctf ${tracefile}.ctf" "" {
-    -re "Undefined target command: \"ctf ${tracefile}.ctf\"\.  Try \"help target\"\.\r\n$gdb_prompt $" {
-    }
-    -re ".*\r\n$gdb_prompt $" {
-	gdb_test "tstatus" "Using a trace file\.\r\n${tstatus_output}.*" \
-	    "tstatus on ctf target"
-    }
-}

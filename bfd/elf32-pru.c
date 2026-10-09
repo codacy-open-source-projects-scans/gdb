@@ -470,8 +470,7 @@ pru_elf32_do_s10_pcrel_relocate (bfd *input_bfd, reloc_howto_type *howto,
   bfd_vma qboff;
   bfd_reloc_status_type flag = bfd_reloc_ok;
 
-  /* Sanity check the address.  */
-  if (address > bfd_get_section_limit (input_bfd, input_section))
+  if (!bfd_reloc_offset_in_range (howto, input_bfd, input_section, address))
     return bfd_reloc_outofrange;
 
   BFD_ASSERT (howto->pc_relative);
@@ -486,8 +485,8 @@ pru_elf32_do_s10_pcrel_relocate (bfd *input_bfd, reloc_howto_type *howto,
   BFD_ASSERT (bfd_get_reloc_size (howto) == 4);
   x = bfd_get_32 (input_bfd, location);
 
-  qboff = GET_BROFF_SIGNED (x) << howto->rightshift;
-  relocation += qboff;
+  qboff = GET_BROFF_SIGNED (x);
+  relocation += qboff << howto->rightshift;
 
   BFD_ASSERT (howto->complain_on_overflow == complain_overflow_bitfield);
 
@@ -546,9 +545,7 @@ pru_elf32_do_ldi32_relocate (bfd *abfd, reloc_howto_type *howto,
 
   /* A hacked-up version of _bfd_final_link_relocate() follows.  */
 
-  /* Sanity check the address.  */
-  if (octets + bfd_get_reloc_size (howto)
-      > bfd_get_section_limit_octets (abfd, input_section))
+  if (!bfd_reloc_offset_in_range (howto, abfd, input_section, octets))
     return bfd_reloc_outofrange;
 
   /* This function assumes that we are dealing with a basic relocation
@@ -681,8 +678,7 @@ pru_elf32_ldi32_relocate (bfd *abfd, arelent *reloc_entry, asymbol *symbol,
 
 /* Implement elf_backend_relocate_section.  */
 static int
-pru_elf32_relocate_section (bfd *output_bfd,
-			    struct bfd_link_info *info,
+pru_elf32_relocate_section (struct bfd_link_info *info,
 			    bfd *input_bfd,
 			    asection *input_section,
 			    bfd_byte *contents,
@@ -736,7 +732,8 @@ pru_elf32_relocate_section (bfd *output_bfd,
 	{
 	  sym = local_syms + r_symndx;
 	  sec = local_sections[r_symndx];
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 	}
       else
 	{

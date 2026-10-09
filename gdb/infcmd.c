@@ -366,7 +366,7 @@ strip_bg_char (const char *args, int *bg_char_p)
 /* See inferior.h.  */
 
 void
-post_create_inferior (int from_tty, bool set_pspace_solib_ops)
+post_create_inferior (int from_tty, bool push_arch_solib_ops)
 {
   /* Be sure we own the terminal in case write operations are performed.  */
   target_terminal::ours_for_output ();
@@ -397,10 +397,16 @@ post_create_inferior (int from_tty, bool set_pspace_solib_ops)
 	throw;
     }
 
-  if (set_pspace_solib_ops)
-    current_program_space->set_solib_ops
-      (gdbarch_make_solib_ops (current_inferior ()->arch (),
-			       current_program_space));
+  if (push_arch_solib_ops)
+    {
+      /* This is called when an inferior gains execution.  Any solib_ops
+	 from previous executions should have been cleared by
+	 target_pre_inferior.  */
+      gdb_assert (current_program_space->solib_ops ().empty ());
+      current_program_space->add_solib_ops
+	(gdbarch_make_solib_ops (current_inferior ()->arch (),
+				 current_program_space));
+    }
 
   {
     const unsigned solib_add_generation
@@ -686,29 +692,6 @@ starti_command (const char *args, int from_tty)
 }
 
 static void
-proceed_thread_callback (struct thread_info *thread)
-{
-  /* We go through all threads individually instead of compressing
-     into a single target `resume_all' request, because some threads
-     may be stopped in internal breakpoints/events, or stopped waiting
-     for its turn in the displaced stepping queue (that is, they are
-     running from the user's perspective but internally stopped).  The
-     target side has no idea about why the thread is stopped, so a
-     `resume_all' command would resume too much.  If/when GDB gains a
-     way to tell the target `hold this thread stopped until I say
-     otherwise', then we can optimize this.  */
-  if (thread->state () != THREAD_STOPPED)
-    return;
-
-  if (!thread->inf->has_execution ())
-    return;
-
-  switch_to_thread (thread);
-  clear_proceed_status (0);
-  proceed ((CORE_ADDR) -1, GDB_SIGNAL_DEFAULT);
-}
-
-static void
 ensure_valid_thread (void)
 {
   if (inferior_ptid == null_ptid
@@ -745,13 +728,53 @@ ensure_not_running (void)
     error_is_running ();
 }
 
+/* See inferior.h.  */
+
 void
-continue_1 (int all_threads)
+proceed_one_thread (thread_info &thread)
+{
+  gdb_assert (non_stop);
+
+  if (thread.state () != THREAD_STOPPED)
+    return;
+
+  if (!thread.inf->has_execution ())
+    return;
+
+  switch_to_thread (&thread);
+  clear_proceed_status (0);
+  proceed ((CORE_ADDR) -1, GDB_SIGNAL_DEFAULT);
+}
+
+/* See inferior.h.  */
+
+void
+proceed_all_threads ()
+{
+  gdb_assert (non_stop);
+
+  for (thread_info &thread : all_threads ())
+    {
+      /* We go through all threads individually instead of compressing
+	 into a single target `resume_all' request, because some threads
+	 may be stopped in internal breakpoints/events, or stopped waiting
+	 for its turn in the displaced stepping queue (that is, they are
+	 running from the user's perspective but internally stopped).  The
+	 target side has no idea about why the thread is stopped, so a
+	 `resume_all' command would resume too much.  If/when GDB gains a
+	 way to tell the target `hold this thread stopped until I say
+	 otherwise', then we can optimize this.  */
+      proceed_one_thread (thread);
+    }
+}
+
+void
+continue_1 (bool all_threads_p)
 {
   ERROR_NO_INFERIOR;
   ensure_not_tfind_mode ();
 
-  if (non_stop && all_threads)
+  if (non_stop && all_threads_p)
     {
       /* Don't error out if the current thread is running, because
 	 there may be other stopped threads.  */
@@ -762,15 +785,15 @@ continue_1 (int all_threads)
       scoped_disable_commit_resumed disable_commit_resumed
 	("continue all threads in non-stop");
 
-      for_each_thread (proceed_thread_callback);
+      proceed_all_threads ();
 
       if (current_ui->prompt_state == PROMPT_BLOCKED)
 	{
-	  /* If all threads in the target were already running,
-	     proceed_thread_callback ends up never calling proceed,
-	     and so nothing calls this to put the inferior's terminal
-	     settings in effect and remove stdin from the event loop,
-	     which we must when running a foreground command.  E.g.:
+	  /* If all threads in the target were already running, the
+	     above ends up never calling proceed, and so nothing calls
+	     this to put the inferior's terminal settings in effect
+	     and remove stdin from the event loop, which we must when
+	     running a foreground command.  E.g.:
 
 	      (gdb) c -a&
 	      Continuing.
@@ -1650,11 +1673,9 @@ print_return_value_1 (struct ui_out *uiout, struct return_value_info *rv)
 
       if (finish_print)
 	{
-	  struct value_print_options opts;
-	  get_user_print_options (&opts);
-
+	  const value_print_options opts = get_user_print_options ();
 	  string_file stb;
-	  value_print (rv->value, &stb, &opts);
+	  value_print (rv->value, &stb, opts);
 	  uiout->field_stream ("return-value", stb);
 	}
       else
@@ -1817,7 +1838,7 @@ finish_backward (struct finish_command_fsm *sm)
   CORE_ADDR func_addr;
   CORE_ADDR alt_entry_point;
   CORE_ADDR entry_point;
-  frame_info_ptr frame = get_selected_frame (nullptr);
+  frame_info_ptr frame = get_selected_frame ();
   struct gdbarch *gdbarch = get_frame_arch (frame);
 
   pc = get_frame_pc (get_current_frame ());
@@ -1983,7 +2004,7 @@ finish_command (const char *arg, int from_tty)
       if (from_tty)
 	{
 	  gdb_printf (_("Run till exit from "));
-	  print_stack_frame (get_selected_frame (nullptr), 1, LOCATION, 0);
+	  print_stack_frame (get_selected_frame (), 1, LOCATION, 0);
 	}
 
       proceed ((CORE_ADDR) -1, GDB_SIGNAL_DEFAULT);
@@ -1991,7 +2012,7 @@ finish_command (const char *arg, int from_tty)
     }
 
   /* Find the function we will return from.  */
-  frame_info_ptr callee_frame = get_selected_frame (nullptr);
+  frame_info_ptr callee_frame = get_selected_frame ();
   sm->function = find_symbol_for_pc (get_frame_pc (callee_frame));
   sm->return_buf = 0;    /* Initialize buffer address is not available.  */
 
@@ -2419,14 +2440,13 @@ default_print_one_register_info (struct ui_file *file,
   if (regtype->code () == TYPE_CODE_FLT
       || regtype->code () == TYPE_CODE_DECFLOAT)
     {
-      struct value_print_options opts;
       const gdb_byte *valaddr = val->contents_for_printing ().data ();
       enum bfd_endian byte_order = type_byte_order (regtype);
 
-      get_user_print_options (&opts);
+      value_print_options opts = get_user_print_options ();
       opts.deref_ref = true;
 
-      common_val_print (val, &format_stream, 0, &opts, current_language);
+      common_val_print (val, &format_stream, 0, opts, current_language);
 
       if (print_raw_format)
 	{
@@ -2439,20 +2459,18 @@ default_print_one_register_info (struct ui_file *file,
     }
   else
     {
-      struct value_print_options opts;
-
       /* Print the register in hex.  */
-      get_formatted_print_options (&opts, 'x');
+      value_print_options opts = get_formatted_print_options ('x');
       opts.deref_ref = true;
-      common_val_print (val, &format_stream, 0, &opts, current_language);
+      common_val_print (val, &format_stream, 0, opts, current_language);
       /* If not a vector register, print it also according to its
 	 natural format.  */
       if (print_raw_format && regtype->is_vector () == 0)
 	{
 	  pad_to_column (format_stream, value_column_2);
-	  get_user_print_options (&opts);
+	  opts = get_user_print_options ();
 	  opts.deref_ref = true;
-	  common_val_print (val, &format_stream, 0, &opts, current_language);
+	  common_val_print (val, &format_stream, 0, opts, current_language);
 	}
     }
 
@@ -2523,7 +2541,7 @@ registers_info (const char *addr_exp, bool fpregs)
 
   if (!target_has_registers ())
     error (_("The program has no registers now."));
-  frame = get_selected_frame (nullptr);
+  frame = get_selected_frame ();
   gdbarch = get_frame_arch (frame);
 
   if (!addr_exp)
@@ -2660,7 +2678,7 @@ info_vector_command (const char *args, int from_tty)
   if (!target_has_registers ())
     error (_("The program has no registers now."));
 
-  print_vector_info (gdb_stdout, get_selected_frame (nullptr), args);
+  print_vector_info (gdb_stdout, get_selected_frame (), args);
 }
 
 /* Kill the inferior process.  Make us have no inferior.  */
@@ -3136,7 +3154,10 @@ interrupt_target_1 (bool all_threads)
 	    }
 	}
       else
-	stop_current_target_threads_ns (inferior_ptid);
+	{
+	  ensure_valid_thread ();
+	  stop_current_target_threads_ns (inferior_ptid);
+	}
     }
   else
     target_interrupt ();
@@ -3197,7 +3218,7 @@ info_float_command (const char *args, int from_tty)
   if (!target_has_registers ())
     error (_("The program has no registers now."));
 
-  frame = get_selected_frame (nullptr);
+  frame = get_selected_frame ();
   gdbarch_print_float_info (get_frame_arch (frame), gdb_stdout, frame, args);
 }
 

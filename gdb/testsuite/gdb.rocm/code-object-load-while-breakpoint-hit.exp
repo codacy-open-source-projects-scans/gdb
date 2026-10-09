@@ -34,12 +34,12 @@
 
 load_lib rocm.exp
 standard_testfile .cpp
-require allow_hipcc_tests
+require allow_hip_tests
 
 # Build the host executable.
 if { [build_executable "failed to prepare" \
 	  $testfile $srcfile {debug hip}] == -1 } {
-    return -1
+    return
 }
 
 set hipmodule_path [standard_output_file ${testfile}.co]
@@ -47,17 +47,16 @@ set hipmodule_path [standard_output_file ${testfile}.co]
 # Build the kernel object file.
 if { [gdb_compile $srcdir/$subdir/$srcfile \
 	$hipmodule_path object \
-	{ debug hip additional_flags=--genco additional_flags=-DDEVICE } ] != "" } {
-    return -1
+	{ debug hip additional_flags=--cuda-device-only additional_flags=-DDEVICE } ] != "" } {
+    return
 }
 
 proc do_test { } {
     with_rocm_gpu_lock {
 	clean_restart
 	gdb_load $::binfile
-	gdb_test_no_output "set args $::hipmodule_path" "set args"
 
-	if { ![runto_main] } {
+	if { ![runto_main -inferior-args $::hipmodule_path] } {
 		return
 	}
 

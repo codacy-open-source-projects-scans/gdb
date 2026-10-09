@@ -3034,7 +3034,7 @@ gdb_fnwidth (const char *string)
 #if defined (HANDLE_MULTIBYTE)
   mbstate_t ps;
   int left, w;
-  size_t clen;
+  size_t c_len;
   wchar_t wc;
 
   left = strlen (string) + 1;
@@ -3052,18 +3052,18 @@ gdb_fnwidth (const char *string)
       else
 	{
 #if defined (HANDLE_MULTIBYTE)
-	  clen = mbrtowc (&wc, string + pos, left - pos, &ps);
-	  if (MB_INVALIDCH (clen))
+	  c_len = mbrtowc (&wc, string + pos, left - pos, &ps);
+	  if (MB_INVALIDCH (c_len))
 	    {
 	      width++;
 	      pos++;
 	      memset (&ps, 0, sizeof (mbstate_t));
 	    }
-	  else if (MB_NULLWCH (clen))
+	  else if (MB_NULLWCH (c_len))
 	    break;
 	  else
 	    {
-	      pos += clen;
+	      pos += c_len;
 	      w = wcwidth (wc);
 	      width += (w >= 0) ? w : 1;
 	    }
@@ -3271,7 +3271,7 @@ extern int _rl_completion_prefix_display_length;
 extern int _rl_print_completions_horizontally;
 
 extern "C" int _rl_qsort_string_compare (const void *, const void *);
-typedef int QSFUNC (const void *, const void *);
+using QSFUNC = int (const void *, const void *);
 
 /* GDB version of readline/complete.c:rl_display_match_list.
    See gdb_display_match_list for a description of MATCHES, LEN, MAX.

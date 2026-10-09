@@ -25,11 +25,11 @@ require gdb_trace_common_supports_arch
 
 if {[prepare_for_testing "failed to prepare" $executable $srcfile \
 	 [list debug nowarnings nopie]]} {
-    return -1
+    return
 }
 
 if {![runto_main]} {
-    return -1
+    return
 }
 
 if {![gdb_target_supports_trace]} {
@@ -104,7 +104,7 @@ all tests in this module will fail."
 }
 
 if {$return_me == 1} {
-    return -1
+    return
 }
 
 #
@@ -146,7 +146,7 @@ gdb_trace_setactions "8.6: setup TP to collect stack mem cast expr" \
 
 gdb_test_no_output "tstart" ""
 
-gdb_breakpoint "end" qualified
+gdb_breakpoint "end" -qualified
 gdb_test "continue" \
     "Continuing.*Breakpoint $decimal, end.*" \
     "run trace experiment"
@@ -172,7 +172,7 @@ proc gdb_backtrace_tdp_2 { msg } {
 
     # We are in a trace frame at which we collected only the registers
     # Therefore we expect to be able to identify stack frame #0, but
-    # we don't expect to be able to display its args unles they are
+    # we don't expect to be able to display its args unless they are
     # passed in registers (which isn't the case for m68k), and we
     # don't expect to be able to identify the caller's stack frame.
 

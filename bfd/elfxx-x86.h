@@ -794,6 +794,12 @@ enum elf_x86_tls_error_type
   elf_x86_tls_error_yes
 };
 
+enum elf_x86_error_type
+{
+  elf_x86_error_tls,
+  elf_x86_error_non_alloc
+};
+
 /* Set if a relocation is converted from a GOTPCREL relocation.  */
 #define R_X86_64_converted_reloc_bit (1 << 7)
 
@@ -884,13 +890,13 @@ extern bool _bfd_elf_x86_valid_reloc_p
    Elf_Internal_Sym *, Elf_Internal_Shdr *, bool *) ATTRIBUTE_HIDDEN;
 
 extern bool _bfd_x86_elf_late_size_sections
-  (bfd *, struct bfd_link_info *) ATTRIBUTE_HIDDEN;
+  (struct bfd_link_info *) ATTRIBUTE_HIDDEN;
 
 extern struct elf_x86_link_hash_table *_bfd_x86_elf_finish_dynamic_sections
-  (bfd *, struct bfd_link_info *, bfd_byte *) ATTRIBUTE_HIDDEN;
+  (struct bfd_link_info *, bfd_byte *) ATTRIBUTE_HIDDEN;
 
 extern bool _bfd_x86_elf_early_size_sections
-  (bfd *, struct bfd_link_info *) ATTRIBUTE_HIDDEN;
+  (struct bfd_link_info *) ATTRIBUTE_HIDDEN;
 
 extern void _bfd_x86_elf_merge_symbol_attribute
   (struct elf_link_hash_entry *, unsigned int, bool, bool)
@@ -951,9 +957,14 @@ extern void _bfd_x86_elf_link_report_tls_transition_error
    const Elf_Internal_Rela *, const char *, const char *,
    enum elf_x86_tls_error_type) ATTRIBUTE_HIDDEN;
 
-extern void _bfd_x86_elf_link_report_tls_invalid_section_error
+extern void _bfd_x86_elf_link_report_error
   (bfd *, asection *, Elf_Internal_Shdr *, struct elf_link_hash_entry *,
-   Elf_Internal_Sym *, reloc_howto_type *) ATTRIBUTE_HIDDEN;
+   Elf_Internal_Sym *, reloc_howto_type *,
+   enum elf_x86_error_type) ATTRIBUTE_HIDDEN;
+
+extern void _bfd_x86_elf_link_report_relocation_error
+  (bfd *, asection *, const char *, Elf_Internal_Rela *,
+   reloc_howto_type *, bfd_reloc_status_type) ATTRIBUTE_HIDDEN;
 
 extern bool
 _bfd_elf_x86_copy_special_section_fields

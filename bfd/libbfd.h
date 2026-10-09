@@ -501,7 +501,7 @@ extern bool _bfd_generic_set_section_contents
 extern int _bfd_nolink_sizeof_headers
   (bfd *, struct bfd_link_info *) ATTRIBUTE_HIDDEN;
 extern bfd_byte *_bfd_nolink_bfd_get_relocated_section_contents
-  (bfd *, struct bfd_link_info *, struct bfd_link_order *,
+  (bfd *, struct bfd_link_info *, const struct bfd_link_order *,
    bfd_byte *, bool, asymbol **) ATTRIBUTE_HIDDEN;
 extern bool _bfd_nolink_bfd_relax_section
   (bfd *, asection *, struct bfd_link_info *, bool *) ATTRIBUTE_HIDDEN;
@@ -681,17 +681,17 @@ extern bool _bfd_generic_section_already_linked
 
 /* Generic reloc_link_order processing routine.  */
 extern bool _bfd_generic_reloc_link_order
-  (bfd *, struct bfd_link_info *, asection *, struct bfd_link_order *)
+  (bfd *, struct bfd_link_info *, asection *, const struct bfd_link_order *)
   ATTRIBUTE_HIDDEN;
 
 /* Default link order processing routine.  */
 extern bool _bfd_default_link_order
-  (bfd *, struct bfd_link_info *, asection *, struct bfd_link_order *)
+  (bfd *, struct bfd_link_info *, asection *, const struct bfd_link_order *)
   ATTRIBUTE_HIDDEN;
 
 /* Count the number of reloc entries in a link order list.  */
 extern unsigned int _bfd_count_link_order_relocs
-  (struct bfd_link_order *) ATTRIBUTE_HIDDEN;
+  (const struct bfd_link_order *) ATTRIBUTE_HIDDEN;
 
 /* Final link relocation routine.  */
 extern bfd_reloc_status_type _bfd_final_link_relocate
@@ -844,20 +844,6 @@ extern struct bfd_link_info *_bfd_get_link_info (bfd *)
 extern uintptr_t _bfd_pagesize ATTRIBUTE_HIDDEN;
 extern uintptr_t _bfd_pagesize_m1 ATTRIBUTE_HIDDEN;
 extern uintptr_t _bfd_minimum_mmap_size ATTRIBUTE_HIDDEN;
-#endif
-
-#if GCC_VERSION >= 7000
-#define _bfd_mul_overflow(a, b, res) __builtin_mul_overflow (a, b, res)
-#else
-/* Assumes unsigned values.  Careful!  Args evaluated multiple times.  */
-#define _bfd_mul_overflow(a, b, res) \
-  ((*res) = (a), (*res) *= (b), (b) != 0 && (*res) / (b) != (a))
-#endif
-
-#ifdef __GNUC__
-#define _bfd_constant_p(v) __builtin_constant_p (v)
-#else
-#define _bfd_constant_p(v) 0
 #endif
 
 static inline void *
@@ -1022,9 +1008,8 @@ extern const struct bfd_iovec _bfd_memory_iovec;
 /* Used in generating armaps (archive tables of contents).  */
 struct orl             /* Output ranlib.  */
 {
-  char **name;         /* Symbol name.  */
+  char *name;          /* Symbol name.  */
   bfd *abfd;           /* Containing BFD.  */
-  int namidx;          /* Index into string table.  */
 };
 
 /* Return an inexistent element reference for archive ARCH.  */
@@ -1444,6 +1429,7 @@ static const char *const bfd_reloc_code_real_names[] = { "@@uninitialized@@",
   "BFD_RELOC_MN10300_TLS_TPOFF",
   "BFD_RELOC_386_GOT32",
   "BFD_RELOC_386_PLT32",
+  "BFD_RELOC_386_PC32_TO_PLT32",
   "BFD_RELOC_386_TLS_TPOFF",
   "BFD_RELOC_386_TLS_IE",
   "BFD_RELOC_386_TLS_GOTIE",
@@ -1480,6 +1466,7 @@ static const char *const bfd_reloc_code_real_names[] = { "@@uninitialized@@",
   "BFD_RELOC_X86_64_TLSDESC",
   "BFD_RELOC_X86_64_PC32_BND",
   "BFD_RELOC_X86_64_PLT32_BND",
+  "BFD_RELOC_X86_64_PC32_TO_PLT32",
   "BFD_RELOC_X86_64_GOTPCRELX",
   "BFD_RELOC_X86_64_REX_GOTPCRELX",
   "BFD_RELOC_X86_64_CODE_4_GOTPCRELX",
@@ -2809,6 +2796,8 @@ static const char *const bfd_reloc_code_real_names[] = { "@@uninitialized@@",
   "BFD_RELOC_XTENSA_NDIFF8",
   "BFD_RELOC_XTENSA_NDIFF16",
   "BFD_RELOC_XTENSA_NDIFF32",
+  "BFD_RELOC_XTENSA_PDIFF_ULEB128",
+  "BFD_RELOC_XTENSA_32_ABS",
   "BFD_RELOC_Z80_DISP8",
   "BFD_RELOC_Z80_BYTE0",
   "BFD_RELOC_Z80_BYTE1",
@@ -3488,7 +3477,7 @@ bool bfd_generic_lookup_section_flags
 bfd_byte *bfd_generic_get_relocated_section_contents
    (bfd *abfd,
     struct bfd_link_info *link_info,
-    struct bfd_link_order *link_order,
+    const struct bfd_link_order *link_order,
     bfd_byte *data,
     bool relocatable,
     asymbol **symbols) ATTRIBUTE_HIDDEN;

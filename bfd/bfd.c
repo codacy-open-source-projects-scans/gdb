@@ -624,7 +624,8 @@ EXTERNAL
 .static inline bfd_size_type
 .bfd_get_section_limit_octets (const bfd *abfd, const asection *sec)
 .{
-.  if (abfd->direction != write_direction && sec->rawsize != 0)
+.  if (abfd->format != bfd_core && abfd->direction != write_direction
+.      && sec->rawsize != 0)
 .    return sec->rawsize;
 .  return sec->size;
 .}
@@ -643,7 +644,8 @@ EXTERNAL
 .static inline bfd_size_type
 .bfd_get_section_alloc_size (const bfd *abfd, const asection *sec)
 .{
-.  if (abfd->direction != write_direction && sec->rawsize > sec->size)
+.  if (abfd->format != bfd_core && abfd->direction != write_direction
+.      && sec->rawsize > sec->size)
 .    return sec->rawsize;
 .  return sec->size;
 .}
@@ -2734,8 +2736,8 @@ FUNCTION
 
 SYNOPSIS
 	bfd_byte *bfd_get_relocated_section_contents
-	  (bfd *, struct bfd_link_info *, struct bfd_link_order *, bfd_byte *,
-	   bool, asymbol **);
+	  (bfd *, struct bfd_link_info *, const struct bfd_link_order *,
+	   bfd_byte *, bool, asymbol **);
 
 DESCRIPTION
 	Read and relocate the indirect link_order section, into DATA
@@ -2746,13 +2748,13 @@ DESCRIPTION
 bfd_byte *
 bfd_get_relocated_section_contents (bfd *abfd,
 				    struct bfd_link_info *link_info,
-				    struct bfd_link_order *link_order,
+				    const struct bfd_link_order *link_order,
 				    bfd_byte *data,
 				    bool relocatable,
 				    asymbol **symbols)
 {
   bfd *abfd2;
-  bfd_byte *(*fn) (bfd *, struct bfd_link_info *, struct bfd_link_order *,
+  bfd_byte *(*fn) (bfd *, struct bfd_link_info *, const struct bfd_link_order *,
 		   bfd_byte *, bool, asymbol **);
 
   if (link_order->type == bfd_indirect_link_order)

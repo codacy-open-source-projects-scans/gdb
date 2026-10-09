@@ -22,7 +22,7 @@ require gdb_trace_common_supports_arch
 if { [gdb_compile "$srcdir/$subdir/$srcfile" $binfile \
 	  executable {debug nowarnings}] != "" } {
     untested "failed to compile"
-    return -1
+    return
 }
 
 clean_restart $testfile
@@ -58,7 +58,7 @@ gdb_trace_setactions "setup collect actions" \
 	"end" ""
 
 gdb_test_no_output "tstart" "survive the long packet send"
-gdb_breakpoint "end" qualified
+gdb_breakpoint "end" -qualified
 gdb_test "continue" \
     "Continuing.*Breakpoint $decimal, end.*" \
     "run trace experiment"

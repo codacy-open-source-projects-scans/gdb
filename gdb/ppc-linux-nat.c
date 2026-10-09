@@ -189,7 +189,7 @@ Little-Endian:
      VR0           VR31     VSCR    VRSAVE
 */
 
-typedef char gdb_vrregset_t[PPC_LINUX_SIZEOF_VRREGSET];
+using gdb_vrregset_t = char[PPC_LINUX_SIZEOF_VRREGSET];
 
 /* This is the layout of the POWER7 VSX registers and the way they overlap
    with the existing FPR and VMX registers.
@@ -223,7 +223,7 @@ typedef char gdb_vrregset_t[PPC_LINUX_SIZEOF_VRREGSET];
    the FP registers (doubleword 0) and hence extend them with additional
    64 bits (doubleword 1).  The other 32 regs overlap with the VMX
    registers.  */
-typedef char gdb_vsxregset_t[PPC_LINUX_SIZEOF_VSXREGSET];
+using gdb_vsxregset_t = char[PPC_LINUX_SIZEOF_VSXREGSET];
 
 /* On PPC processors that support the Signal Processing Extension
    (SPE) APU, the general-purpose registers are 64 bits long.
@@ -1064,6 +1064,15 @@ fetch_register (struct regcache *regcache, int tid, int regno)
 		    &ppc32_linux_ctarregset);
       return;
     }
+  else if (PPC_IS_DMR_REGNUM (regno))
+    {
+      gdb_assert (tdep->ppc_dmr0_regnum != -1);
+
+      fetch_regset (regcache, tid, NT_PPC_DMR,
+		    PPC_LINUX_SIZEOF_DMRREGSET,
+		    &ppc32_linux_dmrregset);
+      return;
+    }
 
   if (regaddr == -1)
     {
@@ -1304,6 +1313,10 @@ fetch_ppc_registers (struct regcache *regcache, int tid)
     fetch_regset (regcache, tid, NT_PPC_TM_CVSX,
 		  PPC_LINUX_SIZEOF_CVSXREGSET,
 		  &ppc32_linux_cvsxregset);
+  if (tdep->ppc_dmr0_regnum != -1)
+    fetch_regset (regcache, tid, NT_PPC_DMR,
+		  PPC_LINUX_SIZEOF_DMRREGSET,
+		  &ppc32_linux_dmrregset);
   if (tdep->ppc_cppr_regnum != -1)
     fetch_regset (regcache, tid, NT_PPC_TM_CPPR,
 		  PPC_LINUX_SIZEOF_CPPRREGSET,
@@ -1617,6 +1630,15 @@ store_register (const struct regcache *regcache, int tid, int regno)
 		    &ppc32_linux_ctarregset);
       return;
     }
+  else if (PPC_IS_DMR_REGNUM (regno))
+    {
+      gdb_assert (tdep->ppc_dmr0_regnum != -1);
+
+      store_regset (regcache, tid, regno, NT_PPC_DMR,
+		    PPC_LINUX_SIZEOF_DMRREGSET,
+		    &ppc32_linux_dmrregset);
+      return;
+    }
 
   if (regaddr == -1)
     return;
@@ -1851,6 +1873,11 @@ store_ppc_registers (const struct regcache *regcache, int tid)
 		  PPC_LINUX_SIZEOF_TM_SPRREGSET,
 		  &ppc32_linux_tm_sprregset);
 
+  if (tdep->ppc_dmr0_regnum != -1)
+    store_regset (regcache, tid, -1, NT_PPC_DMR,
+		  PPC_LINUX_SIZEOF_DMRREGSET,
+		  &ppc32_linux_dmrregset);
+
   /* Because the EBB and checkpointed HTM registers can be
      unavailable, attempts to store them here would cause this
      function to fail most of the time, so we ignore them.  */
@@ -2020,6 +2047,10 @@ ppc_linux_nat_target::read_description ()
 	}
     }
 
+  if ((hwcap2 & PPC_FEATURE2_DMF)
+      && check_regset (tid, NT_PPC_DMR, PPC_LINUX_SIZEOF_DMRREGSET))
+    features.isa32 = true;
+
   return ppc_linux_match_description (features);
 }
 
@@ -2044,7 +2075,7 @@ ppc_linux_nat_target::read_description ()
 
 int
 ppc_linux_nat_target::can_use_hw_breakpoint (enum bptype type, int cnt,
-					     int ot)
+					     int othertype)
 {
   int total_hw_wp, total_hw_bp;
 
@@ -2076,7 +2107,7 @@ ppc_linux_nat_target::can_use_hw_breakpoint (enum bptype type, int cnt,
     {
       if (total_hw_wp == 0)
 	return 0;
-      else if (cnt + ot > total_hw_wp)
+      else if (cnt + othertype > total_hw_wp)
 	return -1;
       else
 	return 1;

@@ -45,7 +45,7 @@ evregpy_connect (PyObject *self, PyObject *function)
   if (PyList_Append (callback_list, func) < 0)
     return NULL;
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Implementation of EventRegistry.disconnect () -> NULL.
@@ -63,12 +63,12 @@ evregpy_disconnect (PyObject *self, PyObject *function)
 
   index = PySequence_Index (callback_list, func);
   if (index < 0)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   if (PySequence_DelItem (callback_list, index) < 0)
     return NULL;
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Create a new event registry.  This function uses PyObject_New
@@ -106,15 +106,14 @@ gdbpy_initialize_eventregistry ()
   return gdbpy_type_ready (&eventregistry_object_type);
 }
 
-/* Return the number of listeners currently connected to this
-   registry.  */
+/* See py-events.h.  */
 
 bool
-evregpy_no_listeners_p (eventregistry_object *registry)
+evregpy_has_listeners_p (eventregistry_object *registry)
 {
   /* REGISTRY can be nullptr if gdb failed to find the data directory
      at startup.  */
-  return registry == nullptr || PyList_Size (registry->callbacks) == 0;
+  return registry != nullptr && PyList_Size (registry->callbacks) > 0;
 }
 
 GDBPY_INITIALIZE_FILE (gdbpy_initialize_eventregistry);

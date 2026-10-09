@@ -1149,7 +1149,7 @@ pe_fixup_stdcalls (void)
     if (undef->type == bfd_link_hash_undefined)
       {
 	const char * name = undef->root.string;
-	char * at;
+	const char * at;
 	int lead_at = (*name == '@');
 
 	if (lead_at)
@@ -1573,6 +1573,16 @@ gld${EMULATION_NAME}_after_open (void)
 
   pe_output_file_set_long_section_names (link_info.output_bfd);
 
+  /* The RVAs of these symbols will be written into the PE header, so they
+     must not be collected.  */
+  char *sym = xstrdup ("__tls_used");
+  sym[0] = bfd_get_symbol_leading_char (link_info.output_bfd);
+  lang_add_gc_name (sym + !sym[0]);
+
+  sym = xstrdup ("__load_config_used");
+  sym[0] = bfd_get_symbol_leading_char (link_info.output_bfd);
+  lang_add_gc_name (sym + !sym[0]);
+
 #ifdef DLL_SUPPORT
   pe_process_import_defs (link_info.output_bfd, &link_info);
 
@@ -1750,7 +1760,7 @@ gld${EMULATION_NAME}_after_open (void)
       {
 	if (is->the_bfd->my_archive)
 	  {
-	    char *pnt;
+	    const char *pnt;
 
 	    /* Microsoft import libraries may contain archive members for
 	       one or more DLLs, together with static object files.
@@ -2146,7 +2156,7 @@ gld${EMULATION_NAME}_place_orphan (asection *s,
 				   int constraint)
 {
   const char *orig_secname = secname;
-  char *dollar = NULL;
+  const char *dollar = NULL;
   lang_output_section_statement_type *os;
   lang_statement_list_type add_child;
   lang_output_section_statement_type *match_by_name = NULL;

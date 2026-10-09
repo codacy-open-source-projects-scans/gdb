@@ -2697,7 +2697,7 @@ nds32_elf_do_9_pcrel_reloc (bfd *               abfd,
   bfd_reloc_status_type status;
 
   /* Sanity check the address (offset in section).  */
-  bfd_vma octet = offset * bfd_octets_per_byte (abfd, input_section);
+  bfd_vma octet = offset * OCTETS_PER_BYTE (abfd, input_section);
   if (!bfd_reloc_offset_in_range (howto, abfd, input_section, octet))
     return bfd_reloc_outofrange;
 
@@ -2821,7 +2821,7 @@ nds32_elf_hi20_reloc (bfd *abfd,
 
   /* Sanity check the address (offset in section).  */
   bfd_vma octet = (reloc_entry->address
-		   * bfd_octets_per_byte (abfd, input_section));
+		   * OCTETS_PER_BYTE (abfd, input_section));
   if (!bfd_reloc_offset_in_range (reloc_entry->howto,
 				  abfd, input_section, octet))
     return bfd_reloc_outofrange;
@@ -2900,6 +2900,12 @@ nds32_elf_lo12_reloc (bfd *input_bfd, arelent *reloc_entry, asymbol *symbol,
       reloc_entry->address += input_section->output_offset;
       return bfd_reloc_ok;
     }
+
+  bfd_vma octet = (reloc_entry->address
+		   * OCTETS_PER_BYTE (input_bfd, input_section));
+  if (!bfd_reloc_offset_in_range (reloc_entry->howto, input_bfd, input_section,
+				  octet))
+    return bfd_reloc_outofrange;
 
   sdata = nds32_elf_section_data (input_section);
   if (sdata->nds32_hi20_list != NULL)
@@ -2992,7 +2998,7 @@ nds32_elf_generic_reloc (bfd *input_bfd, arelent *reloc_entry,
 
   /* Sanity check the address (offset in section).  */
   bfd_vma octet = (reloc_entry->address
-		   * bfd_octets_per_byte (input_bfd, input_section));
+		   * OCTETS_PER_BYTE (input_bfd, input_section));
   if (!bfd_reloc_offset_in_range (reloc_entry->howto, input_bfd, input_section,
 				  octet))
     return bfd_reloc_outofrange;
@@ -4353,8 +4359,7 @@ elf32_nds32_add_dynreloc (bfd *output_bfd,
 /* Set the sizes of the dynamic sections.  */
 
 static bool
-nds32_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
-			      struct bfd_link_info *info)
+nds32_elf_late_size_sections (struct bfd_link_info *info)
 {
   struct elf_nds32_link_hash_table *htab;
   bfd *dynobj;
@@ -4581,7 +4586,7 @@ nds32_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       s->alloced = 1;
     }
 
-  return _bfd_elf_add_dynamic_tags (output_bfd, info, relocs);
+  return _bfd_elf_add_dynamic_tags (info, relocs);
 }
 
 static bfd_reloc_status_type
@@ -4753,7 +4758,7 @@ nds32_elf_final_link_relocate (reloc_howto_type *howto, bfd *input_bfd,
   bfd_vma relocation;
 
   /* Sanity check the address.  */
-  bfd_vma octet = address * bfd_octets_per_byte (input_bfd, input_section);
+  bfd_vma octet = address * OCTETS_PER_BYTE (input_bfd, input_section);
   if (!bfd_reloc_offset_in_range (howto, input_bfd, input_section, octet))
     return bfd_reloc_outofrange;
 
@@ -5039,8 +5044,7 @@ fls (register unsigned int x)
   (elf_nds32_tdata (bfd)->local_tlsdesc_gotent)
 
 static int
-nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
-			    struct bfd_link_info * info,
+nds32_elf_relocate_section (struct bfd_link_info * info,
 			    bfd *		   input_bfd,
 			    asection *		   input_section,
 			    bfd_byte *		   contents,
@@ -5090,7 +5094,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
   if ((!bfd_link_relocatable (info)))
     {
       is_SDA_BASE_set = 1;
-      r = nds32_elf_final_sda_base (output_bfd, info, &gp, true);
+      r = nds32_elf_final_sda_base (info->output_bfd, info, &gp, true);
       if (r != bfd_reloc_ok)
 	return false;
     }
@@ -5101,7 +5105,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
   /* Use gp as fp to prevent truncated fit.  Because in relaxation time
      the fp value is set as gp, and it has be reverted for instruction
      setting fp.  */
-  fpbase_addr = elf_gp (output_bfd);
+  fpbase_addr = elf_gp (info->output_bfd);
 
   /* Deal with (dynamic) relocations.  */
   for (rel = relocs; rel < relend; rel++)
@@ -5161,7 +5165,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
       else if (ELF32_R_TYPE (rel->r_info) == R_NDS32_RELAX_REGION_END
 	       && (rel->r_addend & R_NDS32_RELAX_REGION_OMIT_FP_FLAG))
 	{
-	  fpbase_addr = elf_gp (output_bfd);
+	  fpbase_addr = elf_gp (info->output_bfd);
 	}
 
       /* Skip the relocations used for relaxation.  */
@@ -5187,7 +5191,8 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 	  sym = local_syms + r_symndx;
 	  sec = local_sections[r_symndx];
 
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 	  addend = rel->r_addend;
 
 	  /* keep symbol location for static TLS_IE GOT entry  */
@@ -5274,7 +5279,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 	case R_NDS32_GOTOFF_LO19:
 	  BFD_ASSERT (sgot != NULL);
 
-	  relocation -= elf_gp (output_bfd);
+	  relocation -= elf_gp (info->output_bfd);
 	  break;
 
 	case R_NDS32_9_PLTREL:
@@ -5318,14 +5323,14 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		 using -Bsymbolic.  */
 	      if (h)
 		h->plt.offset = (bfd_vma) -1;   /* Cancel PLT trampoline.  */
-	      relocation -= elf_gp (output_bfd);
+	      relocation -= elf_gp (info->output_bfd);
 	      break;
 	    }
 
 	  relocation = (splt->output_section->vma
 			+ splt->output_offset + h->plt.offset);
 
-	  relocation -= elf_gp (output_bfd);
+	  relocation -= elf_gp (info->output_bfd);
 	  break;
 
 	case R_NDS32_PLTREL_HI20:
@@ -5364,7 +5369,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 	case R_NDS32_GOTPC20:
 	  /* .got(_GLOBAL_OFFSET_TABLE_) - pc relocation
 	     ld24 rx,#_GLOBAL_OFFSET_TABLE_  */
-	  relocation = elf_gp (output_bfd);
+	  relocation = elf_gp (info->output_bfd);
 	  break;
 
 	case R_NDS32_GOTPC_HI20:
@@ -5377,7 +5382,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 	     bl .+4
 	     seth rx,#shigh(_GLOBAL_OFFSET_TABLE_)
 	     add3 rx,rx,#low(_GLOBAL_OFFSET_TABLE_ +4)  */
-	  relocation = elf_gp (output_bfd);
+	  relocation = elf_gp (info->output_bfd);
 	  relocation -= (input_section->output_section->vma
 			 + input_section->output_offset + rel->r_offset);
 	  break;
@@ -5424,12 +5429,13 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		    off &= ~1;
 		  else
 		    {
-		      bfd_put_32 (output_bfd, relocation, sgot->contents + off);
+		      bfd_put_32 (info->output_bfd, relocation,
+				  sgot->contents + off);
 		      h->got.offset |= 1;
 		    }
 		}
 	      relocation = sgot->output_section->vma + sgot->output_offset + off
-			   - elf_gp (output_bfd);
+			   - elf_gp (info->output_bfd);
 	    }
 	  else
 	    {
@@ -5448,7 +5454,8 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		off &= ~1;
 	      else
 		{
-		  bfd_put_32 (output_bfd, relocation, sgot->contents + off);
+		  bfd_put_32 (info->output_bfd, relocation,
+			      sgot->contents + off);
 
 		  if (bfd_link_pic (info))
 		    {
@@ -5460,20 +5467,20 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		      srelgot = bfd_get_section_by_name (dynobj, ".rela.got");
 		      BFD_ASSERT (srelgot != NULL);
 
-		      outrel.r_offset = (elf_gp (output_bfd)
+		      outrel.r_offset = (elf_gp (info->output_bfd)
 					 + sgot->output_offset + off);
 		      outrel.r_info = ELF32_R_INFO (0, R_NDS32_RELATIVE);
 		      outrel.r_addend = relocation;
 		      loc = srelgot->contents;
 		      loc +=
 			srelgot->reloc_count * sizeof (Elf32_External_Rela);
-		      bfd_elf32_swap_reloca_out (output_bfd, &outrel, loc);
+		      bfd_elf32_swap_reloca_out (info->output_bfd, &outrel, loc);
 		      ++srelgot->reloc_count;
 		    }
 		  local_got_offsets[r_symndx] |= 1;
 		}
 	      relocation = sgot->output_section->vma + sgot->output_offset + off
-			   - elf_gp (output_bfd);
+			   - elf_gp (info->output_bfd);
 	    }
 
 	  break;
@@ -5540,7 +5547,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 	      skip = false;
 	      relocate = false;
 
-	      outrel.r_offset = _bfd_elf_section_offset (output_bfd,
+	      outrel.r_offset = _bfd_elf_section_offset (info->output_bfd,
 							 info,
 							 input_section,
 							 rel->r_offset);
@@ -5584,7 +5591,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 			  if (h->got.offset != (bfd_vma) -1
 			      && (h->got.offset & 1) == 0)
 			    {
-			      bfd_put_32 (output_bfd, outrel.r_addend,
+			      bfd_put_32 (info->output_bfd, outrel.r_addend,
 					  sgot->contents + h->got.offset);
 			    }
 			}
@@ -5608,7 +5615,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 
 	      loc = sreloc->contents;
 	      loc += sreloc->reloc_count * sizeof (Elf32_External_Rela);
-	      bfd_elf32_swap_reloca_out (output_bfd, &outrel, loc);
+	      bfd_elf32_swap_reloca_out (info->output_bfd, &outrel, loc);
 	      ++sreloc->reloc_count;
 
 	      /* If this reloc is against an external symbol, we do
@@ -5696,7 +5703,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		    off &= ~1;
 		  else
 		    {
-		      bfd_put_32 (output_bfd, relocation,
+		      bfd_put_32 (info->output_bfd, relocation,
 				  sgot->contents + off);
 		      h->got.offset |= 1;
 		    }
@@ -5718,7 +5725,8 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		off &= ~1;
 	      else
 		{
-		  bfd_put_32 (output_bfd, relocation, sgot->contents + off);
+		  bfd_put_32 (info->output_bfd, relocation,
+			      sgot->contents + off);
 
 		  if (bfd_link_pic (info))
 		    {
@@ -5730,21 +5738,21 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		      srelgot = bfd_get_section_by_name (dynobj, ".rela.got");
 		      BFD_ASSERT (srelgot != NULL);
 
-		      outrel.r_offset = (elf_gp (output_bfd)
+		      outrel.r_offset = (elf_gp (info->output_bfd)
 					 + sgot->output_offset + off);
 		      outrel.r_info = ELF32_R_INFO (0, R_NDS32_RELATIVE);
 		      outrel.r_addend = relocation;
 		      loc = srelgot->contents;
 		      loc +=
 			srelgot->reloc_count * sizeof (Elf32_External_Rela);
-		      bfd_elf32_swap_reloca_out (output_bfd, &outrel, loc);
+		      bfd_elf32_swap_reloca_out (info->output_bfd, &outrel, loc);
 		      ++srelgot->reloc_count;
 		    }
 		  local_got_offsets[r_symndx] |= 1;
 		}
 	    }
 	  relocation = sgot->output_section->vma + sgot->output_offset + off
-	    - elf_gp (output_bfd);
+	    - elf_gp (info->output_bfd);
 
 	  if (relocation & align)
 	    {
@@ -5787,7 +5795,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 
 	  /* If the symbol is in the abs section, the out_bfd will be null.
 	     This happens when the relocation has a symbol@GOTOFF.  */
-	  r = nds32_elf_final_sda_base (output_bfd, info, &gp, false);
+	  r = nds32_elf_final_sda_base (info->output_bfd, info, &gp, false);
 	  if (r != bfd_reloc_ok)
 	    {
 	      _bfd_error_handler
@@ -5915,7 +5923,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 
 		if (eff_tls_type & GOT_TLS_DESC)
 		  {
-		    relocation -= elf_gp (output_bfd);
+		    relocation -= elf_gp (info->output_bfd);
 		    if ((R_NDS32_TLS_DESC_HI20 == r_type) && (!need_relocs))
 		      {
 			/* TLS model shall be converted.  */
@@ -5924,7 +5932,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		  }
 		else if (eff_tls_type & GOT_TLS_IEGP)
 		  {
-		    relocation -= elf_gp (output_bfd);
+		    relocation -= elf_gp (info->output_bfd);
 		  }
 	      }
 	    else
@@ -5937,7 +5945,7 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 		else if (eff_tls_type & (GOT_TLS_IE | GOT_TLS_IEGP))
 		  {
 		    if (eff_tls_type & GOT_TLS_IEGP)
-		      relocation -= elf_gp(output_bfd);
+		      relocation -= elf_gp(info->output_bfd);
 
 		    if (need_relocs)
 		      {
@@ -5949,18 +5957,19 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 					   + sgot->output_offset + off);
 			outrel.r_info = ELF32_R_INFO (indx, R_NDS32_TLS_TPOFF);
 
-			elf32_nds32_add_dynreloc (output_bfd, info, srelgot,
-						  &outrel);
+			elf32_nds32_add_dynreloc (info->output_bfd, info,
+						  srelgot, &outrel);
 		      }
 		    else
 		      {
-			bfd_put_32 (output_bfd, gottpoff (info, relocation_sym),
+			bfd_put_32 (info->output_bfd,
+				    gottpoff (info, relocation_sym),
 				    sgot->contents + off);
 		      }
 		  }
 		else if (eff_tls_type & GOT_TLS_DESC)
 		  {
-		    relocation -= elf_gp (output_bfd);
+		    relocation -= elf_gp (info->output_bfd);
 		    if (need_relocs)
 		      {
 			if (indx == 0)
@@ -5980,22 +5989,25 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
 			    BFD_ASSERT (loc + sizeof (Elf32_External_Rela)
 					<= srelplt->contents + srelplt->size);
 
-			    bfd_elf32_swap_reloca_out (output_bfd, &outrel, loc);
+			    bfd_elf32_swap_reloca_out (info->output_bfd,
+						       &outrel, loc);
 			  }
 			else
 			  {
 			    loc = srelgot->contents;
 			    loc += srelgot->reloc_count * sizeof (Elf32_External_Rela);
-			    bfd_elf32_swap_reloca_out (output_bfd, &outrel, loc);
+			    bfd_elf32_swap_reloca_out (info->output_bfd,
+						       &outrel, loc);
 			    ++srelgot->reloc_count;
 			  }
 		      }
 		    else
 		      {
 			/* feed me!  */
-			bfd_put_32 (output_bfd, 0xdeadbeef,
+			bfd_put_32 (info->output_bfd, 0xdeadbeef,
 				    sgot->contents + off);
-			bfd_put_32 (output_bfd, gottpoff (info, relocation_sym),
+			bfd_put_32 (info->output_bfd,
+				    gottpoff (info, relocation_sym),
 				    sgot->contents + off + 4);
 			patch_tls_desc_to_ie (contents, rel, input_bfd);
 			BFD_ASSERT(0);
@@ -6178,8 +6190,9 @@ nds32_elf_relocate_section (bfd *		   output_bfd ATTRIBUTE_UNUSED,
    dynamic sections here.  */
 
 static bool
-nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
-				 struct elf_link_hash_entry *h, Elf_Internal_Sym *sym)
+nds32_elf_finish_dynamic_symbol (struct bfd_link_info *info,
+				 struct elf_link_hash_entry *h,
+				 Elf_Internal_Sym *sym)
 {
   struct elf_link_hash_table *ehtab;
   struct elf_nds32_link_hash_entry *hent;
@@ -6253,7 +6266,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
 	  long offset;
 
 	  offset = sgot->output_section->vma + sgot->output_offset + got_offset
-		   - elf_gp (output_bfd);
+		   - elf_gp (info->output_bfd);
 	  insn = PLT_PIC_ENTRY_WORD0 + ((offset >> 12) & 0xfffff);
 	  bfd_putb32 (insn, splt->contents + h->plt.offset);
 
@@ -6278,7 +6291,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
 
       /* Fill in the entry in the global offset table,
 	 so it will fall through to the next instruction for the first time.  */
-      bfd_put_32 (output_bfd,
+      bfd_put_32 (info->output_bfd,
 		  (splt->output_section->vma + splt->output_offset
 		   + h->plt.offset + local_plt_offset),
 		  sgot->contents + got_offset);
@@ -6290,7 +6303,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
       rela.r_addend = 0;
       loc = srela->contents;
       loc += plt_index * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
 
       if (!h->def_regular)
 	{
@@ -6336,14 +6349,14 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
 
 	  if ((h->got.offset & 1) == 0)
 	    {
-	      bfd_put_32 (output_bfd, rela.r_addend,
+	      bfd_put_32 (info->output_bfd, rela.r_addend,
 			  sgot->contents + h->got.offset);
 	    }
 	}
       else
 	{
 	  BFD_ASSERT ((h->got.offset & 1) == 0);
-	  bfd_put_32 (output_bfd, (bfd_vma) 0,
+	  bfd_put_32 (info->output_bfd, (bfd_vma) 0,
 		      sgot->contents + h->got.offset);
 	  rela.r_info = ELF32_R_INFO (h->dynindx, R_NDS32_GLOB_DAT);
 	  rela.r_addend = 0;
@@ -6351,7 +6364,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
 
       loc = srelagot->contents;
       loc += srelagot->reloc_count * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
       ++srelagot->reloc_count;
       BFD_ASSERT (loc < (srelagot->contents + srelagot->size));
     }
@@ -6377,7 +6390,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
       rela.r_addend = 0;
       loc = s->contents;
       loc += s->reloc_count * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
       ++s->reloc_count;
     }
 
@@ -6393,7 +6406,7 @@ nds32_elf_finish_dynamic_symbol (bfd *output_bfd, struct bfd_link_info *info,
 /* Finish up the dynamic sections.  */
 
 static bool
-nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
+nds32_elf_finish_dynamic_sections (struct bfd_link_info *info,
 				   bfd_byte *buf ATTRIBUTE_UNUSED)
 {
   bfd *dynobj;
@@ -6447,14 +6460,14 @@ nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
 	    get_vma:
 	      BFD_ASSERT (s != NULL);
 	      dyn.d_un.d_ptr = s->output_section->vma + s->output_offset;
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 
 	    case DT_PLTRELSZ:
 	      s = ehtab->srelplt;
 	      BFD_ASSERT (s != NULL);
 	      dyn.d_un.d_val = s->size;
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 
 	    case DT_RELASZ:
@@ -6472,21 +6485,21 @@ nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
 		  s = ehtab->srelplt;
 		  dyn.d_un.d_val -= s->size;
 		}
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 
 	    case DT_TLSDESC_PLT:
 	      s = htab->root.splt;
 	      dyn.d_un.d_ptr = (s->output_section->vma + s->output_offset
 				+ htab->root.tlsdesc_plt);
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 
 	    case DT_TLSDESC_GOT:
 	      s = htab->root.sgot;
 	      dyn.d_un.d_ptr = (s->output_section->vma + s->output_offset
 				+ htab->root.tlsdesc_got);
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 	    }
 	}
@@ -6501,7 +6514,7 @@ nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
 	      long offset;
 
 	      offset = sgotplt->output_section->vma + sgotplt->output_offset + 4
-		- elf_gp (output_bfd);
+		- elf_gp (info->output_bfd);
 	      insn = PLT0_PIC_ENTRY_WORD0 | ((offset >> 12) & 0xfffff);
 	      bfd_putb32 (insn, splt->contents);
 
@@ -6558,8 +6571,8 @@ nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
 	    + htab->root.tlsdesc_got;
 
 	  /* Get GP offset.  */
-	  pltgot -= elf_gp (output_bfd) - 4; /* PLTGOT[1]  */
-	  tlsdesc_got -= elf_gp (output_bfd);
+	  pltgot -= elf_gp (info->output_bfd) - 4; /* PLTGOT[1]  */
+	  tlsdesc_got -= elf_gp (info->output_bfd);
 
 	  /* Do relocation.  */
 	  dl_tlsdesc_lazy_trampoline[0] += ((1 << 20) - 1) & (tlsdesc_got >> 12);
@@ -6578,13 +6591,13 @@ nds32_elf_finish_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info,
   if (sgotplt && sgotplt->size > 0)
     {
       if (sdyn == NULL)
-	bfd_put_32 (output_bfd, (bfd_vma) 0, sgotplt->contents);
+	bfd_put_32 (info->output_bfd, 0, sgotplt->contents);
       else
-	bfd_put_32 (output_bfd,
+	bfd_put_32 (info->output_bfd,
 		    sdyn->output_section->vma + sdyn->output_offset,
 		    sgotplt->contents);
-      bfd_put_32 (output_bfd, (bfd_vma) 0, sgotplt->contents + 4);
-      bfd_put_32 (output_bfd, (bfd_vma) 0, sgotplt->contents + 8);
+      bfd_put_32 (info->output_bfd, 0, sgotplt->contents + 4);
+      bfd_put_32 (info->output_bfd, 0, sgotplt->contents + 8);
 
       elf_section_data (sgotplt->output_section)->this_hdr.sh_entsize = 4;
     }
@@ -7156,7 +7169,11 @@ nds32_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	    case R_NDS32_TLS_DESC_HI20:
 	    case R_NDS32_TLS_DESC_LO12:
 	      if (dynobj == NULL)
-		htab->root.dynobj = dynobj = abfd;
+		{
+		  dynobj = _bfd_elf_link_dynobj (info);
+		  if (dynobj == NULL)
+		    return false;
+		}
 	      if (!create_got_section (dynobj, info))
 		return false;
 	      break;
@@ -7323,7 +7340,11 @@ nds32_elf_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	      struct elf_dyn_relocs **head;
 
 	      if (dynobj == NULL)
-		htab->root.dynobj = dynobj = abfd;
+		{
+		  dynobj = _bfd_elf_link_dynobj (info);
+		  if (dynobj == NULL)
+		    return false;
+		}
 
 	      /* When creating a shared object, we must copy these
 		 relocs into the output file.  We create a reloc
@@ -7711,7 +7732,7 @@ nds32_convert_32_to_16_alu1 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       break;
 
     case N32_ALU1_SLT:
-      if (N32_RT5 (insn) == REG_R15 && N32_IS_RA4 (insn))
+      if (N32_RT5 (insn) == N32_REG_R15 && N32_IS_RA4 (insn))
 	{
 	  /* Implicit r15.  */
 	  insn16 = N16_TYPE45 (SLT45, N32_RA54 (insn), N32_RB5 (insn));
@@ -7720,7 +7741,7 @@ nds32_convert_32_to_16_alu1 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       break;
 
     case N32_ALU1_SLTS:
-      if (N32_RT5 (insn) == REG_R15 && N32_IS_RA4 (insn))
+      if (N32_RT5 (insn) == N32_REG_R15 && N32_IS_RA4 (insn))
 	{
 	  /* Implicit r15.  */
 	  insn16 = N16_TYPE45 (SLTS45, N32_RA54 (insn), N32_RB5 (insn));
@@ -7818,7 +7839,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	  /* Do not convert `addi $sp, $sp, 0' to `mov55 $sp, $sp',
 	     because `mov55 $sp, $sp' is ifret16 in V3 ISA.  */
 	  if (mach <= MACH_V2
-	      || N32_RT5 (insn) != REG_SP || N32_RA5 (insn) != REG_SP)
+	      || N32_RT5 (insn) != N32_REG_SP || N32_RA5 (insn) != N32_REG_SP)
 	    {
 	      insn16 = N16_TYPE55 (MOV55, N32_RT5 (insn), N32_RA5 (insn));
 	      insn_type = NDS32_INSN_MOV55;
@@ -7838,7 +7859,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	      insn16 = N16_TYPE45 (ADDI45, N32_RT54 (insn), N32_IMM15S (insn));
 	      insn_type = NDS32_INSN_ADDI45;
 	    }
-	  else if (mach >= MACH_V2 && N32_RT5 (insn) == REG_SP
+	  else if (mach >= MACH_V2 && N32_RT5 (insn) == N32_REG_SP
 		   && N32_RT5 (insn) == N32_RA5 (insn)
 		   && N32_IMM15S (insn) < 512)
 	    {
@@ -7846,7 +7867,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	      insn_type = NDS32_INSN_ADDI10_SP;
 	    }
 	  else if (mach >= MACH_V3 && N32_IS_RT3 (insn)
-		   && N32_RA5 (insn) == REG_SP && N32_IMM15S (insn) < 256
+		   && N32_RA5 (insn) == N32_REG_SP && N32_IMM15S (insn) < 256
 		   && (N32_IMM15S (insn) % 4 == 0))
 	    {
 	      insn16 = N16_TYPE36 (ADDRI36_SP, N32_RT5 (insn),
@@ -7870,7 +7891,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 				   0 - N32_IMM15S (insn));
 	      insn_type = NDS32_INSN_SUBI45;
 	    }
-	  else if (mach >= MACH_V2 && N32_RT5 (insn) == REG_SP
+	  else if (mach >= MACH_V2 && N32_RT5 (insn) == N32_REG_SP
 		   && N32_RT5 (insn) == N32_RA5 (insn)
 		   && N32_IMM15S (insn) >= -512)
 	    {
@@ -7886,7 +7907,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	  /* Do not convert `ori $sp, $sp, 0' to `mov55 $sp, $sp',
 	     because `mov55 $sp, $sp' is ifret16 in V3 ISA.  */
 	  if (mach <= MACH_V2
-	      || N32_RT5 (insn) != REG_SP || N32_RA5 (insn) != REG_SP)
+	      || N32_RT5 (insn) != N32_REG_SP || N32_RA5 (insn) != N32_REG_SP)
 	    {
 	      insn16 = N16_TYPE55 (MOV55, N32_RT5 (insn), N32_RA5 (insn));
 	      insn_type = NDS32_INSN_MOV55;
@@ -7947,7 +7968,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       break;
 
     case N32_OP6_SLTI:
-      if (N32_RT5 (insn) == REG_R15 && N32_IS_RA4 (insn)
+      if (N32_RT5 (insn) == N32_REG_R15 && N32_IS_RA4 (insn)
 	  && IS_WITHIN_U (N32_IMM15S (insn), 5))
 	{
 	  insn16 = N16_TYPE45 (SLTI45, N32_RA54 (insn), N32_IMM15S (insn));
@@ -7956,7 +7977,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       break;
 
     case N32_OP6_SLTSI:
-      if (N32_RT5 (insn) == REG_R15 && N32_IS_RA4 (insn)
+      if (N32_RT5 (insn) == N32_REG_R15 && N32_IS_RA4 (insn)
 	  && IS_WITHIN_U (N32_IMM15S (insn), 5))
 	{
 	  insn16 = N16_TYPE45 (SLTSI45, N32_RA54 (insn), N32_IMM15S (insn));
@@ -7977,19 +7998,21 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 				N32_IMM15S (insn));
 	  insn_type = NDS32_INSN_LWI333;
 	}
-      else if (N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_FP
+      else if (N32_IS_RT3 (insn) && N32_RA5 (insn) == N32_REG_FP
 	       && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	{
 	  insn16 = N16_TYPE37 (XWI37, N32_RT5 (insn), 0, N32_IMM15S (insn));
 	  insn_type = NDS32_INSN_LWI37;
 	}
-      else if (mach >= MACH_V2 && N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_SP
+      else if (mach >= MACH_V2 && N32_IS_RT3 (insn)
+	       && N32_RA5 (insn) == N32_REG_SP
 	       && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	{
 	  insn16 = N16_TYPE37 (XWI37SP, N32_RT5 (insn), 0, N32_IMM15S (insn));
 	  insn_type = NDS32_INSN_LWI37_SP;
 	}
-      else if (mach >= MACH_V2 && N32_IS_RT4 (insn) && N32_RA5 (insn) == REG_R8
+      else if (mach >= MACH_V2 && N32_IS_RT4 (insn)
+	       && N32_RA5 (insn) == N32_REG_R8
 	       && -32 <= N32_IMM15S (insn) && N32_IMM15S (insn) < 0)
 	{
 	  insn16 = N16_TYPE45 (LWI45_FE, N32_RT54 (insn),
@@ -8011,13 +8034,14 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 				N32_IMM15S (insn));
 	  insn_type = NDS32_INSN_SWI333;
 	}
-      else if (N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_FP
+      else if (N32_IS_RT3 (insn) && N32_RA5 (insn) == N32_REG_FP
 	       && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	{
 	  insn16 = N16_TYPE37 (XWI37, N32_RT5 (insn), 1, N32_IMM15S (insn));
 	  insn_type = NDS32_INSN_SWI37;
 	}
-      else if (mach >= MACH_V2 && N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_SP
+      else if (mach >= MACH_V2 && N32_IS_RT3 (insn)
+	       && N32_RA5 (insn) == N32_REG_SP
 	       && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	{
 	  insn16 = N16_TYPE37 (XWI37SP, N32_RT5 (insn), 1, N32_IMM15S (insn));
@@ -8098,11 +8122,11 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       if ((insn & N32_BIT (14)) == 0)
 	{
 	  /* N32_BR1_BEQ */
-	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_R5
-	      && N32_RT5 (insn) != REG_R5)
+	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == N32_REG_R5
+	      && N32_RT5 (insn) != N32_REG_R5)
 	    insn16 = N16_TYPE38 (BEQS38, N32_RT5 (insn), N32_IMM14S (insn));
-	  else if (N32_IS_RA3 (insn) && N32_RT5 (insn) == REG_R5
-		   && N32_RA5 (insn) != REG_R5)
+	  else if (N32_IS_RA3 (insn) && N32_RT5 (insn) == N32_REG_R5
+		   && N32_RA5 (insn) != N32_REG_R5)
 	    insn16 = N16_TYPE38 (BEQS38, N32_RA5 (insn), N32_IMM14S (insn));
 	  insn_type = NDS32_INSN_BEQS38;
 	  break;
@@ -8110,11 +8134,11 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
       else
 	{
 	  /* N32_BR1_BNE */
-	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_R5
-	      && N32_RT5 (insn) != REG_R5)
+	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == N32_REG_R5
+	      && N32_RT5 (insn) != N32_REG_R5)
 	    insn16 = N16_TYPE38 (BNES38, N32_RT5 (insn), N32_IMM14S (insn));
-	  else if (N32_IS_RA3 (insn) && N32_RT5 (insn) == REG_R5
-		   && N32_RA5 (insn) != REG_R5)
+	  else if (N32_IS_RA3 (insn) && N32_RT5 (insn) == N32_REG_R5
+		   && N32_RA5 (insn) != N32_REG_R5)
 	    insn16 = N16_TYPE38 (BNES38, N32_RA5 (insn), N32_IMM14S (insn));
 	  insn_type = NDS32_INSN_BNES38;
 	  break;
@@ -8130,7 +8154,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	      insn16 = N16_TYPE38 (BEQZ38, N32_RT5 (insn), N32_IMM16S (insn));
 	      insn_type = NDS32_INSN_BEQZ38;
 	    }
-	  else if (N32_RT5 (insn) == REG_R15
+	  else if (N32_RT5 (insn) == N32_REG_R15
 		   && IS_WITHIN_S (N32_IMM16S (insn), 8))
 	    {
 	      insn16 = N16_TYPE8 (BEQZS8, N32_IMM16S (insn));
@@ -8144,7 +8168,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	      insn16 = N16_TYPE38 (BNEZ38, N32_RT5 (insn), N32_IMM16S (insn));
 	      insn_type = NDS32_INSN_BNEZ38;
 	    }
-	  else if (N32_RT5 (insn) == REG_R15
+	  else if (N32_RT5 (insn) == N32_REG_R15
 		   && IS_WITHIN_S (N32_IMM16S (insn), 8))
 	    {
 	      insn16 = N16_TYPE8 (BNEZS8, N32_IMM16S (insn));
@@ -8196,7 +8220,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	  else if (N32_JREG_HINT (insn) == 3)
 	    {
 	      /* ifret = mov55 $sp, $sp */
-	      insn16 = N16_TYPE55 (MOV55, REG_SP, REG_SP);
+	      insn16 = N16_TYPE55 (MOV55, N32_REG_SP, N32_REG_SP);
 	      insn_type = NDS32_INSN_IFRET;
 	    }
 	  break;
@@ -8204,7 +8228,7 @@ bfd_elf_nds32_convert_32_to_16 (bfd *abfd, uint32_t insn, uint16_t *pinsn16,
 	case N32_JREG_JRAL:
 	  /* It's convertible when return rt5 is $lp and address
 	     translation is kept.  */
-	  if (N32_RT5 (insn) == REG_LP && N32_JREG_HINT (insn) == 0)
+	  if (N32_RT5 (insn) == N32_REG_LP && N32_JREG_HINT (insn) == 0)
 	    {
 	      insn16 = N16_TYPE5 (JRAL5, N32_RB5 (insn));
 	      insn_type = NDS32_INSN_JRAL5;
@@ -8255,11 +8279,11 @@ special_convert_32_to_16 (unsigned long insn, uint16_t *pinsn16,
   switch (N32_OP6 (insn))
     {
     case N32_OP6_LWI:
-      if (N32_RA5 (insn) == REG_GP && IS_WITHIN_U (N32_IMM15S (insn), 7))
+      if (N32_RA5 (insn) == N32_REG_GP && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	insn16 = N16_TYPE37 (XWI37, N32_RT5 (insn), 0, N32_IMM15S (insn));
       break;
     case N32_OP6_SWI:
-      if (N32_RA5 (insn) == REG_GP && IS_WITHIN_U (N32_IMM15S (insn), 7))
+      if (N32_RA5 (insn) == N32_REG_GP && IS_WITHIN_U (N32_IMM15S (insn), 7))
 	insn16 = N16_TYPE37 (XWI37, N32_RT5 (insn), 1, N32_IMM15S (insn));
       break;
     case N32_OP6_HWGP:
@@ -8371,11 +8395,11 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
 			N16_IMM3U (insn16));
       goto done;
     case 0x18:			/* addri36.sp */
-      insn = N32_TYPE2 (ADDI, N16_RT3 (insn16), REG_SP,
+      insn = N32_TYPE2 (ADDI, N16_RT3 (insn16), N32_REG_SP,
 			N16_IMM6U (insn16) << 2);
       goto done;
     case 0x19:			/* lwi45.fe */
-      insn = N32_TYPE2 (LWI, N16_RT4 (insn16), REG_R8,
+      insn = N32_TYPE2 (LWI, N16_RT4 (insn16), N32_REG_R8,
 			(N16_IMM5U (insn16) - 32));
       goto done;
     case 0x1a:			/* lwi450 */
@@ -8387,22 +8411,24 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
 
       /* These are r15 implied instructions.  */
     case 0x30:			/* slts45 */
-      insn = N32_ALU1 (SLTS, REG_TA, N16_RT4 (insn16), N16_RA5 (insn16));
+      insn = N32_ALU1 (SLTS, N32_REG_TA, N16_RT4 (insn16), N16_RA5 (insn16));
       goto done;
     case 0x31:			/* slt45 */
-      insn = N32_ALU1 (SLT, REG_TA, N16_RT4 (insn16), N16_RA5 (insn16));
+      insn = N32_ALU1 (SLT, N32_REG_TA, N16_RT4 (insn16), N16_RA5 (insn16));
       goto done;
     case 0x32:			/* sltsi45 */
-      insn = N32_TYPE2 (SLTSI, REG_TA, N16_RT4 (insn16), N16_IMM5U (insn16));
+      insn = N32_TYPE2 (SLTSI, N32_REG_TA, N16_RT4 (insn16),
+			N16_IMM5U (insn16));
       goto done;
     case 0x33:			/* slti45 */
-      insn = N32_TYPE2 (SLTI, REG_TA, N16_RT4 (insn16), N16_IMM5U (insn16));
+      insn = N32_TYPE2 (SLTI, N32_REG_TA, N16_RT4 (insn16),
+			N16_IMM5U (insn16));
       goto done;
     case 0x34:			/* beqzs8, bnezs8 */
       if (insn16 & N32_BIT (8))
-	insn = N32_BR2 (BNEZ, REG_TA, N16_IMM8S (insn16));
+	insn = N32_BR2 (BNEZ, N32_REG_TA, N16_IMM8S (insn16));
       else
-	insn = N32_BR2 (BEQZ, REG_TA, N16_IMM8S (insn16));
+	insn = N32_BR2 (BEQZ, N32_REG_TA, N16_IMM8S (insn16));
       goto done;
 
     case 0x35:			/* break16, ex9.it */
@@ -8482,7 +8508,7 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
   switch (__GF (insn16, 10, 5))
     {
     case 0x0:			/* mov55 or ifret16 */
-      if (mach >= MACH_V3 && N16_RT5 (insn16) == REG_SP
+      if (mach >= MACH_V3 && N16_RT5 (insn16) == N32_REG_SP
 	  && N16_RT5 (insn16) == N16_RA5 (insn16))
 	insn = N32_JREG (JR, 0, 0, 0, 3);
       else
@@ -8492,7 +8518,7 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
       insn = N32_TYPE1 (MOVI, N16_RT5 (insn16), N16_IMM5S (insn16));
       goto done;
     case 0x1b:			/* addi10s (V2) */
-      insn = N32_TYPE2 (ADDI, REG_SP, REG_SP, N16_IMM10S (insn16));
+      insn = N32_TYPE2 (ADDI, N32_REG_SP, N32_REG_SP, N16_IMM10S (insn16));
       goto done;
     }
 
@@ -8500,9 +8526,11 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
     {
     case 0x7:			/* lwi37.fp/swi37.fp */
       if (insn16 & N32_BIT (7))	/* swi37.fp */
-	insn = N32_TYPE2 (SWI, N16_RT38 (insn16), REG_FP, N16_IMM7U (insn16));
+	insn = N32_TYPE2 (SWI, N16_RT38 (insn16), N32_REG_FP,
+			  N16_IMM7U (insn16));
       else			/* lwi37.fp */
-	insn = N32_TYPE2 (LWI, N16_RT38 (insn16), REG_FP, N16_IMM7U (insn16));
+	insn = N32_TYPE2 (LWI, N16_RT38 (insn16), N32_REG_FP,
+			  N16_IMM7U (insn16));
       goto done;
     case 0x8:			/* beqz38 */
       insn = N32_BR2 (BEQZ, N16_RT38 (insn16), N16_IMM8S (insn16));
@@ -8514,7 +8542,8 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
       if (N16_RT38 (insn16) == 5)
 	insn = N32_JI (J, N16_IMM8S (insn16));
       else
-	insn = N32_BR1 (BEQ, N16_RT38 (insn16), REG_R5, N16_IMM8S (insn16));
+	insn = N32_BR1 (BEQ, N16_RT38 (insn16), N32_REG_R5,
+			N16_IMM8S (insn16));
       goto done;
     case 0xb:			/* bnes38 and others.  */
       if (N16_RT38 (insn16) == 5)
@@ -8528,7 +8557,7 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
 	      insn = N32_JREG (JR, 0, N16_RA5 (insn16), 0, 1);
 	      break;
 	    case 1:		/* jral5 */
-	      insn = N32_JREG (JRAL, REG_LP, N16_RA5 (insn16), 0, 0);
+	      insn = N32_JREG (JRAL, N32_REG_LP, N16_RA5 (insn16), 0, 0);
 	      break;
 	    case 2:		/* ex9.it imm5 */
 	      /* ex9.it had no 32-bit variantl.  */
@@ -8539,13 +8568,16 @@ bfd_elf_nds32_convert_16_to_32 (bfd *abfd, uint16_t insn16, uint32_t *pinsn)
 	    }
 	}
       else			/* bnes38 */
-	insn = N32_BR1 (BNE, N16_RT38 (insn16), REG_R5, N16_IMM8S (insn16));
+	insn = N32_BR1 (BNE, N16_RT38 (insn16), N32_REG_R5,
+			N16_IMM8S (insn16));
       goto done;
     case 0xe:			/* lwi37/swi37 */
       if (insn16 & (1 << 7))	/* swi37.sp */
-	insn = N32_TYPE2 (SWI, N16_RT38 (insn16), REG_SP, N16_IMM7U (insn16));
+	insn = N32_TYPE2 (SWI, N16_RT38 (insn16), N32_REG_SP,
+			  N16_IMM7U (insn16));
       else			/* lwi37.sp */
-	insn = N32_TYPE2 (LWI, N16_RT38 (insn16), REG_SP, N16_IMM7U (insn16));
+	insn = N32_TYPE2 (LWI, N16_RT38 (insn16), N32_REG_SP,
+			  N16_IMM7U (insn16));
       goto done;
     }
 
@@ -8650,7 +8682,7 @@ turn_insn_to_sda_access (uint32_t insn, bfd_signed_vma type, uint32_t *pinsn)
 
     case R_NDS32_LO12S2_DP_RELA:
     case R_NDS32_LO12S2_SP_RELA:
-      oinsn = (insn & 0x7ff07000) | (REG_GP << 15);
+      oinsn = (insn & 0x7ff07000) | (N32_REG_GP << 15);
       break;
     }
 
@@ -10113,7 +10145,7 @@ nds32_elf_convert_branch (uint16_t insn16, uint32_t insn,
 	{
 	  /* beqs label.  */
 	  comp_insn = (insn ^ 0x4000) & 0xffffc000;
-	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == REG_R5)
+	  if (N32_IS_RT3 (insn) && N32_RA5 (insn) == N32_REG_R5)
 	    {
 	      /* Insn can be contracted to 16-bit implied r5.  */
 	      comp_insn16 =
@@ -10139,7 +10171,7 @@ nds32_elf_convert_branch (uint16_t insn16, uint32_t insn,
 		    (comp_insn & 0x10000) ? INSN_BNEZ38 : INSN_BEQZ38;
 		  comp_insn16 |= (N32_RT5 (insn) & 0x7) << 8;
 		}
-	      else if (N32_RT5 (insn) == REG_R15)
+	      else if (N32_RT5 (insn) == N32_REG_R15)
 		{
 		  /* Insn can be contracted to 16-bit.  */
 		  comp_insn16 =
@@ -10164,14 +10196,14 @@ nds32_elf_convert_branch (uint16_t insn16, uint32_t insn,
 	  comp_insn16 = (insn16 ^ 0x0800) & 0xff00;
 	  comp_insn = (comp_insn16 & 0x0800) ? INSN_BNE : INSN_BEQ;
 	  comp_insn |= (((comp_insn16 & 0x0700) >> 8) << 20)
-	    | (REG_R5 << 15);
+	    | (N32_REG_R5 << 15);
 	  break;
 
 	case 0xe:
 	  /* beqzS8 or bnezS8 */
 	  comp_insn16 = (insn16 ^ 0x0100) & 0xff00;
 	  comp_insn = (comp_insn16 & 0x0100) ? INSN_BNEZ : INSN_BEQZ;
-	  comp_insn |= REG_R15 << 20;
+	  comp_insn |= N32_REG_R15 << 20;
 	  break;
 
 	default:
@@ -11608,7 +11640,7 @@ nds32_elf_relax_loadstore (struct bfd_link_info *link_info, bfd *abfd,
 	return false;
 
       /* Case for set gp register.  */
-      if (N32_RT5 (insn) == REG_GP)
+      if (N32_RT5 (insn) == N32_REG_GP)
 	return false;
 
       if (range_type == NDS32_LOADSTORE_FLOAT_S
@@ -11733,7 +11765,7 @@ nds32_elf_relax_lo12 (struct bfd_link_info *link_info, bfd *abfd,
 	  || (local_sda > access_addr && (local_sda - access_addr) <= range_l)
 	  || (h && strcmp (h->root.root.string, FP_BASE_NAME) == 0))
 	{
-	  if (N32_OP6 (insn) == N32_OP6_ORI && N32_RT5 (insn) == REG_GP)
+	  if (N32_OP6 (insn) == N32_OP6_ORI && N32_RT5 (insn) == N32_REG_GP)
 	    {
 	      /* Maybe we should add R_NDS32_INSN16 reloc type here
 		 or manually do some optimization.  sethi can't be
@@ -11876,7 +11908,7 @@ nds32_elf_relax_flsi (struct bfd_link_info *link_info, bfd *abfd,
       || (local_sda > access_addr && (local_sda - access_addr) <= range_l))
     {
       /* Turn flsi instruction into sda access format.  */
-      insn = (insn & 0x7ff07000) | (REG_GP << 15);
+      insn = (insn & 0x7ff07000) | (N32_REG_GP << 15);
 
       /* Add relocation type to flsi.  */
       irel->r_info = ELF32_R_INFO (ELF32_R_SYM (irel->r_info), reloc);
@@ -12554,8 +12586,7 @@ nds32_elf_section_flags (const Elf_Internal_Shdr *hdr)
 }
 
 static bool
-nds32_elf_output_arch_syms (bfd *output_bfd ATTRIBUTE_UNUSED,
-			    struct bfd_link_info *info,
+nds32_elf_output_arch_syms (struct bfd_link_info *info,
 			    void *finfo ATTRIBUTE_UNUSED,
 			    int (*func) (void *, const char *,
 					 Elf_Internal_Sym *,
@@ -13134,12 +13165,13 @@ nds32_fag_remove_unused_fpbase (bfd *abfd, asection *sec,
    The variety only modify function call for reading in the section.  */
 
 static bfd_byte *
-nds32_elf_get_relocated_section_contents (bfd *abfd,
-					  struct bfd_link_info *link_info,
-					  struct bfd_link_order *link_order,
-					  bfd_byte *data,
-					  bool relocatable,
-					  asymbol **symbols)
+nds32_elf_get_relocated_section_contents
+  (bfd *abfd,
+   struct bfd_link_info *link_info,
+   const struct bfd_link_order *link_order,
+   bfd_byte *data,
+   bool relocatable,
+   asymbol **symbols)
 {
   bfd *input_bfd = link_order->u.indirect.section->owner;
   asection *input_section = link_order->u.indirect.section;
@@ -13719,8 +13751,8 @@ nds32_elf_unify_tls_model (bfd *inbfd, asection *insec, bfd_byte *incontents,
 			  break;
 			case R_NDS32_TLS_DESC_CALL:
 			  {
-			    uint32_t insn = N32_ALU1(ADD, REG_R0, add_rt,
-						     REG_TP);
+			    uint32_t insn = N32_ALU1(ADD, N32_REG_R0, add_rt,
+						     N32_REG_TP);
 			    bfd_putb32 (insn, contents + irel->r_offset);
 
 			    irel->r_info = ELF32_R_INFO(r_symndx, R_NDS32_NONE);
@@ -13752,7 +13784,8 @@ nds32_elf_unify_tls_model (bfd *inbfd, asection *insec, bfd_byte *incontents,
 			  {
 			    uint32_t insn = bfd_getb32 (contents + irel->r_offset);
 			    add_rt = N32_RT5 (insn);
-			    insn = N32_MEM(LW, add_rt, sethi_rt, REG_GP, 0);
+			    insn = N32_MEM(LW, add_rt, sethi_rt,
+					   N32_REG_GP, 0);
 			    bfd_putb32 (insn, contents + irel->r_offset);
 
 			    irel->r_info = ELF32_R_INFO(r_symndx, R_NDS32_NONE);
@@ -13765,8 +13798,8 @@ nds32_elf_unify_tls_model (bfd *inbfd, asection *insec, bfd_byte *incontents,
 			  break;
 			case R_NDS32_TLS_DESC_CALL:
 			  {
-			    uint32_t insn = N32_ALU1(ADD, REG_R0, add_rt,
-						     REG_TP);
+			    uint32_t insn = N32_ALU1(ADD, N32_REG_R0, add_rt,
+						     N32_REG_TP);
 			    bfd_putb32 (insn, contents + irel->r_offset);
 
 			    irel->r_info = ELF32_R_INFO(r_symndx, R_NDS32_NONE);
@@ -13797,7 +13830,8 @@ nds32_elf_unify_tls_model (bfd *inbfd, asection *insec, bfd_byte *incontents,
 			    uint32_t insn = bfd_getb32 (contents + irel->r_offset);
 
 			    add_rt = N32_RT5 (insn);
-			    insn = N32_ALU1 (ADD, REG_R0, sethi_rt, REG_TP);
+			    insn = N32_ALU1 (ADD, N32_REG_R0, sethi_rt,
+					     N32_REG_TP);
 			    bfd_putb32 (insn, contents + irel->r_offset);
 
 			    irel->r_info = ELF32_R_INFO (r_symndx, R_NDS32_TLS_LE_ADD);

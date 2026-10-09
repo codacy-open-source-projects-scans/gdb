@@ -142,7 +142,7 @@ struct jit_reader
 
 static struct jit_reader *loaded_jit_reader = NULL;
 
-typedef struct gdb_reader_funcs * (reader_init_fn_type) (void);
+using reader_init_fn_type = struct gdb_reader_funcs * (void);
 static const char reader_init_fn_sym[] = "gdb_init_reader";
 
 /* Try to load FILE_NAME as a JIT debug info reader.  */
@@ -782,7 +782,7 @@ jit_bfd_try_read_symtab (struct jit_code_entry *code_entry,
 
   /* Check the format.  NOTE: This initializes important data that GDB uses!
      We would segfault later without this line.  */
-  if (!bfd_check_format (nbfd.get (), bfd_object))
+  if (!gdb_bfd_check_format (nbfd.get (), bfd_object))
     {
       gdb_printf (gdb_stderr, _("\
 JITed symbol file is not an object file, ignoring it.\n"));

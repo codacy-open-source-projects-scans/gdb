@@ -175,16 +175,16 @@ static struct
 } arm_linux_hwbp_cap;
 
 /* Enum describing the different types of ARM hardware break-/watch-points.  */
-typedef enum
+enum arm_hwbp_type
 {
   arm_hwbp_break = 0,
   arm_hwbp_load = 1,
   arm_hwbp_store = 2,
   arm_hwbp_access = 3
-} arm_hwbp_type;
+};
 
 /* Type describing an ARM Hardware Breakpoint Control register value.  */
-typedef unsigned int arm_hwbp_control_t;
+using arm_hwbp_control_t = unsigned int;
 
 /* Structure used to keep track of hardware break-/watch-points.  */
 struct arm_linux_hw_breakpoint
@@ -986,7 +986,7 @@ get_next_pcs_syscall_next_pc (struct arm_get_next_pcs *self)
   if (svc_number == __NR_sigreturn || svc_number == __NR_rt_sigreturn)
     {
       /* SIGRETURN or RT_SIGRETURN may affect the arm thumb mode, so
-	 update IS_THUMB.   */
+	 update IS_THUMB.  */
       next_pc = arm_sigreturn_next_pc (regcache, svc_number, &is_thumb);
     }
 

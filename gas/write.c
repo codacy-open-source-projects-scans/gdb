@@ -461,6 +461,23 @@ cvt_frag_to_fill (segT sec ATTRIBUTE_UNUSED, fragS *fragP)
 	size = output_leb128 (fragP->fr_literal + fragP->fr_fix, value,
 			      fragP->fr_subtype);
 
+	/* Relaxation may have reserved more room than the shortest encoding
+	   needs (see md_leb128_frag_size).  Keep the reserved size by adding
+	   redundant high-order continuation bytes; inert unless a target
+	   hook grew fr_offset above the minimal encoding.  */
+	if ((offsetT) size < fragP->fr_offset)
+	  {
+	    char *p = fragP->fr_literal + fragP->fr_fix;
+	    char pad = fragP->fr_subtype && (offsetT) value < 0 ? 0x7f : 0;
+
+	    do
+	      {
+		p[size - 1] |= 0x80;
+		p[size++] = pad;
+	      }
+	    while ((offsetT) size < fragP->fr_offset);
+	  }
+
 	fragP->fr_fix += size;
 	fragP->fr_type = rs_fill;
 	fragP->fr_var = 0;
@@ -909,6 +926,14 @@ adjust_reloc_syms (bfd *abfd ATTRIBUTE_UNUSED,
 	if ((symsec->flags & SEC_THREAD_LOCAL) != 0)
 	  continue;
 
+	/* With --reloc-section-sym=none, skip adjustment.
+	   With --reloc-section-sym=internal, only adjust relocs against
+	   internal labels (e.g. .L prefix symbols in ELF).  */
+	if (flag_reloc_section_sym == reloc_section_sym_none
+	    || (flag_reloc_section_sym == reloc_section_sym_internal
+		&& !bfd_is_local_label (stdoutput, symbol_get_bfdsym (sym))))
+	  continue;
+
 	val = S_GET_VALUE (sym);
 
 #if defined(TC_AARCH64) && defined(OBJ_COFF)
@@ -1228,31 +1253,39 @@ install_reloc (asection *sec, arelent *reloc, fragS *fragp,
     }
 }
 
+fragS *
+get_frag_for_address (fragS *last_frag,
+		      const segment_info_type *seginfo,
+		      addressT addr)
+{
+  fragS *f;
+
+  for (f = last_frag; f != NULL; f = f->fr_next)
+    if (f->fr_address <= addr && addr < f->fr_address + f->fr_fix)
+      return f;
+
+  for (f = seginfo->frchainP->frch_root; f != NULL; f = f->fr_next)
+    if (f->fr_address <= addr && addr < f->fr_address + f->fr_fix)
+      return f;
+
+  for (f = seginfo->frchainP->frch_root; f != NULL; f = f->fr_next)
+    if (f->fr_address <= addr && addr <= f->fr_address + f->fr_fix)
+      return f;
+
+  return NULL;
+}
+
 static fragS *
 get_frag_for_reloc (fragS *last_frag,
 		    const segment_info_type *seginfo,
 		    const struct reloc_list *r)
 {
-  fragS *f;
+  fragS *f = get_frag_for_address (last_frag, seginfo, r->u.b.r.address);
 
-  for (f = last_frag; f != NULL; f = f->fr_next)
-    if (f->fr_address <= r->u.b.r.address
-	&& r->u.b.r.address < f->fr_address + f->fr_fix)
-      return f;
-
-  for (f = seginfo->frchainP->frch_root; f != NULL; f = f->fr_next)
-    if (f->fr_address <= r->u.b.r.address
-	&& r->u.b.r.address < f->fr_address + f->fr_fix)
-      return f;
-
-  for (f = seginfo->frchainP->frch_root; f != NULL; f = f->fr_next)
-    if (f->fr_address <= r->u.b.r.address
-	&& r->u.b.r.address <= f->fr_address + f->fr_fix)
-      return f;
-
-  as_bad_where (r->file, r->line,
-		_("reloc not within (fixed part of) section"));
-  return NULL;
+  if (f == NULL)
+    as_bad_where (r->file, r->line,
+		  _("reloc not within (fixed part of) section"));
+  return f;
 }
 
 static void
@@ -1831,7 +1864,7 @@ set_symtab (void)
 #endif
 #endif
 
-static void
+void
 subsegs_finish_section (asection *s)
 {
   struct frchain *frchainP;
@@ -3108,6 +3141,9 @@ relax_segment (struct frag *segment_frag_root, segT segment, int pass)
 
 		  value = resolve_symbol_value (fragP->fr_symbol);
 		  size = sizeof_leb128 (value, fragP->fr_subtype);
+#ifdef md_leb128_frag_size
+		  size = md_leb128_frag_size (fragP, size);
+#endif
 		  growth = size - fragP->fr_offset;
 		  fragP->fr_offset = size;
 		}

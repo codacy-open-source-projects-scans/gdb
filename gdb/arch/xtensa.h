@@ -23,9 +23,9 @@
 /* Xtensa ELF core file register set representation ('.reg' section).
    Copied from target-side ELF header <xtensa/elf.h>.  */
 
-typedef uint32_t xtensa_elf_greg_t;
+using xtensa_elf_greg_t = uint32_t;
 
-typedef struct
+struct xtensa_elf_gregset_t
 {
   xtensa_elf_greg_t pc;
   xtensa_elf_greg_t ps;
@@ -38,7 +38,7 @@ typedef struct
   xtensa_elf_greg_t threadptr;
   xtensa_elf_greg_t reserved[7+48];
   xtensa_elf_greg_t ar[64];
-} xtensa_elf_gregset_t;
+};
 
 #define XTENSA_ELF_NGREG (sizeof (xtensa_elf_gregset_t) \
 			  / sizeof (xtensa_elf_greg_t))

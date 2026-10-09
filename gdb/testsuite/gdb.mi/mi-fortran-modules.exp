@@ -25,15 +25,10 @@ standard_testfile "mi-fortran-modules.f90" "mi-fortran-modules-2.f90"
 
 if {[build_executable "failed to prepare" ${testfile} \
 	 [list $srcfile2 $srcfile] {debug f90}]} {
-    return -1
+    return
 }
 
 mi_clean_restart $::testfile
-
-mi_runto_main
-
-# Avoid libc symbols.
-mi_gdb_test {-interpreter-exec console "nosharedlibrary"}
 
 # Patterns to skip optional system modules that appear with later versions of GFortran.
 set system_modules_pattern \

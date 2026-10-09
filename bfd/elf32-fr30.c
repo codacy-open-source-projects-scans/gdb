@@ -238,24 +238,18 @@ fr30_elf_i20_reloc (bfd *abfd,
 		    void * data,
 		    asection *input_section,
 		    bfd *output_bfd,
-		    char **error_message ATTRIBUTE_UNUSED)
+		    char **error_message)
 {
   bfd_vma relocation;
   unsigned long x;
 
-  /* This part is from bfd_elf_generic_reloc.  */
-  if (output_bfd != (bfd *) NULL
-      && (symbol->flags & BSF_SECTION_SYM) == 0
-      && (! reloc_entry->howto->partial_inplace
-	  || reloc_entry->addend == 0))
-    {
-      reloc_entry->address += input_section->output_offset;
-      return bfd_reloc_ok;
-    }
-
   if (output_bfd != NULL)
-    /* FIXME: See bfd_perform_relocation.  Is this right?  */
-    return bfd_reloc_ok;
+    return bfd_elf_generic_reloc (abfd, reloc_entry, symbol, data,
+				  input_section, output_bfd, error_message);
+
+  if (!bfd_reloc_offset_in_range (reloc_entry->howto, abfd,
+				  input_section, reloc_entry->address))
+    return bfd_reloc_outofrange;
 
   relocation =
     symbol->value
@@ -282,23 +276,18 @@ fr30_elf_i32_reloc (bfd *abfd,
 		    void * data,
 		    asection *input_section,
 		    bfd *output_bfd,
-		    char **error_message ATTRIBUTE_UNUSED)
+		    char **error_message)
 {
   bfd_vma relocation;
 
-  /* This part is from bfd_elf_generic_reloc.  */
-  if (output_bfd != (bfd *) NULL
-      && (symbol->flags & BSF_SECTION_SYM) == 0
-      && (! reloc_entry->howto->partial_inplace
-	  || reloc_entry->addend == 0))
-    {
-      reloc_entry->address += input_section->output_offset;
-      return bfd_reloc_ok;
-    }
-
   if (output_bfd != NULL)
-    /* FIXME: See bfd_perform_relocation.  Is this right?  */
-    return bfd_reloc_ok;
+    return bfd_elf_generic_reloc (abfd, reloc_entry, symbol, data,
+				  input_section, output_bfd, error_message);
+
+  if (reloc_entry->address + 2 < 2
+      || !bfd_reloc_offset_in_range (reloc_entry->howto, abfd,
+				     input_section, reloc_entry->address + 2))
+    return bfd_reloc_outofrange;
 
   relocation =
     symbol->value
@@ -498,8 +487,7 @@ fr30_final_link_relocate (reloc_howto_type *howto,
    accordingly.  */
 
 static int
-fr30_elf_relocate_section (bfd *output_bfd,
-			   struct bfd_link_info *info,
+fr30_elf_relocate_section (struct bfd_link_info *info,
 			   bfd *input_bfd,
 			   asection *input_section,
 			   bfd_byte *contents,
@@ -545,7 +533,8 @@ fr30_elf_relocate_section (bfd *output_bfd,
 	{
 	  sym = local_syms + r_symndx;
 	  sec = local_sections [r_symndx];
-	  relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	  relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						sym, &sec, rel);
 
 	  name = bfd_elf_string_from_elf_section
 	    (input_bfd, symtab_hdr->sh_link, sym->st_name);

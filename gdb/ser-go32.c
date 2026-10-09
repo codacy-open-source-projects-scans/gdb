@@ -126,7 +126,7 @@
 #include <dos.h>
 #include <go32.h>
 #include <dpmi.h>
-typedef unsigned long u_long;
+using u_long = unsigned long;
 
 /* 16550 rx fifo trigger point */
 #define FIFO_TRIGGER	FIFO_TRIGGER_4
@@ -353,7 +353,7 @@ dos_comisr (int irq)
 ISR (0) ISR (1) ISR (2) ISR (3) /* OK */
 ISR (4) ISR (5) ISR (6) ISR (7) /* OK */
 
-typedef void (*isr_t) (void);
+using isr_t = void (*) (void);
 
 static isr_t isrs[NINTR] =
   {

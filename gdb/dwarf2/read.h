@@ -22,6 +22,7 @@
 
 #include <queue>
 #include "dwarf2/abbrev.h"
+#include "dwarf2/dwo.h"
 #include "dwarf2/unit-head.h"
 #include "dwarf2/file-and-dir.h"
 #include "dwarf2/index-cache.h"
@@ -109,7 +110,6 @@ struct dwarf2_per_cu
       m_per_bfd (per_bfd)
   {
     gdb_assert (per_bfd != nullptr);
-    gdb_assert (section != nullptr);
   }
 
 private:
@@ -276,6 +276,7 @@ public:
   /* If this dwarf2_per_cu is a signatured_type, return "this" cast to
      signatured_type.  Otherwise, return nullptr.  */
   signatured_type *as_signatured_type ();
+  const signatured_type *as_signatured_type () const;
 
   dwarf2_per_bfd *per_bfd () const
   { return m_per_bfd; }
@@ -283,8 +284,14 @@ public:
   dwarf2_section_info *section () const
   { return m_section; }
 
+  /* Set the section of this unit.  */
+  void set_section (dwarf2_section_info *section);
+
   sect_offset sect_off () const
   { return m_sect_off; }
+
+  /* Set the section offset of this unit.  */
+  void set_sect_off (sect_offset sect_off);
 
   bool is_dwz () const
   { return m_is_dwz; }
@@ -480,9 +487,16 @@ struct signatured_type : public dwarf2_per_cu
   /* Containing DWO unit.
      This field is valid iff per_cu.reading_dwo_directly.  */
   struct dwo_unit *dwo_unit = nullptr;
+
+  /* When using a .debug_names index, the section is not initially known for
+     foreign type units (aka skeletonless type units).  This is a reference to
+     a CU that can be used to locate the .dwo file and section containing the
+     type unit.  */
+  dwarf2_per_cu *hint_per_cu = nullptr;
 };
 
-using signatured_type_up = std::unique_ptr<signatured_type>;
+using signatured_type_up
+  = std::unique_ptr<signatured_type, dwarf2_per_cu_deleter>;
 
 /* See dwarf2_per_cu declaration.  */
 
@@ -491,6 +505,17 @@ dwarf2_per_cu::as_signatured_type ()
 {
   if (m_is_debug_types)
     return static_cast<signatured_type *> (this);
+
+  return nullptr;
+}
+
+/* See dwarf2_per_cu declaration.  */
+
+inline const signatured_type *
+dwarf2_per_cu::as_signatured_type () const
+{
+  if (m_is_debug_types)
+    return static_cast<const signatured_type *> (this);
 
   return nullptr;
 }
@@ -529,49 +554,6 @@ using signatured_type_set
   = gdb::unordered_set<signatured_type *, signatured_type_hash,
 		       signatured_type_eq>;
 
-struct dwo_file;
-
-using dwo_file_up = std::unique_ptr<dwo_file>;
-
-/* This is used when looking up entries in a dwo_file_set.  */
-
-struct dwo_file_search
-{
-  /* Name of the DWO to look for.  */
-  const char *dwo_name;
-
-  /* Compilation directory to look for.  */
-  const char *comp_dir;
-};
-
-/* Hash function for dwo_file objects, using their dwo_name and comp_dir as
-   identity.  */
-
-struct dwo_file_hash
-{
-  using is_transparent = void;
-
-  std::size_t operator() (const dwo_file_search &search) const noexcept;
-  std::size_t operator() (const dwo_file_up &file) const noexcept;
-};
-
-/* Equal function for dwo_file objects, using their dwo_name and comp_dir as
-   identity.  */
-
-struct dwo_file_eq
-{
-  using is_transparent = void;
-
-  bool operator() (const dwo_file_search &search,
-		   const dwo_file_up &dwo_file) const noexcept;
-  bool operator() (const dwo_file_up &a, const dwo_file_up &b) const noexcept;
-};
-
-/* Set of dwo_file objects, using their dwo_name and comp_dir as identity.  */
-
-using dwo_file_up_set
-  = gdb::unordered_set<dwo_file_up, dwo_file_hash, dwo_file_eq>;
-
 struct dwp_file;
 
 using dwp_file_up = std::unique_ptr<dwp_file>;
@@ -600,10 +582,25 @@ struct dwarf2_per_bfd
   const char *filename () const
   { return bfd_get_filename (this->obfd); }
 
+  /* Return the endianness of the BFD.  */
+  bfd_endian byte_order () const
+  { return bfd_big_endian (this->obfd) ? BFD_ENDIAN_BIG : BFD_ENDIAN_LITTLE; }
+
   /* Return the unit given its index.  */
-  dwarf2_per_cu *get_unit (int index) const
+  dwarf2_per_cu &get_unit (int index) const
   {
-    return this->all_units[index].get ();
+    return *this->all_units[index];
+  }
+
+  /* Ensure that the all_units vector is in the expected order for
+     dwarf2_find_containing_unit to be able to perform a binary search.  */
+  void sort_all_units ();
+
+  /* Clear the all_units vector.  */
+  void clear_all_units ()
+  {
+    this->all_units.clear ();
+    this->all_units_sorted = true;
   }
 
   /* Return the separate '.dwz' debug file.  If there is no
@@ -639,6 +636,19 @@ struct dwarf2_per_bfd
 					       unsigned int length,
 					       bool is_dwz,
 					       ULONGEST signature);
+
+  /* A convenience function to allocate a signatured_type.  The
+     returned object has its "index" field set properly.
+
+     This one is used when only the signature is known at creation time.  */
+  signatured_type_up allocate_signatured_type (ULONGEST signature);
+
+  /* Append UNIT to ALL_UNITS.  */
+  void add_unit (dwarf2_per_cu_up unit)
+  {
+    this->all_units_sorted = false;
+    this->all_units.emplace_back (std::move (unit));
+  }
 
   /* Map all the DWARF section data needed when scanning
      .debug_info.  */
@@ -689,6 +699,11 @@ public:
      The order of this vector matters, because it is used to locate targets of
      DW_FORM_ref_addr attributes (reference by section offset).  */
   std::vector<dwarf2_per_cu_up> all_units;
+
+  /* True if ALL_UNITS is currently sorted according to all_units_less_than.
+     Set by sort_all_units, cleared whenever a unit is added to ALL_UNITS or
+     a unit's sort key (section / sect_off) is modified.  */
+  bool all_units_sorted = false;
 
   /* Number of compilation and type units in the ALL_UNITS vector.  */
   unsigned int num_comp_units = 0;
@@ -768,7 +783,7 @@ struct scoped_remove_all_units
     if (m_per_bfd == nullptr)
       return;
 
-    m_per_bfd->all_units.clear ();
+    m_per_bfd->clear_all_units ();
     m_per_bfd->num_comp_units = 0;
     m_per_bfd->num_type_units = 0;
   }
@@ -802,7 +817,7 @@ public:
     return *this;
   }
 
-  dwarf2_per_cu *operator* () const
+  dwarf2_per_cu &operator* () const
   {
     return m_per_bfd->get_unit (m_index);
   }
@@ -1198,7 +1213,7 @@ struct type *dwarf2_get_die_type (cu_offset die_offset, dwarf2_per_cu *per_cu,
 
 unrelocated_addr dwarf2_read_addr_index (dwarf2_per_cu *per_cu,
 					 dwarf2_per_objfile *per_objfile,
-					 unsigned int addr_index);
+					 ULONGEST addr_index);
 
 /* Return DWARF block referenced by DW_AT_location of DIE at SECT_OFF at PER_CU.
    Returned value is intended for DW_OP_call*.  Returned
@@ -1238,6 +1253,30 @@ type *dwarf2_fetch_die_type_sect_off (sect_offset sect_off,
 				      dwarf2_per_cu *per_cu,
 				      dwarf2_per_objfile *per_objfile,
 				      const char **var_name = nullptr);
+
+/* When == 1, print basic high level tracing messages.
+   When > 1, be more verbose.
+   This is in contrast to the low level DIE reading of dwarf_die_debug.  */
+
+extern unsigned int dwarf_read_debug;
+
+/* Print a "dwarf-read" debug statement if dwarf_read_debug is >= 1.  */
+
+#define dwarf_read_debug_printf(fmt, ...) 				\
+  debug_prefixed_printf_cond (dwarf_read_debug >= 1, "dwarf-read", fmt,	\
+			      ##__VA_ARGS__)
+
+/* Print a "dwarf-read" debug statement if dwarf_read_debug is >= 2.  */
+
+#define dwarf_read_debug_printf_v(fmt, ...) \
+  debug_prefixed_printf_cond (dwarf_read_debug >= 2, "dwarf-read", fmt,	\
+			      ##__VA_ARGS__)
+
+/* Print "dwarf-read" start/end debug statements.  */
+
+#define DWARF_READ_SCOPED_DEBUG_START_END(fmt, ...)			      \
+  scoped_debug_start_end ([] { return dwarf_read_debug >= 1; }, "dwarf-read", \
+			  fmt, ##__VA_ARGS__)
 
 /* When non-zero, dump line number entries as they are read in.  */
 extern unsigned int dwarf_line_debug;
@@ -1340,7 +1379,10 @@ extern const char *read_indirect_string_at_offset
 
 extern void finalize_all_units (dwarf2_per_bfd *per_bfd);
 
-/* Create a list of all compilation units in OBJFILE.  */
+/* Create a list of all compilation units in OBJFILE.
+
+   After it is done creating all units, the caller is responsible for calling
+   finalize_all_units.  */
 
 extern void create_all_units (dwarf2_per_objfile *per_objfile);
 

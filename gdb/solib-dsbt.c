@@ -42,9 +42,9 @@ enum { TIC6X_PTR_SIZE = 4 };
 /* External versions; the size and alignment of the fields should be
    the same as those on the target.  When loaded, the placement of
    the bits in each field will be the same as on the target.  */
-typedef gdb_byte ext_Elf32_Half[2];
-typedef gdb_byte ext_Elf32_Addr[4];
-typedef gdb_byte ext_Elf32_Word[4];
+using ext_Elf32_Half = gdb_byte[2];
+using ext_Elf32_Addr = gdb_byte[4];
+using ext_Elf32_Word = gdb_byte[4];
 
 struct ext_elf32_dsbt_loadseg
 {
@@ -99,7 +99,7 @@ struct int_elf32_dsbt_loadmap
 
 /* External link_map and elf32_dsbt_loadaddr struct definitions.  */
 
-typedef gdb_byte ext_ptr[4];
+using ext_ptr = gdb_byte[4];
 
 struct ext_elf32_dsbt_loadaddr
 {
@@ -128,8 +128,8 @@ struct dsbt_solib_ops : public solib_ops
 
   void relocate_section_addresses (solib &so, target_section *) const override;
   void clear_solib (program_space *pspace) const override;
-  void create_inferior_hook (int from_tty) const override;
-  owning_intrusive_list<solib> current_sos () const override;
+  void create_inferior_hook (int from_tty) override;
+  owning_intrusive_list<solib> current_sos () override;
   bool in_dynsym_resolve_code (CORE_ADDR pc) const override;
 };
 
@@ -138,7 +138,7 @@ struct dsbt_solib_ops : public solib_ops
 solib_ops_up
 make_dsbt_solib_ops (program_space *pspace)
 {
-  return std::make_unique<dsbt_solib_ops> (pspace);
+  return std::make_unique<dsbt_solib_ops> (pspace, true);
 }
 
 /* Link map info to include in an allocated solib entry */
@@ -526,7 +526,7 @@ lm_base (void)
    we provide values for.  */
 
 owning_intrusive_list<solib>
-dsbt_solib_ops::current_sos () const
+dsbt_solib_ops::current_sos ()
 {
   bfd_endian byte_order = gdbarch_byte_order (current_inferior ()->arch ());
   CORE_ADDR lm_addr;
@@ -860,7 +860,7 @@ dsbt_relocate_main_executable (void)
    The shared library breakpoints also need to be enabled.  */
 
 void
-dsbt_solib_ops::create_inferior_hook (int from_tty) const
+dsbt_solib_ops::create_inferior_hook (int from_tty)
 {
   /* Relocate main executable.  */
   dsbt_relocate_main_executable ();

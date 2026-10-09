@@ -61,6 +61,7 @@
 #include "bt-utils.h"
 #include "terminal.h"
 #include "logging-file.h"
+#include "filesystem.h"
 
 /* The selected interpreter.  */
 std::string interpreter_p;
@@ -491,7 +492,7 @@ handle_command_errors (const struct gdb_exception &e)
 /* Type of the command callback passed to the const
    catch_command_errors.  */
 
-typedef void (catch_command_errors_const_ftype) (const char *, int);
+using catch_command_errors_const_ftype = void (const char *, int);
 
 /* Wrap calls to commands run before the event loop is started.  */
 
@@ -651,7 +652,6 @@ captured_main_1 (struct captured_main_args *context)
   std::vector<char *> dirarg;
 
   int i;
-  int save_auto_load;
   int ret = 1;
 
   /* Check for environment variables which might cause GDB to start with
@@ -717,7 +717,7 @@ captured_main_1 (struct captured_main_args *context)
     = xstrprintf ("%s: ", gdb_program_name);
   warning_pre_print = tmp_warn_preprint.get ();
 
-  current_directory = getcwd (NULL, 0);
+  current_directory = gdb_getcwd (NULL, 0);
   if (current_directory == NULL)
     perror_warning_with_name (_("error finding working directory"));
 
@@ -1237,8 +1237,8 @@ captured_main_1 (struct captured_main_args *context)
   /* Skip auto-loading section-specified scripts until we've sourced
      local_gdbinit (which is often used to augment the source search
      path).  */
-  save_auto_load = global_auto_load;
-  global_auto_load = 0;
+  std::optional<scoped_restore_tmpl<bool>>
+    auto_load_restore (make_scoped_restore (&global_auto_load, false));
 
   if (execarg != nullptr && symarg != nullptr && streq (execarg, symarg))
     {
@@ -1332,7 +1332,7 @@ captured_main_1 (struct captured_main_args *context)
      processed, we can read any scripts mentioned in SYMARG.
      We wait until now because it is common to add to the source search
      path in local_gdbinit.  */
-  global_auto_load = save_auto_load;
+  auto_load_restore.reset ();
   for (objfile &objfile : current_program_space->objfiles ())
     load_auto_scripts_for_objfile (objfile);
 

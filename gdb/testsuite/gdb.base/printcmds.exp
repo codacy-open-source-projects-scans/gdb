@@ -23,8 +23,8 @@
 standard_testfile .c
 
 if  { [gdb_compile "${srcdir}/${subdir}/${srcfile}" "${binfile}" executable {debug}] != "" } {
-     untested "failed to compile"
-     return -1
+    untested "failed to compile"
+    return
 }
 
 proc test_integer_literals_accepted {} {
@@ -717,6 +717,14 @@ proc test_artificial_arrays {} {
 	{p int1dim[0]@TWO@three}
     gdb_test_escape_braces {p/x (short [])0x12345678} \
 	" = ({0x1234, 0x5678}|{0x5678, 0x1234})"
+
+    # A regression test for a buffer overflow.  PR gdb/34132.
+    set cmd "with max-value-size 16 -- "
+    append cmd "with print elements 10 -- "
+    append cmd {print ((unsigned char *) ctable2)[0] @ 20}
+    gdb_test $cmd \
+	[quotemeta {$@DECIMAL = {97 'a', 88 'X' <repeats 15 times>...}}] \
+	"print ctable using @ operator"
 }
 
 proc test_print_char_arrays {} {
@@ -1213,7 +1221,7 @@ gdb_test "p ctable1\[120\]" "120 'x'" "p ctable1\[120\] #1"
 gdb_load ${binfile}
 
 if {![runto_main]} {
-    return 0
+    return
 }
 
 # With a running target, printf convenience vars should of course work.

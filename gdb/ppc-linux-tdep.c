@@ -83,6 +83,8 @@
 #include "features/rs6000/powerpc-isa205-ppr-dscr-vsx64l.c"
 #include "features/rs6000/powerpc-isa207-vsx64l.c"
 #include "features/rs6000/powerpc-isa207-htm-vsx64l.c"
+#include "features/rs6000/powerpc-isa32-vsx32l.c"
+#include "features/rs6000/powerpc-isa32-vsx64l.c"
 #include "features/rs6000/powerpc-e500l.c"
 #include "dwarf2/frame.h"
 
@@ -574,7 +576,7 @@ static const struct regset ppc32_linux_vsxregset = {
   regcache_collect_regset
 };
 
-/* Program Priorty Register regmap.  */
+/* Program Priority Register regmap.  */
 
 static const struct regcache_map_entry ppc32_regmap_ppr[] =
   {
@@ -582,7 +584,7 @@ static const struct regcache_map_entry ppc32_regmap_ppr[] =
       { 0 }
   };
 
-/* Program Priorty Register regset.  */
+/* Program Priority Register regset.  */
 
 const struct regset ppc32_linux_pprregset = {
   ppc32_regmap_ppr,
@@ -656,6 +658,30 @@ static const struct regcache_map_entry ppc32_regmap_pmu[] =
 
 const struct regset ppc32_linux_pmuregset = {
   ppc32_regmap_pmu,
+  regcache_supply_regset,
+  regcache_collect_regset
+};
+
+/* Dense Math Register map.  */
+
+static const struct regcache_map_entry ppc32_regmap_dmr[] =
+  {
+      /* Each DMR register is 128 bytes (1024 bits).  */
+      { 1, PPC_DMR0_REGNUM, 128 },
+      { 1, PPC_DMR1_REGNUM, 128 },
+      { 1, PPC_DMR2_REGNUM, 128 },
+      { 1, PPC_DMR3_REGNUM, 128 },
+      { 1, PPC_DMR4_REGNUM, 128 },
+      { 1, PPC_DMR5_REGNUM, 128 },
+      { 1, PPC_DMR6_REGNUM, 128 },
+      { 1, PPC_DMR7_REGNUM, 128 },
+      { 0 }
+  };
+
+/* Dense Math Register set.  */
+
+const struct regset ppc32_linux_dmrregset = {
+  ppc32_regmap_dmr,
   regcache_supply_regset,
   regcache_collect_regset
 };
@@ -1073,6 +1099,11 @@ ppc_linux_iterate_over_regset_sections (struct gdbarch *gdbarch,
 	&ppc32_linux_tm_sprregset,
 	"Hardware Transactional Memory Special Purpose Registers",
 	cb_data);
+
+  if (tdep->ppc_dmr0_regnum != -1)
+    cb (".reg-ppc-dmr", PPC_LINUX_SIZEOF_DMRREGSET,
+	PPC_LINUX_SIZEOF_DMRREGSET,
+	&ppc32_linux_dmrregset, "Dense Math Registers", cb_data);
 
   /* Checkpointed registers can be unavailable, don't call back if
      we are generating a core file.  */
@@ -1563,9 +1594,6 @@ ppc_linux_record_signal (struct gdbarch *gdbarch, struct regcache *regcache,
   sp -= sizeof_rt_sigframe;
 
   if (record_full_arch_list_add_mem (sp, SIGNAL_FRAMESIZE + sizeof_rt_sigframe))
-    return -1;
-
-  if (record_full_arch_list_add_end ())
     return -1;
 
   return 0;
@@ -2064,7 +2092,7 @@ linux_dwarf2_omit_typedef_p (struct type *target_type,
 static const char *
 ppc64le_gnu_triplet_regexp (struct gdbarch *gdbarch)
 {
-  return "p(ower)?pc64le";
+  return "p(ower)?pc64le"; /* codespell:ignore.  */
 }
 
 /* Specify the powerpc64 target triplet.
@@ -2076,15 +2104,7 @@ ppc64le_gnu_triplet_regexp (struct gdbarch *gdbarch)
 static const char *
 ppc64_gnu_triplet_regexp (struct gdbarch *gdbarch)
 {
-  return "p(ower)?pc64";
-}
-
-/* Implement the linux_gcc_target_options method.  */
-
-static std::string
-ppc64_linux_gcc_target_options (struct gdbarch *gdbarch)
-{
-  return "";
+  return "p(ower)?pc64"; /* codespell:ignore.  */
 }
 
 /* Fetch and return the TLS DTV (dynamic thread vector) address for PTID.
@@ -2207,6 +2227,18 @@ rs6000_linux_adjust_frame_regnum (struct gdbarch *gdbarch, int num,
   return num;
 }
 
+/* Implement gdbarch_gcc_target_options.  A module built for the "compile"
+   command is loaded into inferior memory without a linker, so it has no
+   PLT.  -mlongcall makes calls to other modules indirect, and -mno-pltseq
+   stops GCC reaching the target through a PLT entry; together they let the
+   call be resolved against the module's own TOC.  */
+
+static std::string
+ppc64_gcc_target_options (struct gdbarch *gdbarch)
+{
+  return default_gcc_target_options (gdbarch) + " -mlongcall -mno-pltseq";
+}
+
 static void
 ppc_linux_init_abi (struct gdbarch_info info,
 		    struct gdbarch *gdbarch)
@@ -2315,6 +2347,7 @@ ppc_linux_init_abi (struct gdbarch_info info,
 	    (gdbarch, ppc_elfv2_elf_make_msymbol_special);
 
 	  set_gdbarch_skip_entrypoint (gdbarch, ppc_elfv2_skip_entrypoint);
+	  set_gdbarch_gcc_target_options (gdbarch, ppc64_gcc_target_options);
 	}
 
       /* Shared library handling.  */
@@ -2340,8 +2373,6 @@ ppc_linux_init_abi (struct gdbarch_info info,
 	set_gdbarch_gnu_triplet_regexp (gdbarch, ppc64le_gnu_triplet_regexp);
       else
 	set_gdbarch_gnu_triplet_regexp (gdbarch, ppc64_gnu_triplet_regexp);
-      /* Set GCC target options.  */
-      set_gdbarch_gcc_target_options (gdbarch, ppc64_linux_gcc_target_options);
       /* Internal thread local address support.  */
       set_gdbarch_get_thread_local_address (gdbarch,
 					    svr4_tls_get_thread_local_address);
@@ -2414,6 +2445,7 @@ INIT_GDB_FILE (ppc_linux_tdep)
   initialize_tdesc_powerpc_isa205_ppr_dscr_vsx32l ();
   initialize_tdesc_powerpc_isa207_vsx32l ();
   initialize_tdesc_powerpc_isa207_htm_vsx32l ();
+  initialize_tdesc_powerpc_isa32_vsx32l ();
   initialize_tdesc_powerpc_64l ();
   initialize_tdesc_powerpc_altivec64l ();
   initialize_tdesc_powerpc_vsx64l ();
@@ -2423,5 +2455,6 @@ INIT_GDB_FILE (ppc_linux_tdep)
   initialize_tdesc_powerpc_isa205_ppr_dscr_vsx64l ();
   initialize_tdesc_powerpc_isa207_vsx64l ();
   initialize_tdesc_powerpc_isa207_htm_vsx64l ();
+  initialize_tdesc_powerpc_isa32_vsx64l ();
   initialize_tdesc_powerpc_e500l ();
 }

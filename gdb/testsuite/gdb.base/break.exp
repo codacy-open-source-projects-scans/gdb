@@ -16,7 +16,7 @@
 # This file was written by Rob Savoye. (rob@cygnus.com)
 
 if { [build_executable "failed to prepare" "break" {break.c break1.c} {debug nowarnings}] } {
-    return -1
+    return
 }
 set srcfile break.c
 set srcfile1 break1.c
@@ -471,7 +471,14 @@ proc_with_prefix test_no_break_on_catchpoint {} {
     gdb_test "catch exec" "Catchpoint ${::decimal} \\(exec\\)" \
 	"set catch exec, never expected to trigger"
 
-    gdb_continue_to_end
+    gdb_test_multiple "continue" "" {
+	-re "Your system does not support this type.*" {
+	    unsupported "target does not support this type of catchpoint"
+	}
+	-re "Continuing." {
+	    pass "continue until exit"
+	}
+    }
 }
 
 test_no_break_on_catchpoint
@@ -805,7 +812,7 @@ test_next_with_recursion
 # on targets with optimized prologues
 
 if { [build_executable "failed to prepare" "breako2" {break.c break1.c} {debug nowarnings optimize=-O2}] } {
-    return -1
+    return
 }
 
 proc_with_prefix test_break_optimized_prologue {} {

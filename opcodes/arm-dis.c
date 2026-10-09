@@ -885,6 +885,8 @@ static const struct sopcode32 coprocessor_opcodes[] =
     0x0eb40a40, 0x0fbf0f50, "vcmp%7'e%c.f32\t%y1, %y0"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V1),
     0x0eb40b40, 0x0fbf0f50, "vcmp%7'e%c.f64\t%z1, %z0"},
+  {ANY, ARM_FEATURE_CORE_HIGH (ARM_EXT2_FP16_INST | ARM_EXT2_V8_2A),
+    0x0eba0940, 0x0fbe0f50, "vcvt%c.f16.%16?us%7?31%7?26\t%y1, %y1, %{I:#%5,0-3k%}"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V3xD),
     0x0eba0a40, 0x0fbe0f50, "vcvt%c.f32.%16?us%7?31%7?26\t%y1, %y1, %{I:#%5,0-3k%}"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V3),
@@ -893,6 +895,8 @@ static const struct sopcode32 coprocessor_opcodes[] =
     0x0ebc0a40, 0x0fbe0f50, "vcvt%7`r%c.%16?su32.f32\t%y1, %y0"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V1),
     0x0ebc0b40, 0x0fbe0f50, "vcvt%7`r%c.%16?su32.f64\t%y1, %z0"},
+  {ANY, ARM_FEATURE_CORE_HIGH (ARM_EXT2_FP16_INST | ARM_EXT2_V8_2A),
+    0x0ebe0940, 0x0fbe0f50, "vcvt%c.%16?us%7?31%7?26.f16\t%y1, %y1, %{I:#%5,0-3k%}"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V3xD),
     0x0ebe0a40, 0x0fbe0f50, "vcvt%c.%16?us%7?31%7?26.f32\t%y1, %y1, %{I:#%5,0-3k%}"},
   {ANY, ARM_FEATURE_COPROC (FPU_VFP_EXT_V3),
@@ -12301,7 +12305,7 @@ select_arm_features (unsigned long mach,
     case bfd_mach_arm_6M:	 ARM_SET_FEATURES (ARM_ARCH_V6M); break;
     case bfd_mach_arm_6SM:	 ARM_SET_FEATURES (ARM_ARCH_V6SM); break;
     case bfd_mach_arm_7EM:	 ARM_SET_FEATURES (ARM_ARCH_V7EM); break;
-    case bfd_mach_arm_8:
+    case bfd_mach_arm_8A:
 	{
 	  /* Add bits for extensions that Armv8.6-A recognizes.  */
 	  arm_feature_set armv8_6_ext_fset
@@ -12320,7 +12324,7 @@ select_arm_features (unsigned long mach,
       ARM_MERGE_FEATURE_SETS (arch_fset, arch_fset, mve_all);
       force_thumb = 1;
       break;
-    case bfd_mach_arm_9:         ARM_SET_FEATURES (ARM_ARCH_V9A); break;
+    case bfd_mach_arm_9A:         ARM_SET_FEATURES (ARM_ARCH_V9A); break;
       /* If the machine type is unknown allow all architecture types and all
 	 extensions, with the exception of MVE as that clashes with NEON.  */
     case bfd_mach_arm_unknown:

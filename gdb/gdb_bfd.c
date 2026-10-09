@@ -1026,9 +1026,9 @@ gdb_bfd_openr_next_archived_file (bfd *archive, bfd *previous)
 void
 gdb_bfd_record_inclusion (bfd *includer, bfd *includee)
 {
-  struct gdb_bfd_data *gdata;
+  gdb::lock_guard<gdb::recursive_mutex> guard (gdb_bfd_mutex);
 
-  gdata = (struct gdb_bfd_data *) bfd_usrdata (includer);
+  struct gdb_bfd_data *gdata = (struct gdb_bfd_data *) bfd_usrdata (includer);
   gdata->included_bfds.push_back (gdb_bfd_ref_ptr::new_reference (includee));
 }
 
@@ -1200,6 +1200,26 @@ gdb_bfd_canonicalize_symtab (bfd *abfd, bool should_throw)
 			       symbol_table.size () - 1);
 }
 
+/* See gdb_bfd.h.  */
+
+bool
+gdb_bfd_check_format (bfd *abfd, bfd_format format)
+{
+  gdb::lock_guard<gdb::recursive_mutex> guard (gdb_bfd_mutex);
+
+  return bfd_check_format (abfd, format);
+}
+
+/* See gdb_bfd.h.  */
+
+bool
+gdb_bfd_check_format_matches (bfd *abfd, bfd_format format, char ***matching)
+{
+  gdb::lock_guard<gdb::recursive_mutex> guard (gdb_bfd_mutex);
+
+  return bfd_check_format_matches (abfd, format, matching);
+}
+
 /* Implement the 'maint info bfd' command.  */
 
 static void
@@ -1217,7 +1237,7 @@ maintenance_info_bfds (const char *arg, int from_tty)
   for (auto abfd : all_bfds)
     {
       auto gdata = static_cast<gdb_bfd_data *> (bfd_usrdata (abfd));
-      ui_out_emit_tuple tuple_emitter (uiout, nullptr);
+      ui_out_emit_tuple tuple_emitter (uiout);
       uiout->field_signed ("refcount", gdata->refc);
       uiout->field_string ("addr", host_address_to_string (abfd));
       uiout->field_string ("filename", bfd_get_filename (abfd),

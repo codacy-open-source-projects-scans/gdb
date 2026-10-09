@@ -172,7 +172,7 @@ case ${generic_target} in
 
   avr-*-*)				fmt=elf bfd_gas=yes ;;
 
-  bfin-*-linux-uclibc)			fmt=fdpicelf em=linux ;;
+  bfin-*-linux-uclibc)			fmt=elf em=linux-fdpic ;;
   bfin-*-uclinux*)			fmt=elf em=linux ;;
   bfin-*elf)				fmt=elf ;;
 
@@ -225,8 +225,6 @@ case ${generic_target} in
   h8300-*-elf)				fmt=elf ;;
   h8300-*-linux*)			fmt=elf em=linux ;;
 
-  i386-*-beospe*)			fmt=coff em=pe ;;
-  i386-*-beos*)				fmt=elf ;;
   i386-*-elfiamcu)			fmt=elf arch=iamcu ;;
   i386-*-elf*)				fmt=elf ;;
   i386-*-fuchsia*)			fmt=elf ;;
@@ -361,7 +359,6 @@ case ${generic_target} in
   ppc-*-aix5.[01])			fmt=coff em=aix5 ;;
   ppc-*-aix[5-9].*)			fmt=coff em=aix5 ;;
   ppc-*-aix*)				fmt=coff em=aix ;;
-  ppc-*-beos*)				fmt=coff ;;
   ppc-*-*n*bsd* | ppc-*-elf*)		fmt=elf ;;
   ppc-*-eabi* | ppc-*-sysv4*)		fmt=elf ;;
   ppc-*-haiku*)				fmt=elf em=haiku ;;
@@ -458,7 +455,7 @@ case ${cpu_type} in
     ;;
 esac
 case ${fmt} in
-  elf | ecoff | fdpicelf | multi | som)
+  elf | ecoff | multi | som)
     bfd_gas=yes
     ;;
 esac

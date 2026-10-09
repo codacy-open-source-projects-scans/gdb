@@ -42,7 +42,7 @@ gld${EMULATION_NAME}_before_parse (void)
    standard library.  */
 
 static void
-gld${EMULATION_NAME}_create_output_section_statements (void)
+gld${EMULATION_NAME}_after_open_output (void)
 {
   lang_add_input_file ("imagelib", lang_input_file_is_l_enum, NULL);
   lang_add_input_file ("starlet", lang_input_file_is_l_enum, NULL);
@@ -195,8 +195,7 @@ gld${EMULATION_NAME}_before_allocation (void)
      sections.  */
   elf_backend_data *bed = get_elf_backend_data (link_info.output_bfd);
   if (bed->elf_backend_late_size_sections
-      && !bed->elf_backend_late_size_sections (link_info.output_bfd,
-					       &link_info))
+      && !bed->elf_backend_late_size_sections (&link_info))
     fatal (_("%P: failed to set dynamic section sizes: %E\n"));
 
   before_allocation_default ();
@@ -205,7 +204,7 @@ gld${EMULATION_NAME}_before_allocation (void)
 static void
 gld${EMULATION_NAME}_after_allocation (void)
 {
-  int need_layout = bfd_elf_discard_info (link_info.output_bfd, &link_info);
+  int need_layout = bfd_elf_discard_info (&link_info);
 
   if (need_layout < 0)
     einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
@@ -230,7 +229,7 @@ fi
 
 LDEMUL_PLACE_ORPHAN=vms_place_orphan
 LDEMUL_BEFORE_PARSE=gld"$EMULATION_NAME"_before_parse
-LDEMUL_CREATE_OUTPUT_SECTION_STATEMENTS=gld"$EMULATION_NAME"_create_output_section_statements
+LDEMUL_AFTER_OPEN_OUTPUT=gld"$EMULATION_NAME"_after_open_output
 LDEMUL_FIND_POTENTIAL_LIBRARIES=gld"$EMULATION_NAME"_find_potential_libraries
 LDEMUL_OPEN_DYNAMIC_ARCHIVE=gld"$EMULATION_NAME"_open_dynamic_archive
 LDEMUL_ADD_OPTIONS=gld"$EMULATION_NAME"_add_options

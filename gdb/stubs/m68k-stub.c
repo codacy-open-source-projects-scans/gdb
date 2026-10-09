@@ -113,8 +113,8 @@
  *
  * external low-level support routines
  */
-typedef void (*ExceptionHook)(int);   /* pointer to function with int parm */
-typedef void (*Function)();           /* pointer to a function */
+using ExceptionHook = void (*) (int);	/* Pointer to function with int parm.  */
+using Function = void (*) ();		/* Pointer to a function.  */
 
 extern void putDebugChar();	/* write a single character      */
 extern int getDebugChar();	/* read and return a single char */
@@ -273,7 +273,7 @@ copyUserLoop:
 
 /* this function is called immediately when a level 7 interrupt occurs */
 /* if the previous interrupt level was 7 then we're already servicing  */
-/* this interrupt and an rte is in order to return to the debugger.    */
+/* this interrupt and an rte is in order to return to the debugger.  */
 /* For the 68000, the offset for sr is 6 due to the jsr return address */
 asm("
 .text
@@ -330,7 +330,7 @@ asm("
 	movew   sp@,d1          /* get status register          */
 	movew   d1,a5@(66)      /* save sr		 	*/
 	movel   sp@(2),a4       /* save pc in a4 for later use  */
-	movel   a4,a5@(68)      /* save pc in _regisers[]      	*/
+	movel   a4,a5@(68)      /* save pc in _registers[]      	*/
 
 #
 # figure out how many bytes in the stack frame
@@ -430,7 +430,7 @@ normal:
 	movew   sp@+,d1         /* pop status register          */
 	movel   sp@+,a4         /* pop program counter          */
 	movew   d1,a5@(66)      /* save sr		 	*/
-	movel   a4,a5@(68)      /* save pc in _regisers[]      	*/
+	movel   a4,a5@(68)      /* save pc in _registers[]      	*/
 	movel   a4,a0@-         /* copy pc to frame buffer      */
 	movew   d1,a0@-         /* copy sr to frame buffer      */
 
@@ -486,7 +486,7 @@ _returnFromException (Frame * frame)
       frame = lastFrame;
       frame->frameSize = 4;
       frame->format = 0;
-      frame->fsaveHeader = -1;	/* restore regs, but we dont have fsave info */
+      frame->fsaveHeader = -1;	/* restore regs, but we don't have fsave info */
     }
 
 #if !defined (mc68020) && !defined (mc68332)
@@ -810,7 +810,7 @@ hexToInt (char **ptr, int *intValue)
 }
 
 /*
- * This function does all command procesing for interfacing to gdb.
+ * This function does all command processing for interfacing to gdb.
  */
 void
 handle_exception (int exceptionVector)
@@ -995,7 +995,7 @@ handle_exception (int exceptionVector)
 			printf ("frame at 0x%x has pc=0x%x, except#=%d\n",
 				frame, frame->exceptionPC,
 				frame->exceptionVector);
-		      /* re-use the last frame, we're skipping it (longjump?) */
+		      /* reuse the last frame, we're skipping it (longjump?) */
 		      frame = (Frame *) 0;
 		      _returnFromException (frame);	/* this is a jump */
 		    }

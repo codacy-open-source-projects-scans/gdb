@@ -67,18 +67,16 @@ proc target_compile_ada_from_dir {builddir source dest type options} {
 	set_board_info multilib_flags "$multilib_flag"
     }
 
-    catch {
+    try {
 	with_cwd $builddir {
 	    return [target_compile $source $dest $type $options]
 	}
-    } result options
-
-    if { $save_multilib_flag != "" } {
-	unset_board_info "multilib_flags"
-	set_board_info multilib_flags $save_multilib_flag
+    } finally {
+	if { $save_multilib_flag != "" } {
+	    unset_board_info "multilib_flags"
+	    set_board_info multilib_flags $save_multilib_flag
+	}
     }
-
-    return -options $options $result
 }
 
 # Compile some Ada code.  Return "" if the compile was successful.
@@ -180,7 +178,8 @@ proc find_ada_tool {tool} {
 }
 
 # Compare the GNAT version against L2 using version_compare.  If the
-# compiler does not appear to be GCC, this will always return false.
+# compiler does not appear to be GCC, this will assume that gnatmake
+# is very new.
 
 proc gnat_version_compare {op l2} {
     set gnatmake [find_gnatmake]
@@ -189,7 +188,8 @@ proc gnat_version_compare {op l2} {
 	return 0
     }
     if {![regexp {GNATMAKE ([0-9]+(\.[0-9]+)*)} $output match version]} {
-	return 0
+	# Assume a "very new" version.
+	set version 99
     }
 
     return [version_compare [split $version .] $op $l2]
@@ -290,6 +290,14 @@ gdb_caching_proc ada_fvar_tracking {} {
 gdb_caching_proc ada_minimal_encodings {} {
     return [ada_simple_compile minimal_encodings \
 		additional_flags=-fgnat-encodings=minimal]
+}
+
+# Return 1 if GNAT is based on LLVM.
+gdb_caching_proc using_gnat_llvm {} {
+    # Whether or not gnatmake will use LLVM can't be determined from
+    # the command line -- e.g., --version doesn't provide any
+    # indication.  So for now use a proxy.
+    return [expr {![ada_minimal_encodings]}]
 }
 
 # Return 1 if GNAT supports -Og.

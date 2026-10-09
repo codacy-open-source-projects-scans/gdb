@@ -17,6 +17,7 @@
 
 #include "windows-tdep.h"
 #include "extract-store-integer.h"
+#include "gdbtypes.h"
 #include "gdbsupport/gdb_obstack.h"
 #include "xml-support.h"
 #include "gdbarch.h"
@@ -110,7 +111,7 @@ static constexpr unsigned int NOTE_INFO_MODULE64 = 4;
 
 struct cmd_list_element *info_w32_cmdlist;
 
-typedef struct thread_information_block_32
+using thread_information_32 = struct thread_information_block_32
   {
     uint32_t current_seh;			/* %fs:0x0000 */
     uint32_t current_top_of_stack; 		/* %fs:0x0004 */
@@ -126,10 +127,9 @@ typedef struct thread_information_block_32
     uint32_t thread_local_storage;		/* %fs:0x002c */
     uint32_t process_environment_block;		/* %fs:0x0030 */
     uint32_t last_error_number;			/* %fs:0x0034 */
-  }
-thread_information_32;
+  };
 
-typedef struct thread_information_block_64
+using thread_information_64 = struct thread_information_block_64
   {
     uint64_t current_seh;			/* %gs:0x0000 */
     uint64_t current_top_of_stack; 		/* %gs:0x0008 */
@@ -145,8 +145,7 @@ typedef struct thread_information_block_64
     uint64_t thread_local_storage;		/* %gs:0x0058 */
     uint64_t process_environment_block;		/* %gs:0x0060 */
     uint64_t last_error_number;			/* %gs:0x0068 */
-  }
-thread_information_64;
+  };
 
 
 static const char* TIB_NAME[] =
@@ -828,10 +827,7 @@ struct windows_solib_ops : target_solib_ops
 {
   using target_solib_ops::target_solib_ops;
 
-  void create_inferior_hook (int from_tty) const override;
-  void iterate_over_objfiles_in_search_order
-    (iterate_over_objfiles_in_search_order_cb_ftype cb,
-     objfile *current_objfile) const override;
+  void create_inferior_hook (int from_tty) override;
 };
 
 /* Return a new solib_ops for Windows systems.  */
@@ -839,13 +835,13 @@ struct windows_solib_ops : target_solib_ops
 static solib_ops_up
 make_windows_solib_ops (program_space *pspace)
 {
-  return std::make_unique<windows_solib_ops> (pspace);
+  return std::make_unique<windows_solib_ops> (pspace, true);
 }
 
 /* Implement the "solib_create_inferior_hook" solib_ops method.  */
 
 void
-windows_solib_ops::create_inferior_hook (int from_tty) const
+windows_solib_ops::create_inferior_hook (int from_tty)
 {
   CORE_ADDR exec_base = 0;
 
@@ -890,43 +886,6 @@ windows_solib_ops::create_inferior_hook (int from_tty) const
     }
 }
 
-/* Implement the "iterate_over_objfiles_in_search_order" gdbarch
-   method.  It searches all objfiles, starting with CURRENT_OBJFILE
-   first (if not NULL).
-
-   On Windows, the system behaves a little differently when two
-   objfiles each define a global symbol using the same name, compared
-   to other platforms such as GNU/Linux for instance.  On GNU/Linux,
-   all instances of the symbol effectively get merged into a single
-   one, but on Windows, they remain distinct.
-
-   As a result, it usually makes sense to start global symbol searches
-   with the current objfile before expanding it to all other objfiles.
-   This helps for instance when a user debugs some code in a DLL that
-   refers to a global variable defined inside that DLL.  When trying
-   to print the value of that global variable, it would be unhelpful
-   to print the value of another global variable defined with the same
-   name, but in a different DLL.  */
-
-void
-windows_solib_ops::iterate_over_objfiles_in_search_order
-  (iterate_over_objfiles_in_search_order_cb_ftype cb,
-   objfile *current_objfile) const
-{
-  if (current_objfile)
-    {
-      if (cb (current_objfile))
-	return;
-    }
-
-  for (objfile &objfile : m_pspace->objfiles ())
-    if (&objfile != current_objfile)
-      {
-	if (cb (&objfile))
-	  return;
-      }
-}
-
 /* Implement the "auto_wide_charset" gdbarch method.  */
 
 static const char *
@@ -954,6 +913,73 @@ windows_init_abi_common (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_get_siginfo_type (gdbarch, windows_get_siginfo_type);
 }
 
+/* Implement the fetch_tls_load_module_address gdbarch method.
+   Usually this method returns an address representing a load module, but this
+   doesn't exist on Windows.  Instead it returns the address of the
+   "_tls_index" variable of OBJFILE, which is then forwarded as LM_ADDR
+   in windows_get_thread_local_address below.  */
+
+static CORE_ADDR
+windows_tls_index_address (struct objfile *objfile)
+{
+  bound_minimal_symbol minsym
+    = lookup_minimal_symbol_linkage ("_tls_index", objfile, false);
+  if (minsym.minsym == nullptr)
+    throw_error (TLS_GENERIC_ERROR, _("Cannot find address of _tls_index"));
+
+  return minsym.value_address ();
+}
+
+/* Implement the get_thread_local_address gdbarch method.
+   Each module (with TLS variables) gets its own TLS slot represented by
+   _tls_index, which can be found in TIB->thread_local_storage[_tls_index].
+   The address of _tls_index is provided by the LM_ADDR argument.  */
+
+static CORE_ADDR
+windows_get_thread_local_address (struct gdbarch *gdbarch, ptid_t ptid,
+				  CORE_ADDR lm_addr, CORE_ADDR offset)
+{
+  int ptr_bytes;
+  int tls_offset; /* Offset of thread_local_storage in TIB.  */
+  if (gdbarch_ptr_bit (gdbarch) == 32)
+    {
+      ptr_bytes = 4;
+      tls_offset = 44;
+    }
+  else
+    {
+      ptr_bytes = 8;
+      tls_offset = 88;
+    }
+
+  gdb_byte buf[8];
+  if (target_read_memory (lm_addr, buf, 4))
+    throw_error (TLS_GENERIC_ERROR, _("Cannot read _tls_index"));
+
+  enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
+  uint32_t tls_index = extract_unsigned_integer (buf, 4, byte_order);
+
+  CORE_ADDR tlb;
+  if (!target_get_tib_address (ptid, &tlb))
+    throw_error (TLS_GENERIC_ERROR, _("Cannot get tib address"));
+
+  if (target_read_memory (tlb + tls_offset, buf, ptr_bytes))
+    throw_error (TLS_GENERIC_ERROR, _("Cannot read thread_local_storage"));
+
+  CORE_ADDR tls_ptr = extract_unsigned_integer (buf, ptr_bytes, byte_order);
+  if (tls_ptr == 0)
+    throw_error (TLS_NOT_ALLOCATED_YET_ERROR, _("TLS not allocated yet"));
+
+  if (target_read_memory (tls_ptr + tls_index * ptr_bytes, buf, ptr_bytes))
+    throw_error (TLS_GENERIC_ERROR, _("Cannot read TLS slot"));
+
+  CORE_ADDR slot_ptr = extract_unsigned_integer (buf, ptr_bytes, byte_order);
+  if (slot_ptr == 0)
+    throw_error (TLS_NOT_ALLOCATED_YET_ERROR, _("TLS slot not allocated yet"));
+
+  return slot_ptr + offset;
+}
+
 /* See windows-tdep.h.  */
 void
 windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
@@ -963,6 +989,20 @@ windows_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
   /* On Windows, "long"s are only 32bit.  */
   set_gdbarch_long_bit (gdbarch, 32);
+
+  /* With the MSVC ABI, "long double" is just an IEEE 64-bit double,
+     the same as "double".  */
+  if (info.osabi == GDB_OSABI_WINDOWS_MSVC)
+    {
+      set_gdbarch_long_double_bit (gdbarch, 64);
+      set_gdbarch_long_double_format (gdbarch, floatformats_ieee_double);
+    }
+
+  /* Enable TLS support.  */
+  set_gdbarch_fetch_tls_load_module_address (gdbarch,
+					     windows_tls_index_address);
+  set_gdbarch_get_thread_local_address (gdbarch,
+					windows_get_thread_local_address);
 }
 
 /* See windows-tdep.h.  */

@@ -23,7 +23,7 @@ standard_testfile
 
 # Compile the test executable.
 if {[build_executable "failed to build" $testfile $srcfile {debug macros}]} {
-    return -1
+    return
 }
 
 # The tests in this file are run multiple times with GDB's styles
@@ -335,7 +335,7 @@ proc run_style_tests { } {
 	gdb_test_no_output "set host-charset UTF-8"
 	# Chosen since it will print an error.
 	gdb_test "maint translate-address" \
-	    "❌️ requires argument.*" \
+	    "❌ requires argument.*" \
 	    "emoji output"
 
 	gdb_test_no_output "set style error-prefix abcd:" \
@@ -861,7 +861,7 @@ proc previous_line_is_ok { str } {
 
     # Create a copy of STR with all the '\033' characters removed.
     # Then compare string lengths to get a count of the '\033'
-    # charactes present in STR.
+    # characters present in STR.
     regsub -all "\033" $str {} stripped
     set count [expr {[string length $str] - [string length $stripped]}]
 

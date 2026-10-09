@@ -60,8 +60,7 @@ AX_CXX_COMPILE_STDCXX(17, , mandatory)
 GDB_AC_COMMON
 
 # Dependency checking.
-ZW_CREATE_DEPDIR
-ZW_PROG_COMPILER_DEPENDENCIES([CC])
+AM_SET_DEPDIR
 
 # Since the first call to PKG_CHECK_MODULES may not happen (is guarded by
 # a condition), we must call PKG_PROG_PKG_CONFIG explicitly to probe for
@@ -222,10 +221,25 @@ BFD_64_BIT
 # configuration.
 gdb_host_obs=posix-hdep.o
 
+# Check whether the configuration is native -- i.e., whether GDB will
+# debug processes running on the same machine it runs on.  If so, we
+# let configure.host and configure.nat pull in the native-debug
+# support.
+gdb_native=no
 if test "${target}" = "${host}"; then
   gdb_native=yes
-else
-  gdb_native=no
+elif test "${host_cpu}" = "${target_cpu}"; then
+  # Debugging Windows binaries on a Windows host is native even when
+  # the host and target triplets differ across the mingw/cygwin/msvc
+  # ABI boundary.  E.g., a mingw32-hosted GDB targeting binaries
+  # produced by a compiler defaulting to windows-msvc.
+  case ${host_os} in
+    mingw* | cygwin*)
+      case ${target_os} in
+	mingw* | cygwin* | windows*)
+	  gdb_native=yes ;;
+      esac ;;
+  esac
 fi
 
 . $srcdir/configure.host
@@ -341,6 +355,19 @@ if test "$gdb_require_amd_dbgapi" = true \
     if test "$all_targets" = true; then
       TARGET_OBS="$TARGET_OBS \$(ALL_AMD_DBGAPI_TARGET_OBS)"
     fi
+
+    # Add the host-specific objects.
+    case ${gdb_host} in
+      *linux*)
+	gdb_host_obs="${gdb_host_obs} amd-dbgapi-posix-hdep.o"
+	;;
+      *mingw*)
+	gdb_host_obs="${gdb_host_obs} amd-dbgapi-mingw-hdep.o"
+	;;
+      *)
+	AC_MSG_ERROR([amd-dbgapi not supported for host ${gdb_host}])
+	;;
+    esac
   elif test "$gdb_require_amd_dbgapi" = true -o "$with_amd_dbgapi" = yes; then
     # amd-dbgapi was not found and...
     #
@@ -1285,7 +1312,7 @@ if test "${have_libguile}" != no; then
   dnl If not, disable guile support.
   if test "$ac_cv_guild_ok" = no; then
     have_libguile=no
-    AC_MSG_WARN(disabling guile support, $GUILD fails compiling for $host)
+    AC_MSG_WARN([disabling guile support, $GUILD fails compiling for $host])
   fi
 fi
 
@@ -1507,12 +1534,15 @@ AC_CHECK_FUNCS([ \
   getrlimit \
   getuid \
   iconvlist \
+  init_extended_color \
+  init_extended_pair \
   libiconvlist \
   posix_madvise \
   pread \
   pread64 \
   pwrite \
   resize_term \
+  sched_getaffinity \
   setlocale \
   setrlimit \
   setsid \
@@ -2066,7 +2096,7 @@ if test "$enable_binary_file_formats" != "all"; then
 	    # Do nothing.
 	    ;;
 	*)
-	    AC_MSG_WARN("$req is required to support one or more requested targets.  Adding it")
+	    AC_MSG_WARN([$req is required to support one or more requested targets.  Adding it])
 	    enable_binary_file_formats="${enable_binary_file_formats},$req"
 	    ;;
 	esac
@@ -2083,9 +2113,9 @@ enable_binary_file_formats=$(echo $enable_binary_file_formats | sed 's/,/ /g')
 for format in $enable_binary_file_formats
 do
     if test "$format" = "elf" && test "$bfd_supports_elf" != "yes"; then
-	    AC_MSG_ERROR("elf support was requested, but BFD does not support it.");
+	    AC_MSG_ERROR([ELF support was requested, but BFD does not support it])
     elif test "$format" = "macho" && test "$bfd_supports_macho" != "yes"; then
-	    AC_MSG_ERROR("Mach-O support was requested, but BFD does not support it.");
+	    AC_MSG_ERROR([Mach-O support was requested, but BFD does not support it])
     fi
 
     if test "$format" = "all"; then
@@ -2332,49 +2362,6 @@ fi
 AC_SUBST(LIBBACKTRACE_INC)
 AC_SUBST(LIBBACKTRACE_LIB)
 
-# Check for babeltrace and babeltrace-ctf
-AC_ARG_WITH(babeltrace,
-  AS_HELP_STRING([--with-babeltrace], [include babeltrace support (auto/yes/no)]),
-  [], [with_babeltrace=auto])
-AC_MSG_CHECKING([whether to use babeltrace])
-AC_MSG_RESULT([$with_babeltrace])
-
-if test "x$with_babeltrace" = "xno"; then
-  AC_MSG_WARN([babeltrace support disabled; GDB is unable to read CTF data.])
-else
-  # Append -Werror to CFLAGS so that configure can catch the warning
-  # "assignment from incompatible pointer type", which is related to
-  # the babeltrace change from 1.0.3 to 1.1.0.  Babeltrace 1.1.0 works
-  # in GDB, while babeltrace 1.0.3 is broken.
-  # AC_LIB_HAVE_LINKFLAGS may modify CPPFLAGS in it, so it should be
-  # safe to save and restore CFLAGS here.
-  saved_CFLAGS=$CFLAGS
-  CFLAGS="$CFLAGS -Werror"
-  AC_LIB_HAVE_LINKFLAGS([babeltrace], [babeltrace-ctf],
-			[#include <babeltrace/babeltrace.h>
-			 #include <babeltrace/ctf/events.h>
-			 #include <babeltrace/ctf/iterator.h>],
-			[struct bt_iter_pos *pos = bt_iter_get_pos (bt_ctf_get_iter (NULL));
-			struct bt_ctf_event *event = NULL;
-			const struct bt_definition *scope;
-
-			pos->type = BT_SEEK_BEGIN;
-			bt_iter_set_pos (bt_ctf_get_iter (NULL), pos);
-			scope = bt_ctf_get_top_level_scope (event,
-							   BT_STREAM_EVENT_HEADER);
-			bt_ctf_get_uint64 (bt_ctf_get_field (event, scope, "id"));
-			])
-  CFLAGS=$saved_CFLAGS
-
-  if test "$HAVE_LIBBABELTRACE" != yes; then
-     if test "$with_babeltrace" = yes; then
-       AC_MSG_ERROR([babeltrace is missing or unusable])
-     else
-       AC_MSG_WARN([babeltrace is missing or unusable; GDB is unable to read CTF data.])
-     fi
-  fi
-fi
-
 GCC_ENABLE([libctf], [yes], [], [Handle .ctf type-info sections])
 if test "${enable_libctf}" = yes; then
   AC_DEFINE(ENABLE_LIBCTF, 1, [Handle .ctf type-info sections])
@@ -2432,6 +2419,8 @@ GDB_AC_TRANSFORM([gcore], [GCORE_TRANSFORM_NAME])
 AC_CONFIG_FILES([gcore.in:gcore-1.in])
 AC_CONFIG_FILES([gstack.in:gstack-1.in])
 AC_CONFIG_FILES([gdb-add-index.in:contrib/gdb-add-index.sh])
-AC_CONFIG_FILES([Makefile gdb-gdb.gdb gdb-gdb.py doc/Makefile data-directory/Makefile])
+AC_CONFIG_FILES([Makefile doc/Makefile data-directory/Makefile])
+AC_CONFIG_LINKS([gdb-gdb.py:gdb-gdb.py])
+AC_CONFIG_LINKS([gdb-gdb.gdb:gdb-gdb.gdb])
 
 AC_OUTPUT

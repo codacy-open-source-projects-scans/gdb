@@ -47,6 +47,10 @@ struct riscv_private_data
   bfd_vma hi_addr[OP_MASK_RD + 1];
   bool to_print_addr;
   bool has_gp;
+  bool has_jvt_base;
+  asection *jvt_section;
+  bfd_byte *jvt_content;
+  bfd_size_type jvt_size;
   /* Current XLEN for the disassembler.  */
   unsigned xlen;
   /* Default ISA specification version.  */
@@ -105,6 +109,22 @@ parse_riscv_dis_option_without_args (const char *option,
   else
     return false;
   return true;
+}
+
+static bool
+riscv_vtype_altfmt_supported (struct riscv_private_data *pd)
+{
+  return (pd->all_ext
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfbfa")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfofp8min")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfqwbdota8f")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfqwdota8f")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfwbdota16bf")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvfwdota16bf")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvqwbdota8i")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvqwbdota16i")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvqwdota8i")
+	  || riscv_subset_supports (&pd->riscv_rps_dis, "zvqwdota16i"));
 }
 
 /* Parse RISC-V disassembler option (possibly with arguments).  */
@@ -218,6 +238,48 @@ maybe_print_address (struct riscv_private_data *pd, int base_reg, int offset,
   /* Fit into a 32-bit value on RV32.  */
   if (pd->xlen == 32)
     pd->print_addr = (bfd_vma)(uint32_t)pd->print_addr;
+}
+
+/* Set pd->xlen from ELF class if not already known.  */
+
+static void
+riscv_set_xlen_from_elf (struct riscv_private_data *pd,
+			 struct disassemble_info *info)
+{
+  if (pd->xlen != 0)
+    return;
+
+  if (info->mach == bfd_mach_riscv64)
+    pd->xlen = 64;
+  else if (info->mach == bfd_mach_riscv32)
+    pd->xlen = 32;
+  else if (info->section != NULL)
+    {
+      Elf_Internal_Ehdr *ehdr = elf_elfheader (info->section->owner);
+      pd->xlen = ehdr->e_ident[EI_CLASS] == ELFCLASS64 ? 64 : 32;
+    }
+}
+
+/* Try to print target address of cm.jalt and cm.jt.  */
+
+static void
+maybe_print_jvt_address (struct riscv_private_data *pd, int index)
+{
+  if (!pd->has_jvt_base || pd->jvt_section == NULL || pd->jvt_content == NULL
+      || pd->xlen == 0)
+    return;
+
+  bfd_size_type entry_size = pd->xlen / 8;
+  bfd_size_type offset = entry_size * (bfd_size_type) index;
+  if (index < 0 || index > (ZCMT_TOTAL_ENTRIES - 1)
+      || offset + entry_size > pd->jvt_size)
+    return;
+
+  bfd_byte *packet = pd->jvt_content + offset;
+
+  pd->to_print_addr = true;
+  pd->print_addr = bfd_get_bits (packet, pd->xlen,
+				 bfd_big_endian (pd->jvt_section->owner));
 }
 
 /* Get Zcmp reg_list field.  */
@@ -440,6 +502,17 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 	      print (info->stream, dis_style_register, "%s",
 		     riscv_vecr_names_numeric[EXTRACT_OPERAND (VS2, l)]);
 	      break;
+	    case 'q':
+	      {
+		unsigned int vs2 = EXTRACT_OPERAND (VS2, l);
+		print (info->stream, dis_style_register, "%s",
+		       riscv_vecr_names_numeric[vs2 & 0x18]);
+	      }
+	      break;
+	    case 'r':
+	      print (info->stream, dis_style_immediate, "%u",
+		     (unsigned int) (EXTRACT_OPERAND (VS2, l) & 0x7) * 8);
+	      break;
 	    case '0':
 	      print (info->stream, dis_style_register, "%s",
 		     riscv_vecr_names_numeric[0]);
@@ -453,17 +526,27 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 		unsigned int imm_vsew = EXTRACT_OPERAND (VSEW, imm);
 		unsigned int imm_vta = EXTRACT_OPERAND (VTA, imm);
 		unsigned int imm_vma = EXTRACT_OPERAND (VMA, imm);
-		unsigned int imm_vtype_res = (imm >> 8);
+		unsigned int imm_vtype_altfmt
+		  = EXTRACT_OPERAND (VTYPE_ALTFMT, imm);
+		bool imm_vtype_altfmt_supported
+		  = (imm_vtype_altfmt
+		     && riscv_vtype_altfmt_supported (pd));
+		unsigned int imm_vtype_res = (imm >> 9);
 
 		if (imm_vsew < ARRAY_SIZE (riscv_vsew)
 		    && imm_vlmul < ARRAY_SIZE (riscv_vlmul)
 		    && imm_vta < ARRAY_SIZE (riscv_vta)
 		    && imm_vma < ARRAY_SIZE (riscv_vma)
 		    && !imm_vtype_res
+		    && (imm_vtype_altfmt == 0
+			|| (imm_vtype_altfmt_supported
+			    && imm_vsew < ARRAY_SIZE (riscv_vsew_altfmt)))
 		    && riscv_vsew[imm_vsew] != NULL
 		    && riscv_vlmul[imm_vlmul] != NULL)
 		  print (info->stream, dis_style_text, "%s,%s,%s,%s",
-			 riscv_vsew[imm_vsew],
+			 imm_vtype_altfmt
+			 ? riscv_vsew_altfmt[imm_vsew]
+			 : riscv_vsew[imm_vsew],
 			 riscv_vlmul[imm_vlmul], riscv_vta[imm_vta],
 			 riscv_vma[imm_vma]);
 		else
@@ -536,6 +619,11 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 	  break;
 
 	case 'm':
+	  if (EXTRACT_OPERAND (RM, l) == OP_MASK_RM)
+	    break;
+	  print (info->stream, dis_style_text, ",");
+	  /* Fall through. */
+	case 'M':
 	  arg_print (info, EXTRACT_OPERAND (RM, l),
 		     riscv_rm, ARRAY_SIZE (riscv_rm));
 	  break;
@@ -747,6 +835,7 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 		case 'I':
 		  print (info->stream, dis_style_address_offset,
 			 "%" PRIu64, EXTRACT_ZCMT_INDEX (l));
+		  maybe_print_jvt_address (pd, EXTRACT_ZCMT_INDEX (l));
 		  break;
 		default:
 		  goto undefined_modifier;
@@ -917,6 +1006,79 @@ print_insn_args (const char *oparg, insn_t l, bfd_vma pc, disassemble_info *info
 		  goto undefined_modifier;
 		}
 	      break;
+	    case 'p': /* Vendor-specific (SpacemiT) operands.  */
+	      switch (*++oparg)
+		{
+		case 'V':
+		  switch (*++oparg)
+		    {
+		    case 'd':
+		      {
+			unsigned vd = EXTRACT_OPERAND (SPACEMIT_IME_VD, l) * 2;
+			print (info->stream, dis_style_register, "%s",
+			       riscv_vecr_names_numeric[vd]);
+		      }
+		      break;
+		    case 's':
+		      {
+			unsigned vs = EXTRACT_OPERAND (SPACEMIT_IME_VS1, l) * 2;
+			print (info->stream, dis_style_register, "%s",
+			       riscv_vecr_names_numeric[vs]);
+		      }
+		      break;
+		    case 'm':
+		      {
+			unsigned vm = EXTRACT_OPERAND (SPACEMIT_IME_VMASK, l);
+			print (info->stream, dis_style_register, "%s",
+			       riscv_vecr_names_numeric[vm]);
+		      }
+		      break;
+		    default:
+		      goto undefined_modifier;
+		    }
+		  break;
+		case 'n': /* Xpn/Xpb: uimm2 stride, encoded across bits 7,15.  */
+		case 'b':
+		  {
+		    unsigned sp = ((l >> 7) & 1) | (((l >> 15) & 1) << 1);
+		    print (info->stream, dis_style_immediate, "%u", sp);
+		  }
+		  break;
+		case 'u': /* XpuN@S: N-bit unsigned immediate at bit S.  */
+		  {
+		    long n = strtol (oparg + 1, (char **)&oparg, 10);
+		    if (*oparg != '@')
+		      goto undefined_modifier;
+		    long s = strtol (oparg + 1, (char **)&oparg, 10);
+		    oparg--;
+		    unsigned val = (l >> s) & ((1U << n) - 1);
+		    print (info->stream, dis_style_immediate, "%u", val);
+		  }
+		  break;
+		case 'w':
+		  /* Xpw: optional data-width suffix, i8 only.  WI==3 (i8)
+		     is the default and is omitted from the output.  */
+		  {
+		    unsigned wi = EXTRACT_OPERAND (SPACEMIT_IME_WI, l);
+		    if (wi != 3)
+		      goto undefined_modifier;
+		  }
+		  break;
+		case 'x':
+		  /* Xpx: optional data-width suffix, i4 or i8.  WI==3 (i8)
+		     is the default and is omitted from the output.  */
+		  {
+		    unsigned wi = EXTRACT_OPERAND (SPACEMIT_IME_WI, l);
+		    if (wi == 2)
+		      print (info->stream, dis_style_text, ",i4");
+		    else if (wi != 3)
+		      goto undefined_modifier;
+		  }
+		  break;
+		default:
+		  goto undefined_modifier;
+		}
+	      break;
 	    default:
 	      goto undefined_modifier;
 	    }
@@ -983,17 +1145,7 @@ riscv_disassemble_insn (bfd_vma memaddr,
   if (op != NULL)
     {
       /* If XLEN is not known, get its value from the ELF class.  */
-      if (pd->xlen != 0)
-	;
-      else if (info->mach == bfd_mach_riscv64)
-	pd->xlen = 64;
-      else if (info->mach == bfd_mach_riscv32)
-	pd->xlen = 32;
-      else if (info->section != NULL)
-	{
-	  Elf_Internal_Ehdr *ehdr = elf_elfheader (info->section->owner);
-	  pd->xlen = ehdr->e_ident[EI_CLASS] == ELFCLASS64 ? 64 : 32;
-	}
+      riscv_set_xlen_from_elf (pd, info);
 
       /* If arch has the Zfinx extension, replace FPR with GPR.  */
       if (riscv_subset_supports (&pd->riscv_rps_dis, "zfinx"))
@@ -1017,11 +1169,51 @@ riscv_disassemble_insn (bfd_vma memaddr,
 	  if ((op->xlen_requirement != 0)
 	      && (op->xlen_requirement != pd->xlen))
 	    continue;
-	  /* Is this instruction supported by the current architecture?  */
-	  if (!pd->all_ext
-	      && !riscv_multi_subset_supports (&pd->riscv_rps_dis,
-					       op->insn_class))
-	    continue;
+	  /* Is this instruction supported by the current architecture?
+	     Also recognize Zcmt when the JVT base symbol identifies its table.  */
+	  if (!pd->all_ext)
+	    {
+	      if (!riscv_multi_subset_supports (&pd->riscv_rps_dis,
+						op->insn_class)
+		  && !(pd->has_jvt_base && op->insn_class == INSN_CLASS_ZCMT))
+		continue;
+
+	      if (pd->xlen == 32
+		  && riscv_subset_supports (&pd->riscv_rps_dis, "zdinx"))
+		{
+		  if ((op->pinfo & INSN_RV32_EVEN_D)
+		      && (word & (1u << OP_SH_RD)))
+		    continue;
+		  if ((op->pinfo & INSN_RV32_EVEN_S)
+		      && (word & (1u << OP_SH_RS1)))
+		    continue;
+		  if ((op->pinfo & INSN_RV32_EVEN_T)
+		      && (word & (1u << OP_SH_RS2)))
+		    continue;
+		  if ((op->pinfo & INSN_RV32_EVEN_R)
+		      && (word & (1u << OP_SH_RS3)))
+		    continue;
+		}
+
+	      if (pd->xlen <= 64
+		  && riscv_subset_supports (&pd->riscv_rps_dis, "zqinx"))
+		{
+		  unsigned int mask = pd->xlen == 32 ? 3 : 1;
+
+		  if ((op->pinfo & INSN_RV64_EVEN_D)
+		      && (word & (mask << OP_SH_RD)))
+		    continue;
+		  if ((op->pinfo & INSN_RV64_EVEN_S)
+		      && (word & (mask << OP_SH_RS1)))
+		    continue;
+		  if ((op->pinfo & INSN_RV64_EVEN_T)
+		      && (word & (mask << OP_SH_RS2)))
+		    continue;
+		  if ((op->pinfo & INSN_RV64_EVEN_R)
+		      && (word & (mask << OP_SH_RS3)))
+		    continue;
+		}
+	    }
 
 	  /* It's a match.  */
 	  (*info->fprintf_styled_func) (info->stream, dis_style_mnemonic,
@@ -1412,6 +1604,51 @@ riscv_disassemble_data (bfd_vma memaddr ATTRIBUTE_UNUSED,
   return info->bytes_per_chunk;
 }
 
+/* DATA is the function address in jump table entry.
+   Lookup the address in symbols and print the function name.  */
+static int
+riscv_disassemble_jvt (bfd_vma memaddr, insn_t data,
+		       const bfd_byte *packet,
+		       disassemble_info *info)
+{
+  struct riscv_private_data *pd = info->private_data;
+  if (pd == NULL || pd->xlen == 0 || info->section == NULL)
+    return -1;
+
+  bfd_size_type entry_size = pd->xlen / 8;
+  bfd_vma offset = memaddr - info->section->vma;
+  bfd_size_type entry_offset = (offset / entry_size) * entry_size;
+  bfd_size_type entry_delta = offset - entry_offset;
+  int idx = entry_offset / entry_size;
+  if (idx < 0 || idx > (ZCMT_TOTAL_ENTRIES - 1))
+    opcodes_error_handler (_ ("invalid jvt index: %i"), idx);
+
+  const char *inst_str;
+  if (idx <= ZCMT_JT_END)
+    inst_str = "jvt.jt";
+  else
+    inst_str = "jvt.jalt";
+
+  if (pd->jvt_content != NULL && entry_offset + entry_size <= pd->jvt_size)
+    packet = pd->jvt_content + entry_offset;
+  data = bfd_get_bits (packet, pd->xlen,
+		       bfd_big_endian (info->section->owner));
+
+  const char *funcname = "<unknown>";
+  for (int i = 0; i < info->symtab_size; i++)
+    {
+      bfd_vma addr = bfd_asymbol_value (info->symtab[i]);
+      if (addr == (bfd_vma) data)
+	{
+	  funcname = info->symtab[i]->name;
+	  break;
+	}
+    }
+  (*info->fprintf_styled_func) (info->stream, dis_style_text, "%s[%i]:\t%s",
+				inst_str, idx, funcname);
+  return entry_size - entry_delta;
+}
+
 static bool
 riscv_init_disasm_info (struct disassemble_info *info)
 {
@@ -1424,7 +1661,34 @@ riscv_init_disasm_info (struct disassemble_info *info)
     pd->hi_addr[i] = -1;
   pd->to_print_addr = false;
 
+  pd->has_jvt_base = false;
   pd->has_gp = false;
+  pd->jvt_section = NULL;
+  pd->jvt_content = NULL;
+  pd->jvt_size = 0;
+
+  if (info->section != NULL)
+    {
+      bfd *abfd = info->section->owner;
+      if (abfd && bfd_get_flavour (abfd) == bfd_target_elf_flavour)
+	{
+	  asection *s = bfd_get_section_by_name (abfd, TABLE_JUMP_SEC_NAME);
+	  if (s != NULL && bfd_section_size (s) > 0)
+	    {
+	      bfd_size_type size = bfd_section_size (s);
+	      bfd_byte *buf = (bfd_byte *) xmalloc (size);
+	      if (bfd_get_section_contents (abfd, s, buf, 0, size))
+		{
+		  pd->jvt_section = s;
+		  pd->jvt_content = buf;
+		  pd->jvt_size = size;
+		}
+	      else
+		free (buf);
+	    }
+	}
+    }
+
   for (i = 0; i < info->symtab_size; i++)
     {
       asymbol *sym = info->symtab[i];
@@ -1433,9 +1697,18 @@ riscv_init_disasm_info (struct disassemble_info *info)
 	  pd->gp = bfd_asymbol_value (sym);
 	  pd->has_gp = true;
 	}
+
+      if (strcmp (bfd_asymbol_name (sym), RISCV_TABLE_JUMP_BASE_SYMBOL) == 0)
+	{
+	  bfd_vma jvt_base = bfd_asymbol_value (sym);
+	  if (pd->jvt_section != NULL
+	      && jvt_base == bfd_section_vma (pd->jvt_section))
+	    pd->has_jvt_base = true;
+	}
     }
 
   pd->xlen = 0;
+  riscv_set_xlen_from_elf (pd, info);
   pd->default_isa_spec = ISA_SPEC_CLASS_DRAFT - 1;
   pd->default_priv_spec = PRIV_SPEC_CLASS_NONE;
 
@@ -1529,8 +1802,21 @@ print_insn_riscv (bfd_vma memaddr, struct disassemble_info *info)
   ((struct riscv_private_data *) info->private_data)->last_map_state = mstate;
 
   /* Set the size to dump.  */
-  if (mstate == MAP_DATA
-      && (info->flags & DISASSEMBLE_DATA) == 0)
+  if (info->section != NULL
+      && strcmp (info->section->name, TABLE_JUMP_SEC_NAME) == 0)
+    {
+      struct riscv_private_data *pd = info->private_data;
+      riscv_set_xlen_from_elf (pd, info);
+
+      dump_size = pd->xlen / 8;
+      info->bytes_per_chunk = dump_size;
+      info->bytes_per_line = dump_size;
+      info->endian_code = bfd_big_endian (info->section->owner)
+			   ? BFD_ENDIAN_BIG : BFD_ENDIAN_LITTLE;
+      info->display_endian = info->endian_code;
+      riscv_disassembler = riscv_disassemble_jvt;
+    }
+  else if (mstate == MAP_DATA && (info->flags & DISASSEMBLE_DATA) == 0)
     {
       dump_size = riscv_data_length (memaddr, info);
       info->bytes_per_chunk = dump_size;
@@ -1760,5 +2046,6 @@ void disassemble_free_riscv (struct disassemble_info *info ATTRIBUTE_UNUSED)
     {
       riscv_release_subset_list (pd->riscv_rps_dis.subset_list);
       free (pd->riscv_rps_dis.subset_list);
+      free (pd->jvt_content);
     }
 }

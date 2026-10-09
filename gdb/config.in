@@ -250,6 +250,12 @@
 /* Define to 1 if you have the `iconvlist' function. */
 #undef HAVE_ICONVLIST
 
+/* Define to 1 if you have the `init_extended_color' function. */
+#undef HAVE_INIT_EXTENDED_COLOR
+
+/* Define to 1 if you have the `init_extended_pair' function. */
+#undef HAVE_INIT_EXTENDED_PAIR
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -267,9 +273,6 @@
 
 /* Define to 1 if you have the `atomic' library (-latomic). */
 #undef HAVE_LIBATOMIC
-
-/* Define if you have the babeltrace library. */
-#undef HAVE_LIBBABELTRACE
 
 /* Define if libbacktrace is being used. */
 #undef HAVE_LIBBACKTRACE
@@ -426,6 +429,9 @@
 
 /* Define to 1 if you have the `sbrk' function. */
 #undef HAVE_SBRK
+
+/* Define to 1 if you have the `sched_getaffinity' function. */
+#undef HAVE_SCHED_GETAFFINITY
 
 /* Define to 1 if you have the `setlocale' function. */
 #undef HAVE_SETLOCALE

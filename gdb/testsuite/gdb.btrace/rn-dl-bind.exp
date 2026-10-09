@@ -26,11 +26,11 @@ require allow_btrace_tests
 standard_testfile
 if {[prepare_for_testing "failed to prepare" $testfile $srcfile \
 	 {debug ldflags=-Wl,-z,lazy}]} {
-    return -1
+    return
 }
 
 if {![runto_main]} {
-    return -1
+    return
 }
 
 # trace the code for the call to test
@@ -53,7 +53,7 @@ with_test_prefix "main" {
 # debug information we may stop at the closing brace or at the return.
 #
 # instead, run to test
-gdb_breakpoint test {temporary}
+gdb_breakpoint test -temporary
 gdb_test "reverse-continue" ".*test\.1.*"
 
 with_test_prefix "test" {

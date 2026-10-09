@@ -81,7 +81,7 @@ static struct {
   int value;
 } parm_constants[] =
 {
-  { "PARAM_BOOLEAN", param_boolean }, /* ARI: param_boolean */
+  { "PARAM_BOOLEAN", param_boolean },
   { "PARAM_AUTO_BOOLEAN", param_auto_boolean },
   { "PARAM_UINTEGER", param_uinteger },
   { "PARAM_INTEGER", param_integer },
@@ -140,6 +140,8 @@ struct parmpy_object : public PyObject
      NULL-terminated.  */
   const char **enumeration;
 };
+
+static_assert (gdb::is_python_allocatable_v<parmpy_object>);
 
 /* Wraps a setting around an existing parmpy_object.  This abstraction
    is used to manipulate the value in S->VALUE in a type safe manner using
@@ -374,15 +376,13 @@ set_parameter_value (parmpy_object *self, PyObject *value)
 		}
 	    }
 
-	if (allowed == TRIBOOL_UNKNOWN)
-	  {
-	    if (val > UINT_MAX || val < INT_MIN
+	if (allowed == TRIBOOL_UNKNOWN
+	    && (val > UINT_MAX || val < INT_MIN
 		|| (var_type == var_uinteger && val < 0)
 		|| (var_type == var_integer && val > INT_MAX)
 		|| (var_type == var_pinteger && val < 0)
-		|| (var_type == var_pinteger && val > INT_MAX))
-	      allowed = TRIBOOL_FALSE;
-	  }
+		|| (var_type == var_pinteger && val > INT_MAX)))
+	  allowed = TRIBOOL_FALSE;
 	if (allowed == TRIBOOL_FALSE)
 	  {
 	    PyErr_SetString (PyExc_RuntimeError,
@@ -856,7 +856,7 @@ parmpy_init (PyObject *self, PyObject *args, PyObject *kwds)
       return -1;
     }
 
-  if (parmclass != param_boolean /* ARI: param_boolean */
+  if (parmclass != param_boolean
       && parmclass != param_auto_boolean
       && parmclass != param_uinteger && parmclass != param_integer
       && parmclass != param_string && parmclass != param_string_noescape

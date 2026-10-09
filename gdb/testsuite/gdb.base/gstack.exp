@@ -19,7 +19,7 @@ require can_spawn_for_attach
 standard_testfile
 
 if {[build_executable "failed to prepare" $testfile $srcfile {debug}] == -1} {
-    return -1
+    return
 }
 
 set command "$binfile"
@@ -33,8 +33,12 @@ set test_spawn_id $res
 
 # Wait for the spawned program to loop.
 set test "wait for inferior to loop"
+set re \
+    [multi_line_ttm \
+	 "looping" \
+	 ""]
 gdb_expect {
-    -re "looping\r\n" {
+    -re $re {
 	pass $test
     }
     eof {

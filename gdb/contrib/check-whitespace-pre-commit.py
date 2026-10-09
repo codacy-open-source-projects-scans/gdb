@@ -14,19 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import re
 import subprocess
 import sys
 
-re_clean = re.compile(
-    "(^(gdb/testsuite/|gdbsupport/|gdbserver/)|[.](m4|ac|def|[chly])$|NEWS)"
-)
+# Files that are not clean, so they're only checked when changes.
+todo_list = []
 
 clean = []
 other = []
 for f in sys.argv[1:]:
-    m = re_clean.search(f)
-    if m:
+    if f not in todo_list:
         clean.append(f)
     else:
         other.append(f)

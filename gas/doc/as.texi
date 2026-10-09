@@ -257,6 +257,7 @@ gcc(1), ld(1), and the Info entries for @file{binutils} and @file{ld}.
  [@b{--multibyte-handling=[allow|warn|warn-sym-only]}]
  [@b{--no-pad-sections}]
  [@b{-o} @var{objfile}] [@b{-R}]
+ [@b{--reloc-section-sym=[all|internal|none]}]
  [@b{--scfi=experimental}]
  [@b{--sectname-subst}]
  [@b{--size-check=[error|warning]}]
@@ -650,6 +651,7 @@ gcc(1), ld(1), and the Info entries for @file{binutils} and @file{ld}.
  [@b{--rename-section} @var{oldname}=@var{newname}]
  [@b{--[no-]trampolines}]
  [@b{--abi-windowed}|@b{--abi-call0}]
+ [@b{--[no-]abs32-rela}]
 @end ifset
 @ifset Z80
 
@@ -956,6 +958,16 @@ Ignored.  Supported for compatibility with tools that pass the same option to
 both the assembler and the linker.
 
 @ifset ELF
+@item --reloc-section-sym=all
+@itemx --reloc-section-sym=internal
+@itemx --reloc-section-sym=none
+Control whether relocations referencing local binding symbols are adjusted to
+use section symbols instead.  With @code{all} (the default), relocations
+against all eligible local binding symbols are converted.  With
+@code{internal}, only relocations against internal labels (symbols matching the
+@code{.L} prefix) are converted.  With @code{none}, no such conversions are
+performed.
+
 @item --scfi=experimental
 This option controls whether the assembler should synthesize CFI for
 hand-written input.  If the input already contains some synthesizable CFI
@@ -4724,8 +4736,11 @@ Some machine configurations provide additional directives.
 
 @ifset ELF
 * Version::                     @code{.version "@var{string}"}
+@ignore
 * VTableEntry::                 @code{.vtable_entry @var{table}, @var{offset}}
 * VTableInherit::               @code{.vtable_inherit @var{child}, @var{parent}}
+@end ignore
+
 @end ifset
 
 * Warnif::			@code{.warnif @var{expression}}
@@ -6686,7 +6701,7 @@ undefined.
 This is one of the ELF section stack manipulation directives.  The others are
 @code{.section} (@pxref{Section}), @code{.subsection} (@pxref{SubSection}),
 @code{.pushsection} (@pxref{PushSection}), and @code{.previous}
-(@pxref{Previous}).
+(@pxref{Previous}). It is also implemented on COFF targets.
 
 This directive replaces the current section (and subsection) with the top
 section (and subsection) on the section stack.  This section is popped off the
@@ -6702,7 +6717,7 @@ stack.
 This is one of the ELF section stack manipulation directives.  The others are
 @code{.section} (@pxref{Section}), @code{.subsection} (@pxref{SubSection}),
 @code{.pushsection} (@pxref{PushSection}), and @code{.popsection}
-(@pxref{PopSection}).
+(@pxref{PopSection}). It is also implemented on COFF targets.
 
 This directive swaps the current section (and subsection) with most recently
 referenced section/subsection pair prior to this one.  Multiple
@@ -6806,7 +6821,7 @@ expanded.  @xref{Macro}.
 This is one of the ELF section stack manipulation directives.  The others are
 @code{.section} (@pxref{Section}), @code{.subsection} (@pxref{SubSection}),
 @code{.popsection} (@pxref{PopSection}), and @code{.previous}
-(@pxref{Previous}).
+(@pxref{Previous}). It is also implemented on COFF targets.
 
 This directive pushes the current section (and subsection) onto the
 top of the section stack, and then replaces the current section and
@@ -6982,6 +6997,11 @@ will be as if no flags had been specified at all.
 
 If the optional argument to the @code{.section} directive is not quoted, it is
 taken as a subsection number (@pxref{Sub-Sections}).
+
+For COFF targets, the @code{.pushsection} (@pxref{PushSection}),
+@code{.popsection} (@pxref{PopSection}), and @code{.previous}
+(@pxref{Previous}) directives are also implemented.
+
 @end ifset
 
 @ifset ELF
@@ -7121,9 +7141,10 @@ some targets extend this list with their own types
 Many targets only support the first three section types.  The type may be
 enclosed in double quotes if necessary.
 
-Note on targets where the @code{@@} character is the start of a comment (eg
-ARM) then another character is used instead.  For example the ARM port uses the
-@code{%} character.
+Note - certain targets treat @code{@@} as the start of a comment (e.g., ARM).
+On such platforms, @code{%} is used instead. On platforms where neither
+@code{@@} nor @code{%} indicate the start of a comment, @code{@@} and
+@code{%} may be used interchangeably.
 
 Note - some sections, eg @code{.text} and @code{.data} are considered to be
 special and have fixed types.  Any attempt to declare them with a different
@@ -7795,7 +7816,11 @@ This directive creates a @code{.note} section and places into it an ELF
 formatted note of type NT_VERSION.  The note's name is set to @code{string}.
 @end ifset
 
+@ignore
 @ifset ELF
+@c .vtable_entry and .vtable_inherit were for the C++ implementation
+@c that predated the generic C++ ABI.  They're obsolete now, so
+@c don't include them in the documentation.
 @node VTableEntry
 @section @code{.vtable_entry @var{table}, @var{offset}}
 
@@ -7812,6 +7837,7 @@ This directive finds the symbol @code{child} and finds or creates the symbol
 parent whose addend is the value of the child symbol.  As a special case the
 parent name of @code{0} is treated as referring to the @code{*ABS*} section.
 @end ifset
+@end ignore
 
 @node Warnif
 @section @code{.warnif "@var{expression}"}
@@ -8009,8 +8035,8 @@ exclusive, the linker can issue a diagnostic.
 @command{@value{AS}} currently supports two versions of object attributes:
 @itemize @bullet{}
 @item
-Object Attributes version 1 (OAv1) used by: ARC, ARM, C-SKY, MIPS, MSP430, M68K,
-PowerPC, RISC-V, SPARC, s390, and TIC6X.
+Object Attributes version 1 (OAv1) used by: ARC, ARM, AVR, C-SKY, MIPS,
+MSP430, M68K, PowerPC, RISC-V, SPARC, s390, and TIC6X.
 @item
 Object Attributes version 2 (OAv2) used by: AArch64.
 @end itemize
@@ -8078,6 +8104,31 @@ the flag value is 0, the file is compatible with other toolchains.  If it is 1,
 then the file is only compatible with the named toolchain.  If it is greater
 than 1, the file can only be processed by other toolchains under some private
 arrangement indicated by the flag value and the vendor name.
+@end table
+
+@subsection AVR Attributes
+
+@table @r
+@item Tag_GNU_AVR_VTABLE_AS (4)
+The @uref{https://gcc.gnu.org/onlinedocs/gcc/Named-Address-Spaces.html#AVR-Named-Address-Spaces,,named address space}
+for C++ virtual tables used by this object file:
+@itemize @bullet
+@item 0 for files that neither define nor access virtual tables.
+@item 1 for files that use the generic address space.
+@item 2 for files that use the 16-bit address space @code{__flash}.
+@item 3 for files that use the 16-bit address space @code{__flash1}.
+@item 4 for files that use the 16-bit address space @code{__flash2}.
+@item 5 for files that use the 16-bit address space @code{__flash3}.
+@item 6 for files that use the 16-bit address space @code{__flash4}.
+@item 7 for files that use the 16-bit address space @code{__flash5}.
+@item 8 for files that use the 24-bit address space @code{__flashx}.
+@end itemize
+
+@item Tag_GNU_AVR_BITS_DOUBLE (8)
+Bit size of the @code{double} type, or 0 if no @code{double} is used.
+
+@item Tag_GNU_AVR_BITS_LONG_DOUBLE (12)
+Bit size of the @code{long double} type, or 0 if no @code{long double} is used.
 @end table
 
 @subsection M680x0 Attributes

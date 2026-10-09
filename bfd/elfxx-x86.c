@@ -1822,8 +1822,7 @@ enum dynobj_sframe_plt_type
    of type PLT_SEC_TYPE.  */
 
 static bool
-_bfd_x86_elf_create_sframe_plt (bfd *output_bfd,
-				struct bfd_link_info *info,
+_bfd_x86_elf_create_sframe_plt (struct bfd_link_info *info,
 				unsigned int plt_sec_type)
 {
   struct elf_x86_link_hash_table *htab;
@@ -1844,7 +1843,7 @@ _bfd_x86_elf_create_sframe_plt (bfd *output_bfd,
   unsigned int num_pltn_entries = 0;
   const sframe_frame_row_entry * const *pltn_fres;
 
-  bed = get_elf_backend_data (output_bfd);
+  bed = get_elf_backend_data (info->output_bfd);
   htab = elf_x86_hash_table (info, bed->target_id);
   /* Whether SFrame stack trace info for plt0 is to be generated.  */
   switch (plt_sec_type)
@@ -1972,8 +1971,7 @@ _bfd_x86_elf_create_sframe_plt (bfd *output_bfd,
    PLT_SEC_TYPE.  */
 
 static bool
-_bfd_x86_elf_write_sframe_plt (bfd *output_bfd,
-			       struct bfd_link_info *info,
+_bfd_x86_elf_write_sframe_plt (struct bfd_link_info *info,
 			       unsigned int plt_sec_type)
 {
   struct elf_x86_link_hash_table *htab;
@@ -1985,7 +1983,7 @@ _bfd_x86_elf_write_sframe_plt (bfd *output_bfd,
 
   int err = 0;
 
-  bed = get_elf_backend_data (output_bfd);
+  bed = get_elf_backend_data (info->output_bfd);
   htab = elf_x86_hash_table (info, bed->target_id);
   dynobj = htab->elf.dynobj;
 
@@ -2275,15 +2273,14 @@ _bfd_elf_x86_valid_reloc_p (asection *input_section,
 /* Set the sizes of the dynamic sections.  */
 
 bool
-_bfd_x86_elf_late_size_sections (bfd *output_bfd,
-				    struct bfd_link_info *info)
+_bfd_x86_elf_late_size_sections (struct bfd_link_info *info)
 {
   struct elf_x86_link_hash_table *htab;
   bfd *dynobj;
   asection *s;
   bool relocs;
   bfd *ibfd;
-  elf_backend_data *bed = get_elf_backend_data (output_bfd);
+  elf_backend_data *bed = get_elf_backend_data (info->output_bfd);
 
   htab = elf_x86_hash_table (info, bed->target_id);
   if (htab == NULL)
@@ -2334,6 +2331,19 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	      else if (p->count != 0)
 		{
 		  srel = elf_section_data (p->sec)->sreloc;
+		  if (!srel)
+		    {
+		      /* NB: Since elf_link_read_relocs_from_section
+			 aborts for bad relocation, further relocations
+			 won't be processed and needed dynamic relocation
+			 section won't be created afterwards.  */
+		      _bfd_error_handler
+			/* xgettext:c-format */
+			(_("%pB: dynamic relocation section is needed "
+			   "for section `%pA'"),
+			 p->sec->owner, p->sec);
+		      continue;
+		    }
 		  srel->size += p->count * htab->sizeof_reloc;
 		  if ((p->sec->output_section->flags & SEC_READONLY) != 0
 		      && (info->flags & DF_TEXTREL) == 0)
@@ -2482,7 +2492,7 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  && (htab->elf.igotplt == NULL
 	      || htab->elf.igotplt->size == 0)
 	  && (!htab->elf.dynamic_sections_created
-	      || (eh_frame = bfd_get_section_by_name (output_bfd,
+	      || (eh_frame = bfd_get_section_by_name (info->output_bfd,
 						      ".eh_frame")) == NULL
 	      || eh_frame->rawsize == 0))
 	{
@@ -2539,7 +2549,7 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  && htab->elf.splt->size != 0
 	  && !bfd_is_abs_section (htab->elf.splt->output_section))
 	{
-	  _bfd_x86_elf_create_sframe_plt (output_bfd, info, SFRAME_PLT);
+	  _bfd_x86_elf_create_sframe_plt (info, SFRAME_PLT);
 	  /* FIXME - Dirty Hack.  Set the size to something non-zero for now,
 	     so that the section does not get stripped out below.  The precise
 	     size of this section is known only when the contents are
@@ -2552,7 +2562,7 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  && htab->plt_got->size != 0
 	  && !bfd_is_abs_section (htab->plt_got->output_section))
 	{
-	  _bfd_x86_elf_create_sframe_plt (output_bfd, info, SFRAME_PLT_GOT);
+	  _bfd_x86_elf_create_sframe_plt (info, SFRAME_PLT_GOT);
 	  /* FIXME - Dirty Hack.  Set the size to something non-zero for now,
 	     so that the section does not get stripped out below.  The precise
 	     size of this section is known only when the contents are
@@ -2566,7 +2576,7 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  && !bfd_is_abs_section (htab->plt_second->output_section))
 	{
 	  /* SFrame stack trace info for the second PLT.  */
-	  _bfd_x86_elf_create_sframe_plt (output_bfd, info, SFRAME_PLT_SEC);
+	  _bfd_x86_elf_create_sframe_plt (info, SFRAME_PLT_SEC);
 	  /* FIXME - Dirty Hack.  Set the size to something non-zero for now,
 	     so that the section does not get stripped out below.  The precise
 	     size of this section is known only when the contents are
@@ -2731,19 +2741,19 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  && htab->elf.splt != NULL
 	  && htab->elf.splt->size != 0
 	  && htab->plt_sframe->contents == NULL)
-	_bfd_x86_elf_write_sframe_plt (output_bfd, info, SFRAME_PLT);
+	_bfd_x86_elf_write_sframe_plt (info, SFRAME_PLT);
 
       if (htab->plt_second_sframe != NULL
 	  && htab->plt_second != NULL
 	  && htab->plt_second->size != 0
 	  && htab->plt_second_sframe->contents == NULL)
-	_bfd_x86_elf_write_sframe_plt (output_bfd, info, SFRAME_PLT_SEC);
+	_bfd_x86_elf_write_sframe_plt (info, SFRAME_PLT_SEC);
 
       if (htab->plt_got_sframe != NULL
 	  && htab->plt_got != NULL
 	  && htab->plt_got->size != 0
 	  && htab->plt_got_sframe->contents == NULL)
-	_bfd_x86_elf_write_sframe_plt (output_bfd, info, SFRAME_PLT_GOT);
+	_bfd_x86_elf_write_sframe_plt (info, SFRAME_PLT_GOT);
     }
 
   if (resolved_plt != NULL
@@ -2752,15 +2762,13 @@ _bfd_x86_elf_late_size_sections (bfd *output_bfd,
 	  || !_bfd_elf_add_dynamic_entry (info, DT_X86_64_PLTENT, 0)))
     return false;
 
-  return _bfd_elf_maybe_vxworks_add_dynamic_tags (output_bfd, info,
-						  relocs);
+  return _bfd_elf_maybe_vxworks_add_dynamic_tags (info, relocs);
 }
 
 /* Finish up the x86 dynamic sections.  */
 
 struct elf_x86_link_hash_table *
-_bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
-				      struct bfd_link_info *info,
+_bfd_x86_elf_finish_dynamic_sections (struct bfd_link_info *info,
 				      bfd_byte *buf)
 {
   struct elf_x86_link_hash_table *htab;
@@ -2770,7 +2778,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
   bfd_byte *dyncon, *dynconend;
   bfd_size_type sizeof_dyn;
 
-  bed = get_elf_backend_data (output_bfd);
+  bed = get_elf_backend_data (info->output_bfd);
   htab = elf_x86_hash_table (info, bed->target_id);
   if (htab == NULL)
     return htab;
@@ -2803,20 +2811,20 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	 the dynamic linker.  */
       if (htab->got_entry_size == 8)
 	{
-	  bfd_put_64 (output_bfd, dynamic_addr,
+	  bfd_put_64 (info->output_bfd, dynamic_addr,
 		      htab->elf.sgotplt->contents);
-	  bfd_put_64 (output_bfd, (bfd_vma) 0,
+	  bfd_put_64 (info->output_bfd, 0,
 		      htab->elf.sgotplt->contents + 8);
-	  bfd_put_64 (output_bfd, (bfd_vma) 0,
+	  bfd_put_64 (info->output_bfd, 0,
 		      htab->elf.sgotplt->contents + 8*2);
 	}
       else
 	{
-	  bfd_put_32 (output_bfd, dynamic_addr,
+	  bfd_put_32 (info->output_bfd, dynamic_addr,
 		      htab->elf.sgotplt->contents);
-	  bfd_put_32 (output_bfd, 0,
+	  bfd_put_32 (info->output_bfd, 0,
 		      htab->elf.sgotplt->contents + 4);
-	  bfd_put_32 (output_bfd, 0,
+	  bfd_put_32 (info->output_bfd, 0,
 		      htab->elf.sgotplt->contents + 4*2);
 	}
     }
@@ -2848,7 +2856,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	default:
 #ifdef OBJ_MAYBE_ELF_VXWORKS
 	  if (htab->elf.target_os == is_vxworks
-	      && elf_vxworks_finish_dynamic_entry (output_bfd, &dyn))
+	      && elf_vxworks_finish_dynamic_entry (info->output_bfd, &dyn))
 	    break;
 #endif /* OBJ_MAYBE_ELF_VXWORKS */
 	  continue;
@@ -2894,7 +2902,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	  break;
 	}
 
-      (*bed->s->swap_dyn_out) (output_bfd, &dyn, dyncon);
+      (*bed->s->swap_dyn_out) (info->output_bfd, &dyn, dyncon);
     }
 
   if (htab->plt_got != NULL && htab->plt_got->size > 0)
@@ -2925,7 +2933,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	}
 
       if (htab->plt_eh_frame->sec_info_type == SEC_INFO_TYPE_EH_FRAME
-	  && !_bfd_elf_write_linker_section_eh_frame (output_bfd, info,
+	  && !_bfd_elf_write_linker_section_eh_frame (info->output_bfd, info,
 						      htab->plt_eh_frame, buf))
 	return NULL;
     }
@@ -2949,7 +2957,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 			     + PLT_FDE_START_OFFSET);
 	}
       if (htab->plt_got_eh_frame->sec_info_type == SEC_INFO_TYPE_EH_FRAME
-	  && !_bfd_elf_write_linker_section_eh_frame (output_bfd, info,
+	  && !_bfd_elf_write_linker_section_eh_frame (info->output_bfd, info,
 						      htab->plt_got_eh_frame,
 						      buf))
 	return NULL;
@@ -2975,7 +2983,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 			     + PLT_FDE_START_OFFSET);
 	}
       if (htab->plt_second_eh_frame->sec_info_type == SEC_INFO_TYPE_EH_FRAME
-	  && !_bfd_elf_write_linker_section_eh_frame (output_bfd, info,
+	  && !_bfd_elf_write_linker_section_eh_frame (info->output_bfd, info,
 						      htab->plt_second_eh_frame,
 						      buf))
 	return NULL;
@@ -3009,7 +3017,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	}
       if (htab->plt_sframe->sec_info_type == SEC_INFO_TYPE_SFRAME)
 	{
-	  if (! _bfd_elf_merge_section_sframe (output_bfd, info,
+	  if (! _bfd_elf_merge_section_sframe (info->output_bfd, info,
 					       htab->plt_sframe,
 					       htab->plt_sframe->contents))
 	    return NULL;
@@ -3043,7 +3051,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	}
       if (htab->plt_second_sframe->sec_info_type == SEC_INFO_TYPE_SFRAME)
 	{
-	  if (! _bfd_elf_merge_section_sframe (output_bfd, info,
+	  if (! _bfd_elf_merge_section_sframe (info->output_bfd, info,
 					       htab->plt_second_sframe,
 					       htab->plt_second_sframe->contents))
 	    return NULL;
@@ -3070,7 +3078,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 	}
       if (htab->plt_got_sframe->sec_info_type == SEC_INFO_TYPE_SFRAME)
 	{
-	  if (! _bfd_elf_merge_section_sframe (output_bfd, info,
+	  if (! _bfd_elf_merge_section_sframe (info->output_bfd, info,
 					       htab->plt_got_sframe,
 					       htab->plt_got_sframe->contents))
 	    return NULL;
@@ -3086,8 +3094,7 @@ _bfd_x86_elf_finish_dynamic_sections (bfd *output_bfd,
 
 
 bool
-_bfd_x86_elf_early_size_sections (bfd *output_bfd,
-				  struct bfd_link_info *info)
+_bfd_x86_elf_early_size_sections (struct bfd_link_info *info)
 {
   asection *tls_sec = elf_hash_table (info)->tls_sec;
 
@@ -3103,14 +3110,14 @@ _bfd_x86_elf_early_size_sections (bfd *output_bfd,
 	{
 	  struct elf_x86_link_hash_table *htab;
 	  struct bfd_link_hash_entry *bh = NULL;
-	  elf_backend_data *bed = get_elf_backend_data (output_bfd);
+	  elf_backend_data *bed = get_elf_backend_data (info->output_bfd);
 
 	  htab = elf_x86_hash_table (info, bed->target_id);
 	  if (htab == NULL)
 	    return false;
 
 	  if (!(_bfd_generic_link_add_one_symbol
-		(info, output_bfd, "_TLS_MODULE_BASE_", BSF_LOCAL,
+		(info, info->output_bfd, "_TLS_MODULE_BASE_", BSF_LOCAL,
 		 tls_sec, 0, NULL, false,
 		 bed->collect, &bh)))
 	    return false;
@@ -3375,24 +3382,90 @@ _bfd_x86_elf_link_report_tls_transition_error
   bfd_set_error (bfd_error_bad_value);
 }
 
-/* Report TLS invalid section error.  */
+/* Report link error.  */
 
 void
-_bfd_x86_elf_link_report_tls_invalid_section_error
+_bfd_x86_elf_link_report_error
   (bfd *abfd, asection *sec, Elf_Internal_Shdr *symtab_hdr,
    struct elf_link_hash_entry *h, Elf_Internal_Sym *sym,
-   reloc_howto_type *howto)
+   reloc_howto_type *howto, enum elf_x86_error_type type)
 {
   const char *name;
+  bool non_thread_local;
   if (h)
-    name = h->root.root.string;
+    {
+      non_thread_local = h->type != STT_TLS;
+      name = h->root.root.string;
+    }
   else
-    name = bfd_elf_sym_name (abfd, symtab_hdr, sym, NULL);
+    {
+      non_thread_local = ELF_ST_TYPE (sym->st_info) != STT_TLS;
+      name = bfd_elf_sym_name (abfd, symtab_hdr, sym, NULL);
+      if (name[0] == '\0')
+	name = "*unknown*";
+    }
+
+  switch (type)
+    {
+    case elf_x86_error_tls:
+      if (non_thread_local)
+	_bfd_error_handler
+	  /* xgettext:c-format */
+	  (_("%pB: relocation %s against non-thread local symbol "
+	     "`%s' in section `%pA'"),
+	   abfd, howto->name, name, sec);
+      else
+	_bfd_error_handler
+	  /* xgettext:c-format */
+	  (_("%pB: relocation %s against thread local symbol `%s' in "
+	     "invalid section `%pA'"), abfd, howto->name, name, sec);
+      break;
+
+    case elf_x86_error_non_alloc:
+      _bfd_error_handler
+	/* xgettext:c-format */
+	(_("%pB: relocation %s against symbol `%s' in non-alloc "
+	   "section `%pA'"),
+	 abfd, howto->name, name, sec);
+      break;
+
+    default:
+      abort ();
+      break;
+    }
+
+  bfd_set_error (bfd_error_bad_value);
+}
+
+/* Report link relocation error.  */
+
+void
+_bfd_x86_elf_link_report_relocation_error (bfd *abfd, asection *sec,
+					   const char *name,
+					   Elf_Internal_Rela *rel,
+					   reloc_howto_type *howto,
+					   bfd_reloc_status_type status)
+{
+  const char *error_msg;
+
+  switch (status)
+    {
+    case bfd_reloc_outofrange:
+      error_msg = _("out of section range");
+      break;
+
+    case bfd_reloc_notsupported:
+      error_msg = _("not supported");
+      break;
+
+    default:
+      abort ();
+    }
+
   _bfd_error_handler
     /* xgettext:c-format */
-    (_("%pB: relocation %s against thread local symbol `%s' in "
-       "invalid section `%pA'"), abfd, howto->name, name, sec);
-  bfd_set_error (bfd_error_bad_value);
+    (_("%pB(%pA+%#" PRIx64 "): relocation `%s' against `%s': %s"),
+     abfd, sec, (uint64_t) rel->r_offset, howto->name, name, error_msg);
 }
 
 /* Return TRUE if symbol should be hashed in the `.gnu.hash' section.  */
@@ -4561,38 +4634,9 @@ _bfd_x86_elf_link_setup_gnu_properties
 	}
     }
 
-  dynobj = htab->elf.dynobj;
-
   /* Set htab->elf.dynobj here so that there is no need to check and
      set it in check_relocs.  */
-  if (dynobj == NULL)
-    {
-      if (pbfd != NULL)
-	{
-	  htab->elf.dynobj = pbfd;
-	  dynobj = pbfd;
-	}
-      else
-	{
-	  bfd *abfd;
-
-	  /* Find a normal input file to hold linker created
-	     sections.  */
-	  for (abfd = info->input_bfds;
-	       abfd != NULL;
-	       abfd = abfd->link.next)
-	    if (bfd_get_flavour (abfd) == bfd_target_elf_flavour
-		&& (abfd->flags
-		    & (DYNAMIC | BFD_LINKER_CREATED | BFD_PLUGIN)) == 0
-		&& bed->relocs_compatible (abfd->xvec,
-					   info->output_bfd->xvec))
-	      {
-		htab->elf.dynobj = abfd;
-		dynobj = abfd;
-		break;
-	      }
-	}
-    }
+  dynobj = _bfd_elf_link_dynobj_internal (info, false);
 
   /* Return if there are no normal input files.  */
   if (dynobj == NULL)

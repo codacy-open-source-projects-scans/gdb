@@ -59,7 +59,6 @@ gld${EMULATION_NAME}_before_parse (void)
   input_flags.dynamic = ${DYNAMIC_LINK-true};
   config.has_shared = `if test -n "$GENERATE_SHLIB_SCRIPT" ; then echo true ; else echo false ; fi`;
   config.separate_code = `if test "x${SEPARATE_CODE}" = xyes ; then echo true ; else echo false ; fi`;
-  link_info.check_relocs_after_open_input = true;
 EOF
 if test -n "$COMMONPAGESIZE"; then
 fragment <<EOF
@@ -91,9 +90,6 @@ aarch64_elf_before_allocation (void)
   /* Call the standard elf routine.  */
   gld${EMULATION_NAME}_before_allocation ();
 }
-
-/* Fake input file for stubs.  */
-static lang_input_statement_type *stub_file;
 
 /* Whether we need to call gldarm_layout_sections_again.  */
 static int need_laying_out = 0;
@@ -260,7 +256,7 @@ gld${EMULATION_NAME}_after_allocation (void)
      ie. doesn't affect any code, so we can delay resizing the
      sections.  It's likely we'll resize everything in the process of
      adding stubs.  */
-  ret = bfd_elf_discard_info (link_info.output_bfd, & link_info);
+  ret = bfd_elf_discard_info (&link_info);
   if (ret < 0)
     {
       einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
@@ -323,7 +319,7 @@ gld${EMULATION_NAME}_finish (void)
 /* This is a convenient point to tell BFD about target specific flags.
    After the output has been created, but before inputs are read.  */
 static void
-aarch64_elf_create_output_section_statements (void)
+aarch64_elf_after_open_output (void)
 {
   if (strstr (bfd_get_target (link_info.output_bfd), "aarch64") == NULL)
     {
@@ -336,30 +332,19 @@ aarch64_elf_create_output_section_statements (void)
       return;
     }
 
-  bfd_elf${ELFSIZE}_aarch64_set_options (link_info.output_bfd, &link_info,
-				 no_enum_size_warning,
-				 no_wchar_size_warning,
-				 pic_veneer,
-				 fix_erratum_835769, fix_erratum_843419,
-				 no_apply_dynamic_relocs,
-				 &sw_protections,
-				 &memtag_opts);
+  ldelf_after_open_output ();
 
-  stub_file = lang_add_input_file ("linker stubs",
-				   lang_input_file_is_fake_enum,
-				   NULL);
-  stub_file->the_bfd = bfd_create ("linker stubs", link_info.output_bfd);
-  if (stub_file->the_bfd == NULL
-      || ! bfd_set_arch_mach (stub_file->the_bfd,
-			      bfd_get_arch (link_info.output_bfd),
-			      bfd_get_mach (link_info.output_bfd)))
-    {
-      fatal (_("%P: can not create BFD: %E\n"));
-      return;
-    }
-
-  stub_file->the_bfd->flags |= BFD_LINKER_CREATED;
-  ldlang_add_file (stub_file);
+  if (stub_file)
+    bfd_elf${ELFSIZE}_aarch64_set_options (&link_info,
+				   no_enum_size_warning,
+				   no_wchar_size_warning,
+				   pic_veneer,
+				   fix_erratum_835769,
+				   fix_erratum_843419,
+				   no_apply_dynamic_relocs,
+				   &sw_protections,
+				   &memtag_opts,
+				   stub_file->the_bfd);
 }
 
 static bool
@@ -647,7 +632,7 @@ PARSE_AND_LIST_ARGS_CASES='
 # the standard routines, so give them a different name.
 LDEMUL_BEFORE_ALLOCATION=aarch64_elf_before_allocation
 LDEMUL_AFTER_ALLOCATION=gld${EMULATION_NAME}_after_allocation
-LDEMUL_CREATE_OUTPUT_SECTION_STATEMENTS=aarch64_elf_create_output_section_statements
+LDEMUL_AFTER_OPEN_OUTPUT=aarch64_elf_after_open_output
 
 # Replace the elf before_parse function with our own.
 LDEMUL_BEFORE_PARSE=gld"${EMULATION_NAME}"_before_parse

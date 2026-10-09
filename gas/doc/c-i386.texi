@@ -153,6 +153,7 @@ accept various extension mnemonics.  For example,
 @code{sse4},
 @code{avx},
 @code{avx2},
+@code{altmovcr8},
 @code{lahf_sahf},
 @code{monitor},
 @code{adx},
@@ -219,6 +220,8 @@ accept various extension mnemonics.  For example,
 @code{avx10.1/512},
 @code{avx10.1/256},
 @code{avx10.1/128},
+@code{avx10.1aux},
+@code{avx10v1aux},
 @code{user_msr},
 @code{msr_imm},
 @code{apx_f},
@@ -230,6 +233,7 @@ accept various extension mnemonics.  For example,
 @code{avx10.2/512},
 @code{avx10.2/256},
 @code{avx10.2/128},
+@code{avx10v2aux},
 @code{movrs},
 @code{amx_int8},
 @code{amx_bf16},
@@ -241,6 +245,7 @@ accept various extension mnemonics.  For example,
 @code{amx_movrs},
 @code{amx_avx512},
 @code{amx_tile},
+@code{ace_v1},
 @code{vmx},
 @code{vmfunc},
 @code{smx},
@@ -289,6 +294,8 @@ accept various extension mnemonics.  For example,
 @code{tlbsync},
 @code{rmpquery},
 @code{rmpread},
+@code{rmpdirty},
+@code{rmpopt},
 @code{svme},
 @code{gmism2},
 @code{gmiccs},
@@ -1708,36 +1715,38 @@ supported on the CPU specified.  The choices for @var{cpu_type} are:
 @item @samp{.rdrnd} @tab @samp{.f16c} @tab @samp{.avx2} @tab @samp{.bmi2}
 @item @samp{.lzcnt} @tab @samp{.popcnt} @tab @samp{.invpcid} @tab @samp{.vmfunc}
 @item @samp{.monitor} @tab @samp{.hle} @tab @samp{.rtm} @tab @samp{.tsx}
-@item @samp{.lahf_sahf} @tab @samp{.adx} @tab @samp{.rdseed} @tab @samp{.prfchw}
-@item @samp{.smap} @tab @samp{.mpx} @tab @samp{.sha} @tab @samp{.prefetchwt1}
-@item @samp{.clflushopt} @tab @samp{.xsavec} @tab @samp{.xsaves} @tab @samp{.se1}
+@item @samp{.altmovcr8} @tab @samp{.lahf_sahf} @tab @samp{.adx} @tab @samp{.rdseed}
+@item @samp{.smap} @tab @samp{.mpx} @tab @samp{.sha} @tab @samp{.prfchw}
+@item @samp{.prefetchwt1} @tab @samp{.clflushopt} @tab @samp{.xsavec} @tab @samp{.xsaves}
 @item @samp{.avx512f} @tab @samp{.avx512cd} @tab @samp{.avx512er} @tab @samp{.avx512pf}
 @item @samp{.avx512vl} @tab @samp{.avx512bw} @tab @samp{.avx512dq} @tab @samp{.avx512ifma}
 @item @samp{.avx512vbmi} @tab @samp{.avx512_4fmaps} @tab @samp{.avx512_4vnniw}
 @item @samp{.avx512_vpopcntdq} @tab @samp{.avx512_vbmi2} @tab @samp{.avx512_vnni}
 @item @samp{.avx512_bitalg} @tab @samp{.avx512_bf16} @tab @samp{.avx512_vp2intersect}
 @item @samp{.tdx} @tab @samp{.avx_vnni} @tab @samp{.avx512_fp16} @tab @samp{avx512_bmm}
-@item @samp{.avx10.1} @tab @samp{.clwb} @tab @samp{.rdpid} @tab @samp{.ptwrite}
-@item @samp{.ibt} @tab @samp{.prefetchi} @tab @samp{.avx_ifma} @tab @samp{.avx_vnni_int8}
-@item @samp{.cmpccxadd} @tab @samp{.wrmsrns} @tab @samp{.msrlist}
+@item @samp{.avx10.1} @tab @samp{.avx10.1aux} @tab @samp{.avx10v1aux} @tab @samp{.avx10.2}
+@item @samp{.avx10v2aux} @tab @samp{.clwb}
+@item @samp{.rdpid} @tab @samp{.ptwrite} @tab @samp{.ibt} @tab @samp{.prefetchi}
+@item @samp{.cmpccxadd} @tab @samp{.wrmsrns} @tab @samp{.msrlist} @tab @samp{.se1}
 @item @samp{.avx_ne_convert} @tab @samp{.rao_int} @tab @samp{.fred} @tab @samp{.lkgs}
 @item @samp{.avx_vnni_int16} @tab @samp{.sha512} @tab @samp{.sm3} @tab @samp{.sm4}
-@item @samp{.pbndkb} @tab @samp{.user_msr} @tab @samp{.msr_imm} @tab @samp{.avx10.2}
-@item @samp{.movrs}
+@item @samp{.pbndkb} @tab @samp{.user_msr} @tab @samp{.msr_imm}
+@item @samp{.avx_ifma} @tab @samp{.avx_vnni_int8} @tab @samp{.movrs}
 @item @samp{.wbnoinvd} @tab @samp{.pconfig} @tab @samp{.waitpkg} @tab @samp{.cldemote}
 @item @samp{.shstk} @tab @samp{.gfni} @tab @samp{.vaes} @tab @samp{.vpclmulqdq}
 @item @samp{.movdiri} @tab @samp{.movdir64b} @tab @samp{.enqcmd} @tab @samp{.tsxldtrk}
 @item @samp{.amx_int8} @tab @samp{.amx_bf16} @tab @samp{.amx_fp16}
 @item @samp{.amx_complex} @tab @samp{.amx_transpose} @tab @samp{.amx_tf32}
 @item @samp{.amx_fp8} @tab @samp{.amx_movrs} @tab @samp{.amx_avx512}
-@item @samp{.amx_tile}
+@item @samp{.amx_tile} @tab @samp{.ace_v1}
 @item @samp{.kl} @tab @samp{.widekl} @tab @samp{.uintr} @tab @samp{.hreset}
 @item @samp{.3dnow} @tab @samp{.3dnowa} @tab @samp{.sse4a} @tab @samp{.sse5}
 @item @samp{.syscall} @tab @samp{.rdtscp} @tab @samp{.svme}
 @item @samp{.lwp} @tab @samp{.fma4} @tab @samp{.xop} @tab @samp{.cx16}
 @item @samp{.padlock} @tab @samp{.clzero} @tab @samp{.mwaitx} @tab @samp{.rdpru}
 @item @samp{.mcommit} @tab @samp{.sev_es} @tab @samp{.snp} @tab @samp{.invlpgb}
-@item @samp{.tlbsync} @tab @samp{.rmpquery} @tab @samp{.rmpread} @tab @samp{.apx_f}
+@item @samp{.tlbsync} @tab @samp{.rmpquery} @tab @samp{.rmpread} @tab @samp{.rmpdirty}
+@item @samp{.rmpopt} @tab @samp{.apx_f}
 @item @samp{.apx_nci} @tab @samp{.apx_ndd} @tab @samp{.apx_nf} @tab @samp{.apx_nci_ndd_nf}
 @item @samp{.gmism2} @tab @samp{.gmiccs} @tab @samp{.padlockrng2} @tab @samp{.padlockphe2}
 @item @samp{.padlockxmodx}

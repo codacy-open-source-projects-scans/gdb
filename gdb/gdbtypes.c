@@ -366,12 +366,8 @@ smash_type (struct type *type)
 type *
 make_pointer_type (type *type)
 {
-  struct type *ntype;	/* New type */
-  struct type *chain;
-
-  ntype = type->pointer_type;
-
-  if (ntype)
+  struct type *ntype = type->pointer_type;
+  if (ntype != nullptr)
     return ntype;
 
   ntype = type_allocator (type).new_type ();
@@ -387,14 +383,6 @@ make_pointer_type (type *type)
      and addresses (CORE_ADDRs) using gdbarch_pointer_to_address and
      gdbarch_address_to_pointer.  */
   ntype->set_is_unsigned (true);
-
-  /* Update the length of all the other variants of this type.  */
-  chain = ntype->chain;
-  while (chain != ntype)
-    {
-      chain->set_length (ntype->length ());
-      chain = chain->chain;
-    }
 
   return ntype;
 }
@@ -413,24 +401,22 @@ lookup_pointer_type (struct type *type)
 type *
 make_reference_type (type *type, type_code refcode)
 {
-  struct type *ntype;	/* New type */
-  struct type **reftype;
-  struct type *chain;
-
   gdb_assert (refcode == TYPE_CODE_REF || refcode == TYPE_CODE_RVALUE_REF);
 
-  ntype = (refcode == TYPE_CODE_REF ? type->reference_type
-	   : type->rvalue_reference_type);
+  struct type *ntype = (refcode == TYPE_CODE_REF
+			? type->reference_type
+			: type->rvalue_reference_type);
 
-  if (ntype)
+  if (ntype != nullptr)
     return ntype;
 
   ntype = type_allocator (type).new_type ();
   ntype->set_target_type (type);
-  reftype = (refcode == TYPE_CODE_REF ? &type->reference_type
-	     : &type->rvalue_reference_type);
 
-  *reftype = ntype;
+  if (refcode == TYPE_CODE_REF)
+    type->reference_type = ntype;
+  else
+    type->rvalue_reference_type = ntype;
 
   /* FIXME!  Assume the machine has only one representation for
      references, and that it matches the (only) representation for
@@ -438,16 +424,6 @@ make_reference_type (type *type, type_code refcode)
 
   ntype->set_length (gdbarch_ptr_bit (type->arch ()) / TARGET_CHAR_BIT);
   ntype->set_code (refcode);
-
-  *reftype = ntype;
-
-  /* Update the length of all the other variants of this type.  */
-  chain = ntype->chain;
-  while (chain != ntype)
-    {
-      chain->set_length (ntype->length ());
-      chain = chain->chain;
-    }
 
   return ntype;
 }
@@ -536,47 +512,6 @@ lookup_function_type_with_arguments (struct type *return_type,
   return create_function_type (return_type, nparams, param_types);
 }
 
-/* Identify address space identifier by name -- return a
-   type_instance_flags.  */
-
-type_instance_flags
-address_space_name_to_type_instance_flags (struct gdbarch *gdbarch,
-					   const char *space_identifier)
-{
-  type_instance_flags type_flags;
-
-  /* Check for known address space delimiters.  */
-  if (streq (space_identifier, "code"))
-    return TYPE_INSTANCE_FLAG_CODE_SPACE;
-  else if (streq (space_identifier, "data"))
-    return TYPE_INSTANCE_FLAG_DATA_SPACE;
-  else if (gdbarch_address_class_name_to_type_flags_p (gdbarch)
-	   && gdbarch_address_class_name_to_type_flags (gdbarch,
-							space_identifier,
-							&type_flags))
-    return type_flags;
-  else
-    error (_("Unknown address space specifier: \"%s\""), space_identifier);
-}
-
-/* Identify address space identifier by type_instance_flags and return
-   the string version of the address space name.  */
-
-const char *
-address_space_type_instance_flags_to_name (struct gdbarch *gdbarch,
-					   type_instance_flags space_flag)
-{
-  if (space_flag & TYPE_INSTANCE_FLAG_CODE_SPACE)
-    return "code";
-  else if (space_flag & TYPE_INSTANCE_FLAG_DATA_SPACE)
-    return "data";
-  else if ((space_flag & TYPE_INSTANCE_FLAG_ADDRESS_CLASS_ALL)
-	   && gdbarch_address_class_type_flags_to_name_p (gdbarch))
-    return gdbarch_address_class_type_flags_to_name (gdbarch, space_flag);
-  else
-    return NULL;
-}
-
 /* Create a new type with instance flags NEW_FLAGS, based on TYPE.
 
    If STORAGE is non-NULL, create the new type instance there.
@@ -631,7 +566,7 @@ make_qualified_type (struct type *type, type_instance_flags new_flags,
   return ntype;
 }
 
-/* Make an address-space-delimited variant of a type -- a type that
+/* Make a Harvard-address-space-delimited variant of a type -- a type that
    is identical to the one supplied except that it has an address
    space attribute attached to it (such as "code" or "data").
 
@@ -641,16 +576,33 @@ make_qualified_type (struct type *type, type_instance_flags new_flags,
    representations.  */
 
 struct type *
-make_type_with_address_space (struct type *type,
-			      type_instance_flags space_flag)
+make_type_with_harvard_address_space (struct type *type,
+				      enum harvard_address_space aspace)
 {
-  type_instance_flags new_flags = ((type->instance_flags ()
-				    & ~(TYPE_INSTANCE_FLAG_CODE_SPACE
-					| TYPE_INSTANCE_FLAG_DATA_SPACE
-					| TYPE_INSTANCE_FLAG_ADDRESS_CLASS_ALL))
-				   | space_flag);
+  gdb_assert (aspace == HARVARD_ASPACE_NONE
+	      || aspace == HARVARD_ASPACE_CODE
+	      || aspace == HARVARD_ASPACE_DATA);
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.harvard_aspace = aspace;
 
-  return make_qualified_type (type, new_flags, NULL);
+  return make_qualified_type (type, new_flags, nullptr);
+}
+
+/* Make an address-class-delimited variant of a type -- a type that is
+   identical to the one supplied except that it has an address class
+   attribute attached to it.  The address class attribute is
+   architecture specific.  It may denote an alternately sized pointer
+   or a pointer with alternate representation.  */
+
+struct type *
+make_type_with_address_class (struct type *type,
+			      unsigned int address_class)
+{
+  gdb_assert (address_class < 4); /* We use two bits for this field.  */
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.address_class = address_class;
+
+  return make_qualified_type (type, new_flags, nullptr);
 }
 
 /* See gdbtypes.h.  */
@@ -658,15 +610,9 @@ make_type_with_address_space (struct type *type,
 type *
 make_cv_type (int cnst, int voltl, type *type)
 {
-  type_instance_flags new_flags = (type->instance_flags ()
-				   & ~(TYPE_INSTANCE_FLAG_CONST
-				       | TYPE_INSTANCE_FLAG_VOLATILE));
-
-  if (cnst)
-    new_flags |= TYPE_INSTANCE_FLAG_CONST;
-
-  if (voltl)
-    new_flags |= TYPE_INSTANCE_FLAG_VOLATILE;
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.is_const = cnst;
+  new_flags.is_volatile = voltl;
 
   return make_qualified_type (type, new_flags, nullptr);
 }
@@ -676,10 +622,10 @@ make_cv_type (int cnst, int voltl, type *type)
 struct type *
 make_restrict_type (struct type *type)
 {
-  return make_qualified_type (type,
-			      (type->instance_flags ()
-			       | TYPE_INSTANCE_FLAG_RESTRICT),
-			      NULL);
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.is_restrict = true;
+
+  return make_qualified_type (type, new_flags, nullptr);
 }
 
 /* Make a type without const, volatile, or restrict.  */
@@ -687,12 +633,12 @@ make_restrict_type (struct type *type)
 struct type *
 make_unqualified_type (struct type *type)
 {
-  return make_qualified_type (type,
-			      (type->instance_flags ()
-			       & ~(TYPE_INSTANCE_FLAG_CONST
-				   | TYPE_INSTANCE_FLAG_VOLATILE
-				   | TYPE_INSTANCE_FLAG_RESTRICT)),
-			      NULL);
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.is_const = false;
+  new_flags.is_volatile = false;
+  new_flags.is_restrict = false;
+
+  return make_qualified_type (type, new_flags, nullptr);
 }
 
 /* Make a '_Atomic'-qualified version of TYPE.  */
@@ -700,10 +646,10 @@ make_unqualified_type (struct type *type)
 struct type *
 make_atomic_type (struct type *type)
 {
-  return make_qualified_type (type,
-			      (type->instance_flags ()
-			       | TYPE_INSTANCE_FLAG_ATOMIC),
-			      NULL);
+  type_instance_flags new_flags = type->instance_flags ();
+  new_flags.is_atomic = true;
+
+  return make_qualified_type (type, new_flags, nullptr);
 }
 
 /* Replace the contents of ntype with the type *type.  This changes the
@@ -740,7 +686,7 @@ replace_type (struct type *ntype, struct type *type)
 	 variants.  This assertion shouldn't ever be triggered because
 	 symbol readers which do construct address-class variants don't
 	 call replace_type().  */
-      gdb_assert (TYPE_ADDRESS_CLASS_ALL (chain) == 0);
+      gdb_assert (chain->address_class () == 0);
 
       chain->set_length (type->length ());
       chain = chain->chain;
@@ -1379,8 +1325,8 @@ make_vector_type (struct type *array_type)
   elt_type = inner_array->target_type ();
   if (elt_type->code () == TYPE_CODE_INT)
     {
-      type_instance_flags flags
-	= elt_type->instance_flags () | TYPE_INSTANCE_FLAG_NOTTEXT;
+      type_instance_flags flags = elt_type->instance_flags ();
+      flags.is_nottext = true;
       elt_type = make_qualified_type (elt_type, flags, NULL);
       inner_array->set_target_type (elt_type);
     }
@@ -1641,14 +1587,14 @@ struct type *
 lookup_template_type (const char *name, struct type *type,
 		      const struct block *block)
 {
-  std::string nam;
-  nam.reserve (strlen (name) + strlen (type->name ()) + strlen ("< >"));
-  nam = name;
-  nam += "<";
-  nam += type->name ();
-  nam += " >"; /* FIXME, extra space still introduced in gcc?  */
+  std::string str;
+  str.reserve (strlen (name) + strlen (type->name ()) + strlen ("< >"));
+  str = name;
+  str += "<";
+  str += type->name ();
+  str += " >"; /* FIXME, extra space still introduced in gcc?  */
 
-  symbol *sym = lookup_symbol (nam.c_str (), block,
+  symbol *sym = lookup_symbol (str.c_str (), block,
 			       SEARCH_STRUCT_DOMAIN, 0).symbol;
 
   if (sym == NULL)
@@ -3090,23 +3036,7 @@ check_typedef (struct type *type)
 	 error.  We just pick the outer address space (akin to letting the
 	 outer cast in a chain of casting win), instead of assuming
 	 "it can't happen".  */
-      {
-	const type_instance_flags ALL_SPACES
-	  = (TYPE_INSTANCE_FLAG_CODE_SPACE
-	     | TYPE_INSTANCE_FLAG_DATA_SPACE);
-	const type_instance_flags ALL_CLASSES
-	  = TYPE_INSTANCE_FLAG_ADDRESS_CLASS_ALL;
-
-	type_instance_flags new_instance_flags = type->instance_flags ();
-
-	/* Treat code vs data spaces and address classes separately.  */
-	if ((instance_flags & ALL_SPACES) != 0)
-	  new_instance_flags &= ~ALL_SPACES;
-	if ((instance_flags & ALL_CLASSES) != 0)
-	  new_instance_flags &= ~ALL_CLASSES;
-
-	instance_flags |= new_instance_flags;
-      }
+      instance_flags.merge (type->instance_flags ());
     }
 
   /* If this is a struct/class/union with no fields, then check
@@ -4162,7 +4092,6 @@ check_types_equal (struct type *type1, struct type *type2,
       || type1->endianity_is_not_default () != type2->endianity_is_not_default ()
       || type1->has_varargs () != type2->has_varargs ()
       || type1->is_vector () != type2->is_vector ()
-      || TYPE_NOTTEXT (type1) != TYPE_NOTTEXT (type2)
       || type1->instance_flags () != type2->instance_flags ()
       || type1->num_fields () != type2->num_fields ())
     return false;
@@ -4350,9 +4279,9 @@ rank_one_type_parm_ptr (struct type *parm, struct type *arg, struct value *value
 	if (types_equal (t1, t2))
 	  {
 	    /* Make sure they are CV equal.  */
-	    if (TYPE_CONST (t1) != TYPE_CONST (t2))
+	    if (t1->is_const () != t2->is_const ())
 	      rank.subrank |= CV_CONVERSION_CONST;
-	    if (TYPE_VOLATILE (t1) != TYPE_VOLATILE (t2))
+	    if (t1->is_volatile () != t2->is_volatile ())
 	      rank.subrank |= CV_CONVERSION_VOLATILE;
 	    if (rank.subrank != 0)
 	      return sum_ranks (CV_CONVERSION_BADNESS, rank);
@@ -4736,7 +4665,7 @@ rank_one_type (struct type *parm, struct type *arg, struct value *value)
 	     lvalue references.  */
 	  if (parm->code () == TYPE_CODE_RVALUE_REF)
 	    rank.subrank = REFERENCE_CONVERSION_RVALUE;
-	  else if (TYPE_CONST (parm->target_type ()))
+	  else if (parm->target_type ()->is_const ())
 	    rank.subrank = REFERENCE_CONVERSION_CONST_LVALUE;
 	  else
 	    return INCOMPATIBLE_TYPE_BADNESS;
@@ -4763,9 +4692,9 @@ rank_one_type (struct type *parm, struct type *arg, struct value *value)
 	}
 
       /* Make sure they are CV equal, too.  */
-      if (TYPE_CONST (t1) != TYPE_CONST (t2))
+      if (t1->is_const () != t2->is_const ())
 	rank.subrank |= CV_CONVERSION_CONST;
-      if (TYPE_VOLATILE (t1) != TYPE_VOLATILE (t2))
+      if (t1->is_volatile () != t2->is_volatile ())
 	rank.subrank |= CV_CONVERSION_VOLATILE;
       if (rank.subrank != 0)
 	return sum_ranks (CV_CONVERSION_BADNESS, rank);
@@ -5047,95 +4976,56 @@ recursive_dump_type (struct type *type, int spaces)
   gdb_printf ("%*starget_type %s\n", spaces, "",
 	      host_address_to_string (type->target_type ()));
   if (type->target_type () != NULL)
-    {
-      recursive_dump_type (type->target_type (), spaces + 2);
-    }
+    recursive_dump_type (type->target_type (), spaces + 2);
+
   gdb_printf ("%*spointer_type %s\n", spaces, "",
 	      host_address_to_string (type->pointer_type));
   gdb_printf ("%*sreference_type %s\n", spaces, "",
 	      host_address_to_string (type->reference_type));
   gdb_printf ("%*stype_chain %s\n", spaces, "",
 	      host_address_to_string (type->chain));
-  gdb_printf ("%*sinstance_flags 0x%x", spaces, "",
-	      (unsigned) type->instance_flags ());
-  if (TYPE_CONST (type))
-    {
-      gdb_puts (" TYPE_CONST");
-    }
-  if (TYPE_VOLATILE (type))
-    {
-      gdb_puts (" TYPE_VOLATILE");
-    }
-  if (TYPE_CODE_SPACE (type))
-    {
-      gdb_puts (" TYPE_CODE_SPACE");
-    }
-  if (TYPE_DATA_SPACE (type))
-    {
-      gdb_puts (" TYPE_DATA_SPACE");
-    }
-  if (TYPE_ADDRESS_CLASS_1 (type))
-    {
-      gdb_puts (" TYPE_ADDRESS_CLASS_1");
-    }
-  if (TYPE_ADDRESS_CLASS_2 (type))
-    {
-      gdb_puts (" TYPE_ADDRESS_CLASS_2");
-    }
-  if (TYPE_RESTRICT (type))
-    {
-      gdb_puts (" TYPE_RESTRICT");
-    }
-  if (TYPE_ATOMIC (type))
-    {
-      gdb_puts (" TYPE_ATOMIC");
-    }
-  gdb_puts ("\n");
+  gdb_printf ("%*sinstance_flags [", spaces, "");
+  if (type->is_const ())
+    gdb_puts (" TYPE_CONST");
+  if (type->is_volatile ())
+    gdb_puts (" TYPE_VOLATILE");
+  if (type->is_code_space ())
+    gdb_puts (" TYPE_CODE_SPACE");
+  if (type->is_data_space ())
+    gdb_puts (" TYPE_DATA_SPACE");
+  if (type->address_class () != 0)
+    gdb_printf (" TYPE_ADDRESS_CLASS(%u)", type->address_class ());
+  if (type->is_restrict ())
+    gdb_puts (" TYPE_RESTRICT");
+  if (type->is_atomic ())
+    gdb_puts (" TYPE_ATOMIC");
+  gdb_puts ("]\n");
 
   gdb_printf ("%*sflags", spaces, "");
   if (type->is_unsigned ())
-    {
-      gdb_puts (" TYPE_UNSIGNED");
-    }
+    gdb_puts (" TYPE_UNSIGNED");
   if (type->has_no_signedness ())
-    {
-      gdb_puts (" TYPE_NOSIGN");
-    }
+    gdb_puts (" TYPE_NOSIGN");
   if (type->endianity_is_not_default ())
-    {
-      gdb_puts (" TYPE_ENDIANITY_NOT_DEFAULT");
-    }
+    gdb_puts (" TYPE_ENDIANITY_NOT_DEFAULT");
   if (type->is_stub ())
-    {
-      gdb_puts (" TYPE_STUB");
-    }
+    gdb_puts (" TYPE_STUB");
   if (type->target_is_stub ())
-    {
-      gdb_puts (" TYPE_TARGET_STUB");
-    }
+    gdb_puts (" TYPE_TARGET_STUB");
   if (type->is_prototyped ())
-    {
-      gdb_puts (" TYPE_PROTOTYPED");
-    }
+    gdb_puts (" TYPE_PROTOTYPED");
   if (type->has_varargs ())
-    {
-      gdb_puts (" TYPE_VARARGS");
-    }
+    gdb_puts (" TYPE_VARARGS");
+
   /* This is used for things like AltiVec registers on ppc.  Gcc emits
      an attribute for the array type, which tells whether or not we
      have a vector, instead of a regular array.  */
   if (type->is_vector ())
-    {
-      gdb_puts (" TYPE_VECTOR");
-    }
+    gdb_puts (" TYPE_VECTOR");
   if (type->is_fixed_instance ())
-    {
-      gdb_puts (" TYPE_FIXED_INSTANCE");
-    }
-  if (TYPE_NOTTEXT (type))
-    {
-      gdb_puts (" TYPE_NOTTEXT");
-    }
+    gdb_puts (" TYPE_FIXED_INSTANCE");
+  if (type->is_nottext ())
+    gdb_puts (" TYPE_NOTTEXT");
   gdb_puts ("\n");
   gdb_printf ("%*snfields %d ", spaces, "", type->num_fields ());
   if (type->dyn_prop (DYN_PROP_ASSOCIATED) != nullptr
@@ -5185,9 +5075,7 @@ recursive_dump_type (struct type *type, int spaces)
 
       gdb_printf ("\n");
       if (fld.type () != NULL)
-	{
-	  recursive_dump_type (fld.type (), spaces + 4);
-	}
+	recursive_dump_type (fld.type (), spaces + 4);
     }
   if (type->code () == TYPE_CODE_RANGE)
     {
@@ -5524,8 +5412,7 @@ append_flags_type_flag (struct type *type, int bitpos, const char *name)
 			   name);
 }
 
-/* Allocate a TYPE_CODE_STRUCT or TYPE_CODE_UNION type structure (as
-   specified by CODE) associated with GDBARCH.  NAME is the type name.  */
+/* See gdbtypes.h.  */
 
 struct type *
 arch_composite_type (struct gdbarch *gdbarch, const char *name,
@@ -5540,9 +5427,7 @@ arch_composite_type (struct gdbarch *gdbarch, const char *name,
   return t;
 }
 
-/* Add new field with name NAME and type FIELD to composite type T.
-   Do not set the field's position or adjust the type's length;
-   the caller should do so.  Return the new field.  */
+/* See gdbtypes.h.  */
 
 struct field *
 append_composite_type_field_raw (struct type *t, const char *name,
@@ -5560,8 +5445,7 @@ append_composite_type_field_raw (struct type *t, const char *name,
   return f;
 }
 
-/* Add new field with name NAME and type FIELD to composite type T.
-   ALIGNMENT (if non-zero) specifies the minimum field alignment.  */
+/* See gdbtypes.h.  */
 
 void
 append_composite_type_field_aligned (struct type *t, const char *name,
@@ -5601,7 +5485,7 @@ append_composite_type_field_aligned (struct type *t, const char *name,
     }
 }
 
-/* Add new field with name NAME and type FIELD to composite type T.  */
+/* See gdbtypes.h.  */
 
 void
 append_composite_type_field (struct type *t, const char *name,
@@ -5618,8 +5502,8 @@ append_composite_type_field (struct type *t, const char *name,
    hash the contents of an mpq_t; so it's a bit of a pain to hash-cons
    them.  If we did do this, they could be moved to the per-BFD and
    shared across objfiles.  */
-typedef std::vector<std::unique_ptr<fixed_point_type_info>>
-    fixed_point_type_storage;
+using fixed_point_type_storage
+  = std::vector<std::unique_ptr<fixed_point_type_info>>;
 
 /* Key used for managing the storage of fixed-point type info.  */
 static const struct registry<objfile>::key<fixed_point_type_storage>
@@ -5892,13 +5776,8 @@ create_gdbtypes_data (struct gdbarch *gdbarch)
   builtin_type->builtin_uint128
     = init_integer_type (alloc, 128, 1, "uint128_t");
 
-  builtin_type->builtin_int8->set_instance_flags
-    (builtin_type->builtin_int8->instance_flags ()
-     | TYPE_INSTANCE_FLAG_NOTTEXT);
-
-  builtin_type->builtin_uint8->set_instance_flags
-    (builtin_type->builtin_uint8->instance_flags ()
-     | TYPE_INSTANCE_FLAG_NOTTEXT);
+  builtin_type->builtin_int8->set_nottext (true);
+  builtin_type->builtin_uint8->set_nottext (true);
 
   /* Wide character types.  */
   builtin_type->builtin_char16

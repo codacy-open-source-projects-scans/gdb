@@ -125,6 +125,11 @@ extern bool frame_debug;
 #define FRAME_SCOPED_DEBUG_ENTER_EXIT \
   scoped_debug_enter_exit (frame_debug, "frame")
 
+/* Print "frame" start/end debug statements.  */
+
+#define FRAME_SCOPED_DEBUG_START_END(fmt, ...) \
+  scoped_debug_start_end (frame_debug, "frame", fmt, ##__VA_ARGS__)
+
 /* Construct a frame ID.  The first parameter is the frame's constant
    stack address (typically the outer-bound), and the second the
    frame's constant code address (typically the entry point).
@@ -254,7 +259,7 @@ public:
 
   ~frame_info_ptr ()
   {
-    /* If this node has static storage, it should be be deleted before
+    /* If this node has static storage, it should be deleted before
        frame_list.  */
     frame_list.erase (frame_list.iterator_to (*this));
   }
@@ -876,7 +881,8 @@ extern const struct block *get_frame_block (const frame_info_ptr &,
    it occurs in the CLI code and makes it possible for commands to
    work, even when the inferior has no state.  */
 
-extern const struct block *get_selected_block (CORE_ADDR *addr_in_block);
+extern const struct block *get_selected_block
+  (CORE_ADDR *addr_in_block = nullptr);
 
 extern struct symbol *get_frame_function (const frame_info_ptr &);
 

@@ -188,5 +188,9 @@ extern fixS *fix_new_exp (fragS *, unsigned long, unsigned long,
 			  const expressionS *, int, bfd_reloc_code_real_type);
 extern void write_print_statistics (FILE *);
 extern void as_bad_subtract (fixS *);
+struct segment_info_struct;
+extern fragS *get_frag_for_address (fragS *, const struct segment_info_struct *,
+				    addressT);
+extern void subsegs_finish_section (asection *);
 
 #endif /* __write_h__ */

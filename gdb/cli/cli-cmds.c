@@ -30,6 +30,7 @@
 #include "value.h"
 #include "language.h"
 #include "filenames.h"
+#include "filesystem.h"
 #include "objfiles.h"
 #include "source.h"
 #include "disasm.h"
@@ -494,7 +495,7 @@ pwd_command (const char *args, int from_tty)
 	   styled_string (command_style.style (), "pwd"),
 	   args);
 
-  gdb::unique_xmalloc_ptr<char> cwd (getcwd (NULL, 0));
+  gdb::unique_xmalloc_ptr<char> cwd (gdb_getcwd (NULL, 0));
 
   if (cwd == NULL)
     error (_("Error finding name of working directory: %s"),
@@ -534,7 +535,7 @@ cd_command (const char *dir, int from_tty)
   /* There's too much mess with DOSish names like "d:", "d:.",
      "d:./foo" etc.  Instead of having lots of special #ifdef'ed code,
      simply get the canonicalized name of the current directory.  */
-  gdb::unique_xmalloc_ptr<char> cwd (getcwd (NULL, 0));
+  gdb::unique_xmalloc_ptr<char> cwd (gdb_getcwd (NULL, 0));
   dir = cwd.get ();
 #endif
 
@@ -1044,7 +1045,7 @@ edit_command (const char *arg, int from_tty)
 	    error (_("No source file for address %s."),
 		   paddress (get_current_arch (), sal.pc));
 
-	  gdbarch = sal.symtab->compunit ()->objfile ()->arch ();
+	  gdbarch = sal.symtab->compunit ().objfile ()->arch ();
 	  sym = find_symbol_for_pc (sal.pc);
 	  if (sym)
 	    gdb_printf ("%ps is in %ps (%ps:%ps).\n",
@@ -1310,7 +1311,7 @@ list_command (const char *arg, int from_tty)
 	    {
 	      /* Find the current line by getting the PC of the currently
 		 selected frame, and finding the line associated to it.  */
-	      frame_info_ptr frame = get_selected_frame (nullptr);
+	      frame_info_ptr frame = get_selected_frame ();
 	      CORE_ADDR curr_pc = get_frame_pc (frame);
 	      cursal = find_sal_for_pc (curr_pc, 0);
 
@@ -1506,7 +1507,7 @@ list_command (const char *arg, int from_tty)
 	error (_("No source file for address %s."),
 	       paddress (get_current_arch (), sal.pc));
 
-      struct gdbarch *gdbarch = sal.symtab->compunit ()->objfile ()->arch ();
+      struct gdbarch *gdbarch = sal.symtab->compunit ().objfile ()->arch ();
       struct symbol *sym = find_symbol_for_pc (sal.pc);
       if (sym != nullptr)
 	gdb_printf ("%ps is in %s (%ps:%ps).\n",
@@ -2329,8 +2330,8 @@ ambiguous_line_spec (gdb::array_view<const symtab_and_line> sals,
 static int
 cmp_symtabs (const symtab_and_line &sala, const symtab_and_line &salb)
 {
-  const char *dira = sala.symtab->compunit ()->dirname ();
-  const char *dirb = salb.symtab->compunit ()->dirname ();
+  const char *dira = sala.symtab->compunit ().dirname ();
+  const char *dirb = salb.symtab->compunit ().dirname ();
   int r;
 
   if (dira == NULL)
@@ -2702,11 +2703,10 @@ shell_internal_fn (struct gdbarch *gdbarch,
   if (!language->is_string_type_p (type))
     error (_("Argument must be a string."));
 
-  value_print_options opts;
-  get_no_prettyformat_print_options (&opts);
+  value_print_options opts = get_no_prettyformat_print_options ();
 
   string_file stream;
-  value_print (val, &stream, &opts);
+  value_print (val, &stream, opts);
 
   /* We should always have two quote chars, which we'll strip.  */
   gdb_assert (stream.size () >= 2);

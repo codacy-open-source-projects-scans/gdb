@@ -106,7 +106,7 @@ pspy_get_filename (PyObject *self, void *closure)
 	return (host_string_to_python_string (objfile_name (objfile))
 		.release ());
     }
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Implement the gdb.Progspace.symbol_file attribute.  Return the
@@ -126,7 +126,7 @@ pspy_get_symbol_file (PyObject *self, void *closure)
   if (objfile != nullptr)
     return objfile_to_objfile_object (objfile).release ();
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Implement the gdb.Progspace.executable_filename attribute.  Return a
@@ -145,7 +145,7 @@ pspy_get_exec_file (PyObject *self, void *closure)
   if (filename != nullptr)
     return host_string_to_python_string (filename).release ();
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 static void
@@ -456,7 +456,7 @@ pspy_solib_name (PyObject *o, PyObject *args)
 
   const char *soname = solib_name_from_address (self->pspace, pc);
   if (soname == nullptr)
-    Py_RETURN_NONE;
+    return py_none ().release ();
   return host_string_to_python_string (soname).release ();
 }
 
@@ -479,7 +479,7 @@ pspy_objfile_for_address (PyObject *o, PyObject *args)
 
   struct objfile *objf = self->pspace->objfile_for_address (addr);
   if (objf == nullptr)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   return objfile_to_objfile_object (objf).release ();
 }
@@ -518,12 +518,12 @@ pspy_block_for_pc (PyObject *o, PyObject *args)
     }
 
   if (cust == NULL || cust->objfile () == NULL)
-    Py_RETURN_NONE;
+    return py_none ().release ();
 
   if (block)
     return block_to_block_object (block, cust->objfile ()).release ();
 
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 /* Implementation of the find_pc_line function.
@@ -568,9 +568,9 @@ pspy_is_valid (PyObject *o, PyObject *args)
   pspace_object *self = (pspace_object *) o;
 
   if (self->pspace == NULL)
-    Py_RETURN_FALSE;
+    return py_false ().release ();
 
-  Py_RETURN_TRUE;
+  return py_true ().release ();
 }
 
 
@@ -583,7 +583,7 @@ pspy_is_valid (PyObject *o, PyObject *args)
 gdbpy_ref<>
 pspace_to_pspace_object (struct program_space *pspace)
 {
-  PyObject *result = (PyObject *) pspy_pspace_data_key.get (pspace);
+  PyObject *result = pspy_pspace_data_key.get (pspace);
   if (result != nullptr)
     return gdbpy_ref<>::new_reference (result);
 
@@ -638,17 +638,15 @@ emit_executable_changed_event (eventregistry_object *registry,
 
   gdbpy_ref<> py_pspace = pspace_to_pspace_object (pspace);
   if (py_pspace == nullptr
-      || evpy_add_attribute (event_obj.get (), "progspace",
-			     py_pspace.get ()) < 0)
+      || evpy_add_attribute (event_obj, "progspace", py_pspace) < 0)
     return -1;
 
   gdbpy_ref<> py_reload_p (PyBool_FromLong (reload_p ? 1 : 0));
   if (py_reload_p == nullptr
-      || evpy_add_attribute (event_obj.get (), "reload",
-			     py_reload_p.get ()) < 0)
+      || evpy_add_attribute (event_obj, "reload", py_reload_p) < 0)
     return -1;
 
-  return evpy_emit_event (event_obj.get (), registry);
+  return evpy_emit_event (event_obj, registry);
 }
 
 /* Listener for the executable_changed observable, this is called when the
@@ -664,10 +662,10 @@ gdbpy_executable_changed (struct program_space *pspace, bool reload_p)
 
   gdbpy_enter enter_py;
 
-  if (!evregpy_no_listeners_p (gdb_py_events.executable_changed))
-    if (emit_executable_changed_event (gdb_py_events.executable_changed,
-				       pspace, reload_p) < 0)
-      gdbpy_print_stack ();
+  if (evregpy_has_listeners_p (gdb_py_events.executable_changed)
+      && emit_executable_changed_event (gdb_py_events.executable_changed,
+					pspace, reload_p) < 0)
+    gdbpy_print_stack ();
 }
 
 /* Helper function to emit NewProgspaceEvent (when ADDING_P is true) or
@@ -694,7 +692,7 @@ gdbpy_program_space_event (program_space *pspace, bool adding_p)
       event_type = &free_progspace_event_object_type;
     }
 
-  if (evregpy_no_listeners_p (registry))
+  if (!evregpy_has_listeners_p (registry))
     return;
 
   gdbpy_ref<> pspace_obj = pspace_to_pspace_object (pspace);
@@ -706,9 +704,8 @@ gdbpy_program_space_event (program_space *pspace, bool adding_p)
 
   gdbpy_ref<> event = create_event_object (event_type);
   if (event == nullptr
-      || evpy_add_attribute (event.get (), "progspace",
-			     pspace_obj.get ()) < 0
-      || evpy_emit_event (event.get (), registry) < 0)
+      || evpy_add_attribute (event, "progspace", pspace_obj) < 0
+      || evpy_emit_event (event, registry) < 0)
     gdbpy_print_stack ();
 }
 

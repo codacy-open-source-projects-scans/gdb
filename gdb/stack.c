@@ -59,6 +59,7 @@
 #include "cli/cli-option.h"
 #include "cli/cli-style.h"
 #include "gdbsupport/buildargv.h"
+#include "gdbsupport/unordered_set.h"
 
 /* The possible choices of "set print frame-arguments", and the value
    of this setting.  */
@@ -216,10 +217,48 @@ static const gdb::option::option_def backtrace_command_option_defs[] = {
   },
 };
 
+/* Option for printing shadowed variables.  */
+
+struct shadowed_print_options
+{
+  bool print_shadowed = true;
+};
+
+/* Store the user's "set print shadowed" setting.  It can be overridden
+   with "info locals -shadowed on|off".  */
+
+static shadowed_print_options user_shadowed_print_options;
+
+/* Implement "show print shadowed".  */
+
+static void
+show_print_shadowed (struct ui_file *file, int from_tty,
+		     struct cmd_list_element *c, const char *value)
+{
+  gdb_printf (file, _("Printing of shadowed variables is %s.\n"), value);
+}
+
+/* Option definitions for the shadowed variables setting.  */
+
+static const gdb::option::option_def shadowed_print_option_defs[] = {
+
+  gdb::option::boolean_option_def<shadowed_print_options> {
+    "shadowed",
+    [] (shadowed_print_options *opt) { return &opt->print_shadowed; },
+    show_print_shadowed, /* show_cmd_cb */
+    N_("Set printing of shadowed variables."),
+    N_("Show printing of shadowed variables."),
+    N_("When on, variables that are shadowed by a declaration in an inner\n\
+scope are printed, annotated with the location of their declaration.\n\
+When off, such variables are omitted."),
+  },
+};
+
 /* Prototypes for local functions.  */
 
 static void print_frame_local_vars (const frame_info_ptr &frame,
-				    bool quiet,
+				    bool quiet, bool print_shadowed,
+				    bool print_shadowed_msg,
 				    const char *regexp, const char *t_regexp,
 				    int num_tabs, struct ui_file *stream);
 
@@ -423,7 +462,7 @@ print_frame_arg (const frame_print_options &fp_opts,
 		  && arg->entry_kind == print_entry_values_compact));
 
   annotate_arg_emitter arg_emitter;
-  ui_out_emit_tuple tuple_emitter (uiout, NULL);
+  ui_out_emit_tuple tuple_emitter (uiout);
   gdb_puts (arg->sym->print_name (), &stb);
   if (arg->entry_kind == print_entry_values_compact)
     {
@@ -455,7 +494,6 @@ print_frame_arg (const frame_print_options &fp_opts,
 	  try
 	    {
 	      const struct language_defn *language;
-	      struct value_print_options vp_opts;
 
 	      /* Avoid value_print because it will deref ref parameters.  We
 		 just want to print their addresses.  Print ??? for args whose
@@ -472,7 +510,8 @@ print_frame_arg (const frame_print_options &fp_opts,
 	      else
 		language = current_language;
 
-	      get_no_prettyformat_print_options (&vp_opts);
+	      value_print_options vp_opts
+		= get_no_prettyformat_print_options ();
 	      vp_opts.deref_ref = true;
 	      vp_opts.raw = fp_opts.print_raw_frame_arguments;
 
@@ -480,7 +519,7 @@ print_frame_arg (const frame_print_options &fp_opts,
 	      vp_opts.summary
 		= fp_opts.print_frame_arguments == print_frame_arguments_scalars;
 
-	      common_val_print_checked (arg->val, &stb, 2, &vp_opts, language);
+	      common_val_print_checked (arg->val, &stb, 2, vp_opts, language);
 	    }
 	  catch (const gdb_exception_error &except)
 	    {
@@ -801,70 +840,6 @@ print_frame_args (const frame_print_options &fp_opts,
 	      break;
 	    }
 
-	  /* We have to look up the symbol because arguments can have
-	     two entries (one a parameter, one a local) and the one we
-	     want is the local, which lookup_symbol will find for us.
-	     This includes gcc1 (not gcc2) on SPARC when passing a
-	     small structure and gcc2 when the argument type is float
-	     and it is passed as a double and converted to float by
-	     the prologue (in the latter case the type of the LOC_ARG
-	     symbol is double and the type of the LOC_LOCAL symbol is
-	     float).  */
-	  /* But if the parameter name is null, don't try it.  Null
-	     parameter names occur on the RS/6000, for traceback
-	     tables.  FIXME, should we even print them?  */
-
-	  if (*sym->linkage_name ())
-	    {
-	      struct symbol *nsym;
-
-	      nsym = lookup_symbol_search_name (sym->search_name (),
-						b, SEARCH_VAR_DOMAIN).symbol;
-	      gdb_assert (nsym != NULL);
-	      if (nsym->loc_class () == LOC_REGISTER
-		  && !nsym->is_argument ())
-		{
-		  /* There is a LOC_ARG/LOC_REGISTER pair.  This means
-		     that it was passed on the stack and loaded into a
-		     register, or passed in a register and stored in a
-		     stack slot.  GDB 3.x used the LOC_ARG; GDB
-		     4.0-4.11 used the LOC_REGISTER.
-
-		     Reasons for using the LOC_ARG:
-
-		     (1) Because find_saved_registers may be slow for
-			 remote debugging.
-
-		     (2) Because registers are often reused and stack
-			 slots rarely (never?) are.  Therefore using
-			 the stack slot is much less likely to print
-			 garbage.
-
-		     Reasons why we might want to use the LOC_REGISTER:
-
-		     (1) So that the backtrace prints the same value
-			 as "print foo".  I see no compelling reason
-			 why this needs to be the case; having the
-			 backtrace print the value which was passed
-			 in, and "print foo" print the value as
-			 modified within the called function, makes
-			 perfect sense to me.
-
-		     Additional note: It might be nice if "info args"
-		     displayed both values.
-
-		     One more note: There is a case with SPARC
-		     structure passing where we need to use the
-		     LOC_REGISTER, but this is dealt with by creating
-		     a single LOC_REGPARM in symbol reading.  */
-
-		  /* Leave sym (the LOC_ARG) alone.  */
-		  ;
-		}
-	      else
-		sym = nsym;
-	    }
-
 	  /* Print the current arg.  */
 	  if (!first)
 	    uiout->text (", ");
@@ -1145,9 +1120,7 @@ do_print_frame_info (struct ui_out *uiout, const frame_print_options &fp_opts,
 						  sal.line + 1, 0);
       else
 	{
-	  struct value_print_options opts;
-
-	  get_user_print_options (&opts);
+	  const value_print_options &opts = get_user_print_options ();
 	  /* We used to do this earlier, but that is clearly
 	     wrong.  This function is used by many different
 	     parts of gdb, including normal_stop in infrun.c,
@@ -1331,7 +1304,6 @@ print_frame (struct ui_out *uiout,
 {
   struct gdbarch *gdbarch = get_frame_arch (frame);
   enum language funlang = language_unknown;
-  struct value_print_options opts;
   struct symbol *func;
   std::optional <CORE_ADDR> pc;
 
@@ -1352,7 +1324,7 @@ print_frame (struct ui_out *uiout,
 	uiout->field_fmt_signed (2, ui_left, "level",
 				 frame_relative_level (frame));
       }
-    get_user_print_options (&opts);
+    const value_print_options &opts = get_user_print_options ();
     if (opts.addressprint)
       if (!sal.symtab
 	  || frame_show_address (frame, sal)
@@ -1820,7 +1792,7 @@ select_frame_command_core (const frame_info_ptr &fi, bool ignored)
 
 /* The core of all the "frame" sub-commands.  Select frame FI, and if this
    means we change frame send out a change notification (otherwise, just
-   reprint the current frame summary).   */
+   reprint the current frame summary).  */
 
 static void
 frame_command_core (const frame_info_ptr &fi, bool ignored)
@@ -2048,7 +2020,9 @@ backtrace_command_1 (const frame_print_options &fp_opts,
 
 	  print_frame_info (fp_opts, fi, 1, LOCATION, 1, 0);
 	  if ((flags & PRINT_LOCALS) != 0)
-	    print_frame_local_vars (fi, false, NULL, NULL, 1, gdb_stdout);
+	    print_frame_local_vars (fi, false,
+				    user_shadowed_print_options.print_shadowed,
+				    false, NULL, NULL, 1, gdb_stdout);
 
 	  /* Save the last frame to check for error conditions.  */
 	  trailing = fi;
@@ -2197,8 +2171,9 @@ backtrace_command_completer (struct cmd_list_element *ignore,
 /* Iterate over the local variables of a block B, calling CB.  */
 
 static void
-iterate_over_block_locals (const struct block *b,
-			   iterate_over_block_arg_local_vars_cb cb)
+iterate_over_block_locals
+  (const struct block *b,
+   gdb::function_view <void (const char *, struct symbol *)> cb)
 {
   for (struct symbol *sym : block_iterator_range (b))
     {
@@ -2244,37 +2219,124 @@ iterate_over_block_local_vars (const struct block *block,
     }
 }
 
+/* See stack.h.  */
+
+void
+iterate_over_block_local_vars_printing
+  (const struct block *block,
+   iterate_over_block_arg_local_vars_cb_printing cb)
+{
+  gdb::unordered_set<std::string> collected_vars, shadowed_vars, printed_vars;
+
+  /* Phase one: iterate over all locals within the block, and every parent
+     block up to the enclosing function block.  Record all of the locals
+     seen, this allows us to know which locals are shadowing locals from a
+     more outer scope.  */
+  iterate_over_block_local_vars
+    (block, [&] (const char *print_name, struct symbol *sym)
+    {
+      if (!sym->is_argument ())
+	{
+	  if (!collected_vars.insert (print_name).second)
+	    shadowed_vars.insert (print_name);
+	}
+    });
+
+  /* Phase two: iterate over all locals within the block, and every parent
+     block up to the enclosing function block.  Print all the locals seen
+     by calling CB.  Depending on the current language we vary the
+     arguments to CB to indicate shadowing.  Or in some cases, we don't
+     print the local at all.  */
+  iterate_over_block_local_vars
+    (block, [&] (const char *print_name, struct symbol *sym)
+    {
+      bool already_printed = !printed_vars.insert (print_name).second;
+      bool shadowed = shadowed_vars.find (print_name) != shadowed_vars.end ();
+
+      enum var_shadowing shadowing_status;
+      if (already_printed && shadowed)
+	shadowing_status = var_shadowing::SHADOWED;
+      else if (!already_printed && shadowed)
+	shadowing_status = var_shadowing::SHADOWING;
+      else
+	shadowing_status = var_shadowing::NONE;
+
+      /* Only for C/C++/Fortran/Ada languages, in case of variables
+	 shadowing print <file:line, shadowed> annotation after
+	 the superblock variable.  Iteration of block starts from inner
+	 block which is printed only with location information.  */
+      if (get_lang_vars_shadowing_option (current_language->la_language)
+	  == lang_vars_shadowing::PRINT
+	  && shadowing_status != var_shadowing::NONE)
+	cb (print_name, sym, shadowing_status);
+      /* In case of Rust language it is possible to declare variable with
+	 same name multiple times and only innermost instance of variable
+	 is accessible.  So print only the innermost instance and there is
+	 no need of printing duplicates.  */
+      else if (get_lang_vars_shadowing_option (current_language->la_language)
+	       == lang_vars_shadowing::HIDE
+	       && shadowing_status == var_shadowing::SHADOWED)
+	{
+	  /* Nothing.  */
+	}
+      else
+	cb (print_name, sym, var_shadowing::NONE);
+    });
+}
+
 /* Data to be passed around in the calls to the locals and args
    iterators.  */
 
 struct print_variable_and_value_data
 {
-  std::optional<compiled_regex> preg;
-  std::optional<compiled_regex> treg;
+  print_variable_and_value_data (const char *regexp, const char *t_regexp,
+				 frame_id frame_id, int num_tabs,
+				 ui_file *stream, bool print_shadowed)
+    : name_regex (compile_symbol_search_regex (regexp)),
+      type_regex (compile_symbol_search_regex (t_regexp)),
+      frame_id (frame_id),
+      num_tabs (num_tabs),
+      stream (stream),
+      print_shadowed (print_shadowed)
+  {}
+
+  std::optional<compiled_regex> name_regex;
+  std::optional<compiled_regex> type_regex;
   struct frame_id frame_id;
   int num_tabs;
   struct ui_file *stream;
-  int values_printed;
+  int values_printed = 0;
+  bool print_shadowed;
+  bool printed_shadowed_variables = false;
+  bool omitted_shadowed_variables = false;
 
-  void operator() (const char *print_name, struct symbol *sym);
+  void operator() (const char *print_name, struct symbol *sym,
+		   var_shadowing shadow_status);
 };
 
 /* The callback for the locals and args iterators.  */
 
 void
 print_variable_and_value_data::operator() (const char *print_name,
-					   struct symbol *sym)
+					   struct symbol *sym,
+					   var_shadowing shadow_status)
 {
   frame_info_ptr frame;
 
-  if (preg.has_value ()
-      && preg->exec (sym->natural_name (), 0, NULL, 0) != 0)
+  if (name_regex.has_value ()
+      && name_regex->exec (sym->natural_name (), 0, nullptr, 0) != 0)
     return;
-  if (treg.has_value ()
-      && !treg_matches_sym_type_name (*treg, sym))
+  if (type_regex.has_value ()
+      && !regex_matches_sym_type_name (*type_regex, sym))
     return;
   if (language_def (sym->language ())->symbol_printing_suppressed (sym))
     return;
+
+  if (!print_shadowed && shadow_status == var_shadowing::SHADOWED)
+    {
+      omitted_shadowed_variables = true;
+      return;
+    }
 
   frame = frame_find_by_id (frame_id);
   if (frame == NULL)
@@ -2283,29 +2345,21 @@ print_variable_and_value_data::operator() (const char *print_name,
       return;
     }
 
-  print_variable_and_value (print_name, sym, frame, stream, num_tabs);
+  print_variable_and_value (print_name, sym, frame, stream, num_tabs,
+			    print_shadowed
+			    ? shadow_status : var_shadowing::NONE);
 
   values_printed = 1;
-}
 
-/* Prepares the regular expression REG from REGEXP.
-   If REGEXP is NULL, it results in an empty regular expression.  */
-
-static void
-prepare_reg (const char *regexp, std::optional<compiled_regex> *reg)
-{
-  if (regexp != NULL)
-    {
-      int cflags = REG_NOSUB | (case_sensitivity == case_sensitive_off
-				? REG_ICASE : 0);
-      reg->emplace (regexp, cflags, _("Invalid regexp"));
-    }
-  else
-    reg->reset ();
+  if (shadow_status == var_shadowing::SHADOWED)
+    printed_shadowed_variables = true;
 }
 
 /* Print all variables from the innermost up to the function block of FRAME.
    Print them with values to STREAM indented by NUM_TABS.
+   PRINT_SHADOWED controls whether shadowed variables are printed.
+   PRINT_SHADOWED_MSG controls whether a trailing "set print shadowed" message
+   is printed.
    If REGEXP is not NULL, only print local variables whose name
    matches REGEXP.
    If T_REGEXP is not NULL, only print local variables whose type
@@ -2315,11 +2369,11 @@ prepare_reg (const char *regexp, std::optional<compiled_regex> *reg)
 
 static void
 print_frame_local_vars (const frame_info_ptr &frame,
-			bool quiet,
-			const char *regexp, const char *t_regexp,
-			int num_tabs, struct ui_file *stream)
+			bool quiet, bool print_shadowed,
+			bool print_shadowed_msg, const char *regexp,
+			const char *t_regexp, int num_tabs,
+			struct ui_file *stream)
 {
-  struct print_variable_and_value_data cb_data;
   const struct block *block;
   std::optional<CORE_ADDR> pc;
 
@@ -2339,12 +2393,9 @@ print_frame_local_vars (const frame_info_ptr &frame,
       return;
     }
 
-  prepare_reg (regexp, &cb_data.preg);
-  prepare_reg (t_regexp, &cb_data.treg);
-  cb_data.frame_id = get_frame_id (frame);
-  cb_data.num_tabs = 4 * num_tabs;
-  cb_data.stream = stream;
-  cb_data.values_printed = 0;
+  print_variable_and_value_data cb_data (regexp, t_regexp,
+					 get_frame_id (frame), 4 * num_tabs,
+					 stream, print_shadowed);
 
   /* Temporarily change the selected frame to the given FRAME.
      This allows routines that rely on the selected frame instead
@@ -2352,15 +2403,33 @@ print_frame_local_vars (const frame_info_ptr &frame,
   scoped_restore_selected_frame restore_selected_frame;
   select_frame (frame);
 
-  iterate_over_block_local_vars (block, cb_data);
+  iterate_over_block_local_vars_printing (block, cb_data);
 
-  if (!cb_data.values_printed && !quiet)
+  if (quiet)
+    return;
+
+  if (!cb_data.values_printed)
     {
       if (regexp == NULL && t_regexp == NULL)
 	gdb_printf (stream, _("No locals.\n"));
       else
 	gdb_printf (stream, _("No matching locals.\n"));
     }
+
+  if (!print_shadowed_msg)
+    return;
+
+  if (cb_data.printed_shadowed_variables)
+    gdb_printf (stream,
+		_("Use \"%ps\" to hide shadowed variables.\n"),
+		styled_string (command_style.style (),
+			       "set print shadowed off"));
+  else if (cb_data.omitted_shadowed_variables)
+    gdb_printf (stream,
+		_("Some shadowed variables were omitted, use \"%ps\" "
+		  "to include them.\n"),
+		styled_string (command_style.style (),
+			       "set print shadowed on"));
 }
 
 /* Structure to hold the values of the options used by the 'info
@@ -2391,24 +2460,51 @@ static const gdb::option::option_def info_print_options_defs[] = {
   }
 };
 
-/* Returns the option group used by 'info locals' and 'info args'
-   commands.  */
+/* Returns the option group used by the "info args" command.  */
 
 static gdb::option::option_def_group
-make_info_print_options_def_group (info_print_options *opts)
+make_info_args_options_def_group (info_print_options *opts)
 {
   return {{info_print_options_defs}, opts};
 }
 
-/* Command completer for 'info locals' and 'info args'.  */
+/* Returns the option groups used by the "info locals" command.  */
+
+static std::array<gdb::option::option_def_group, 2>
+make_info_locals_options_def_group (info_print_options *opts,
+				    shadowed_print_options *sh_opts)
+{
+  return {{
+    { {info_print_options_defs}, opts },
+    { {shadowed_print_option_defs}, sh_opts }
+  }};
+}
+
+/* Command completer for "info args".  */
 
 static void
-info_print_command_completer (struct cmd_list_element *ignore,
-			      completion_tracker &tracker,
-			      const char *text, const char * /* word */)
+info_args_command_completer (struct cmd_list_element *ignore,
+			     completion_tracker &tracker,
+			     const char *text, const char * /* word */)
 {
   const auto group
-    = make_info_print_options_def_group (nullptr);
+    = make_info_args_options_def_group (nullptr);
+  if (gdb::option::complete_options
+      (tracker, &text, gdb::option::PROCESS_OPTIONS_UNKNOWN_IS_OPERAND, group))
+    return;
+
+  const char *word = advance_to_expression_complete_word_point (tracker, text);
+  symbol_completer (ignore, tracker, text, word);
+}
+
+/* Command completer for "info locals".  */
+
+static void
+info_locals_command_completer (struct cmd_list_element *ignore,
+			       completion_tracker &tracker,
+			       const char *text, const char * /* word */)
+{
+  const auto group = make_info_locals_options_def_group (nullptr, nullptr);
   if (gdb::option::complete_options
       (tracker, &text, gdb::option::PROCESS_OPTIONS_UNKNOWN_IS_OPERAND, group))
     return;
@@ -2423,7 +2519,8 @@ void
 info_locals_command (const char *args, int from_tty)
 {
   info_print_options opts;
-  auto grp = make_info_print_options_def_group (&opts);
+  shadowed_print_options sh_opts = user_shadowed_print_options;
+  auto grp = make_info_locals_options_def_group (&opts, &sh_opts);
   gdb::option::process_options
     (&args, gdb::option::PROCESS_OPTIONS_UNKNOWN_IS_OPERAND, grp);
   if (args != nullptr && *args == '\0')
@@ -2431,7 +2528,7 @@ info_locals_command (const char *args, int from_tty)
 
   print_frame_local_vars
     (get_selected_frame (_("No frame selected.")),
-     opts.quiet, args,
+     opts.quiet, sh_opts.print_shadowed, true, args,
      opts.type_regexp.empty () ? nullptr : opts.type_regexp.c_str (),
      0, gdb_stdout);
 }
@@ -2446,23 +2543,7 @@ iterate_over_block_arg_vars (const struct block *b,
     {
       /* Don't worry about things which aren't arguments.  */
       if (sym->is_argument ())
-	{
-	  /* We have to look up the symbol because arguments can have
-	     two entries (one a parameter, one a local) and the one we
-	     want is the local, which lookup_symbol will find for us.
-	     This includes gcc1 (not gcc2) on the sparc when passing a
-	     small structure and gcc2 when the argument type is float
-	     and it is passed as a double and converted to float by
-	     the prologue (in the latter case the type of the LOC_ARG
-	     symbol is double and the type of the LOC_LOCAL symbol is
-	     float).  There are also LOC_ARG/LOC_REGISTER pairs which
-	     are not combined in symbol-reading.  */
-
-	  struct symbol *sym2
-	    = lookup_symbol_search_name (sym->search_name (),
-					 b, SEARCH_VAR_DOMAIN).symbol;
-	  cb (sym->print_name (), sym2);
-	}
+	cb (sym->print_name (), sym);
     }
 }
 
@@ -2481,7 +2562,6 @@ print_frame_arg_vars (const frame_info_ptr &frame,
 		      const char *regexp, const char *t_regexp,
 		      struct ui_file *stream)
 {
-  struct print_variable_and_value_data cb_data;
   struct symbol *func;
   std::optional<CORE_ADDR> pc;
 
@@ -2501,14 +2581,14 @@ print_frame_arg_vars (const frame_info_ptr &frame,
       return;
     }
 
-  prepare_reg (regexp, &cb_data.preg);
-  prepare_reg (t_regexp, &cb_data.treg);
-  cb_data.frame_id = get_frame_id (frame);
-  cb_data.num_tabs = 0;
-  cb_data.stream = stream;
-  cb_data.values_printed = 0;
+  print_variable_and_value_data cb_data (regexp, t_regexp,
+					 get_frame_id (frame), 0, stream, true);
 
-  iterate_over_block_arg_vars (func->value_block (), cb_data);
+  iterate_over_block_arg_vars (func->value_block (),
+    [&] (const char *print_name, symbol *sym)
+      {
+	cb_data (print_name, sym, var_shadowing::NONE);
+      });
 
   if (!cb_data.values_printed && !quiet)
     {
@@ -2525,7 +2605,7 @@ void
 info_args_command (const char *args, int from_tty)
 {
   info_print_options opts;
-  auto grp = make_info_print_options_def_group (&opts);
+  auto grp = make_info_args_options_def_group (&opts);
   gdb::option::process_options
     (&args, gdb::option::PROCESS_OPTIONS_UNKNOWN_IS_OPERAND, grp);
   if (args != nullptr && *args == '\0')
@@ -2551,7 +2631,7 @@ get_selected_block (CORE_ADDR *addr_in_block)
   if (!has_stack_frames ())
     return 0;
 
-  return get_frame_block (get_selected_frame (NULL), addr_in_block);
+  return get_frame_block (get_selected_frame (), addr_in_block);
 }
 
 /* Find a frame a certain number of levels away from FRAME.
@@ -2782,7 +2862,7 @@ return_command (const char *retval_exp, int from_tty)
     }
 
   /* Discard the selected frame and all frames inner-to it.  */
-  frame_pop (get_selected_frame (NULL));
+  frame_pop (get_selected_frame ());
 
   /* Store RETURN_VALUE in the just-returned register set.  */
   if (return_value != NULL)
@@ -2806,7 +2886,7 @@ return_command (const char *retval_exp, int from_tty)
   select_frame (get_current_frame ());
   /* If interactive, print the frame that is now current.  */
   if (from_tty)
-    print_stack_frame (get_selected_frame (NULL), 1, SRC_AND_LOC, 1);
+    print_stack_frame (get_selected_frame (), 1, SRC_AND_LOC, 1);
 }
 
 /* Find the most inner frame in the current stack for a function called
@@ -3487,11 +3567,13 @@ Usage: info frame level LEVEL"),
   cmd = add_info ("locals", info_locals_command,
 		  info_print_args_help (_("\
 All local variables of current stack frame or those matching REGEXPs.\n\
-Usage: info locals [-q] [-t TYPEREGEXP] [NAMEREGEXP]\n\
-Prints the local variables of the current stack frame.\n"),
+Usage: info locals [-q] [-shadowed [on|off]] [-t TYPEREGEXP] [NAMEREGEXP]\n\
+Prints the local variables of the current stack frame.\n\
+The -shadowed option overrides the \"set print shadowed\" setting for this\n\
+command.\n"),
 					_("local variables"),
 					false));
-  set_cmd_completer_handle_brkchars (cmd, info_print_command_completer);
+  set_cmd_completer_handle_brkchars (cmd, info_locals_command_completer);
   cmd = add_info ("args", info_args_command,
 		  info_print_args_help (_("\
 All argument variables of current stack frame or those matching REGEXPs.\n\
@@ -3499,7 +3581,7 @@ Usage: info args [-q] [-t TYPEREGEXP] [NAMEREGEXP]\n\
 Prints the argument variables of the current stack frame.\n"),
 					_("argument variables"),
 					false));
-  set_cmd_completer_handle_brkchars (cmd, info_print_command_completer);
+  set_cmd_completer_handle_brkchars (cmd, info_args_command_completer);
 
   /* Install "set print raw frame-arguments", a deprecated spelling of
      "set print raw-frame-arguments".  */
@@ -3539,4 +3621,8 @@ source line."),
   gdb::option::add_setshow_cmds_for_options
     (class_stack, &user_frame_print_options,
      frame_print_option_defs, &setprintlist, &showprintlist);
+
+  gdb::option::add_setshow_cmds_for_options
+    (class_support, &user_shadowed_print_options,
+     shadowed_print_option_defs, &setprintlist, &showprintlist);
 }

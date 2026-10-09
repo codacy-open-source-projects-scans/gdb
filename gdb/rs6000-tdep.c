@@ -697,7 +697,7 @@ insn_changes_sp_or_jumps (unsigned long insn)
 
   /* NOTE: There are many ways to change the value of a given register.
 	   The ways below are those used when the register is R1, the SP,
-	   in a funtion's epilogue.  */
+	   in a function's epilogue.  */
 
   if (opcode == 31 && subcode == 444 && a == 1)
     return 1;  /* mr R1,Rn */
@@ -822,8 +822,8 @@ rs6000_fetch_pointer_argument (const frame_info_ptr &frame, int argi,
 constexpr gdb_byte big_breakpoint[] = { 0x7f, 0xe0, 0x00, 0x08 };
 constexpr gdb_byte little_breakpoint[] = { 0x08, 0x00, 0xe0, 0x7f };
 
-typedef BP_MANIPULATION_ENDIAN (little_breakpoint, big_breakpoint)
-  rs6000_breakpoint;
+using rs6000_breakpoint
+  = BP_MANIPULATION_ENDIAN (little_breakpoint, big_breakpoint);
 
 /* Instruction masks for displaced stepping.  */
 #define OP_MASK 0xfc000000
@@ -2769,8 +2769,8 @@ rs6000_value_from_register (gdbarch *gdbarch, type *type, int regnum,
 
  /* The type of a function that moves the value of REG between CACHE
     or BUF --- in either direction.  */
-typedef enum register_status (*move_ev_register_func) (struct regcache *,
-						       int, void *);
+using move_ev_register_func = enum register_status (*) (struct regcache *,
+							int, void *);
 
 /* Move SPE vector register values between a 64-bit buffer and the two
    32-bit raw register halves in a regcache.  This function handles
@@ -4182,7 +4182,7 @@ bfd_uses_spe_extensions (bfd *abfd)
 #define P_PPC_D(insn_prefix, insn_suffix) \
   PPC_SEXT (PPC_FIELD (insn_prefix, 14, 18) << 16 \
 	    | PPC_FIELD (insn_suffix, 16, 16), 34)
-#define P_PPC_TX5(insn_sufix)	PPC_BIT (insn_suffix, 5)
+#define P_PPC_TX5(insn_suffix)	PPC_BIT (insn_suffix, 5)
 #define P_PPC_TX15(insn_suffix) PPC_BIT (insn_suffix, 15)
 #define P_PPC_XT(insn_suffix)	((PPC_TX (insn_suffix) << 5) \
 				 | PPC_T (insn_suffix))
@@ -7138,8 +7138,6 @@ UNKNOWN_PREFIX_OP:
   if (record_full_arch_list_add_reg (regcache, PPC_PC_REGNUM))
     return -1;
 
-  if (record_full_arch_list_add_end ())
-    return -1;
   return 0;
 }
 
@@ -7447,8 +7445,6 @@ UNKNOWN_OP:
 
   if (record_full_arch_list_add_reg (regcache, PPC_PC_REGNUM))
     return -1;
-  if (record_full_arch_list_add_end ())
-    return -1;
   return 0;
 }
 
@@ -7557,7 +7553,7 @@ rs6000_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   int have_tar = 0, have_ebb = 0, have_pmu = 0, have_htm_spr = 0;
   int have_htm_core = 0, have_htm_fpu = 0, have_htm_altivec = 0;
   int have_htm_vsx = 0, have_htm_ppr = 0, have_htm_dscr = 0;
-  int have_htm_tar = 0;
+  int have_htm_tar = 0, have_dmr = 0;
   int tdesc_wordsize = -1;
   const struct target_desc *tdesc = info.target_desc;
   tdesc_arch_data_up tdesc_data;
@@ -7886,6 +7882,27 @@ rs6000_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 	}
       else
 	have_ebb = 0;
+
+      /* Dense Math Registers (DMR).  */
+      feature = tdesc_find_feature (tdesc, "org.gnu.gdb.power.dmr");
+      if (feature != NULL)
+	{
+	  static const char *const dmr_regs[] = {
+	    "dmr0", "dmr1", "dmr2", "dmr3", "dmr4", "dmr5",
+	    "dmr6", "dmr7"
+	  };
+
+	  valid_p = 1;
+	  for (i = 0; i < ARRAY_SIZE (dmr_regs); i++)
+	    valid_p &= tdesc_numbered_register (feature, tdesc_data.get (),
+						PPC_DMR0_REGNUM + i,
+						dmr_regs[i]);
+	  if (!valid_p)
+	    return NULL;
+	  have_dmr = 1;
+	}
+      else
+	have_dmr = 0;
 
       /* Subset of the ISA 2.07 Performance Monitor Registers provided
 	 by Linux.  */
@@ -8294,6 +8311,7 @@ rs6000_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   tdep->ppc_siar_regnum = have_pmu ? PPC_SIAR_REGNUM : -1;
   tdep->ppc_sdar_regnum = have_pmu ? PPC_SDAR_REGNUM : -1;
   tdep->ppc_sier_regnum = have_pmu ? PPC_SIER_REGNUM : -1;
+  tdep->ppc_dmr0_regnum = have_dmr ? PPC_DMR0_REGNUM : -1;
 
   tdep->have_htm_spr = have_htm_spr;
   tdep->have_htm_core = have_htm_core;

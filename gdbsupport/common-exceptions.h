@@ -44,13 +44,13 @@ enum return_reason
 
 #define RETURN_MASK(reason)	(1 << (int)(-reason))
 
-typedef enum
+enum return_mask
 {
   RETURN_MASK_FORCED_QUIT = RETURN_MASK (RETURN_FORCED_QUIT),
   RETURN_MASK_QUIT = RETURN_MASK (RETURN_QUIT),
   RETURN_MASK_ERROR = RETURN_MASK (RETURN_ERROR),
   RETURN_MASK_ALL = (RETURN_MASK_FORCED_QUIT | RETURN_MASK_QUIT | RETURN_MASK_ERROR)
-} return_mask;
+};
 
 /* Describe all exceptions.  */
 
@@ -116,6 +116,11 @@ enum errors {
   NR_ERRORS
 };
 
+/* The client application must provide this.  It is a printf-like that
+   formats a string for an exception.  */
+std::string vformat_exception (const char *fmt, va_list args)
+  ATTRIBUTE_PRINTF (1, 0);
+
 struct gdb_exception
 {
   gdb_exception ()
@@ -142,7 +147,7 @@ struct gdb_exception
     ATTRIBUTE_PRINTF (4, 0)
     : reason (r),
       error (e),
-      message (std::make_shared<std::string> (string_vprintf (fmt, ap)))
+      message (std::make_shared<std::string> (vformat_exception (fmt, ap)))
   {
   }
 
@@ -292,7 +297,7 @@ struct gdb_exception_error : public gdb_exception
   explicit gdb_exception_error (gdb_exception &&ex) noexcept
     : gdb_exception (std::move (ex))
   {
-    gdb_assert (ex.reason == RETURN_ERROR);
+    gdb_assert (reason == RETURN_ERROR);
   }
 };
 
@@ -307,7 +312,7 @@ struct gdb_exception_quit : public gdb_exception
   explicit gdb_exception_quit (gdb_exception &&ex) noexcept
     : gdb_exception (std::move (ex))
   {
-    gdb_assert (ex.reason == RETURN_QUIT);
+    gdb_assert (reason == RETURN_QUIT);
   }
 };
 
@@ -322,7 +327,7 @@ struct gdb_exception_forced_quit : public gdb_exception
   explicit gdb_exception_forced_quit (gdb_exception &&ex) noexcept
     : gdb_exception (std::move (ex))
   {
-    gdb_assert (ex.reason == RETURN_FORCED_QUIT);
+    gdb_assert (reason == RETURN_FORCED_QUIT);
   }
 };
 

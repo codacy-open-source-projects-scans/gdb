@@ -381,49 +381,48 @@ i386_intel_simplify_register (expressionS *e)
 }
 
 static symbolS *
-i386_intel_simplify_symbol (symbolS *sym, bool in_equate)
+i386_intel_simplify_symbol (symbolS *sym)
 {
   if (symbol_resolving_p (sym))
-    return sym;
+    return NULL;
+
+  symbolS *orig = sym;
+  offsetT off;
+  sym = symbol_equated_to (sym, &off);
+  if (sym == NULL)
+    return NULL;
+  if (off != 0)
+    return orig;
 
   segT seg = S_GET_SEGMENT (sym);
-  if (seg != expr_section && seg != reg_section && !symbol_equated_p(sym))
+  if (seg == undefined_section
+      || (seg != expr_section && seg != reg_section && sym == orig))
     return sym;
 
-  for (;;)
-    {
-      /* While we're after equates, symbol_equated_p() isn't suitable here.  */
-      if (symbol_on_chain(sym, symbol_rootP, symbol_lastP))
-	{
-	  in_equate = true;
-	  sym = symbol_clone (sym, 0);
-	}
-      else if (in_equate)
-	{
-	  expressionS *e = symbol_get_value_expression (sym);
-
-	  if (e->X_op == O_symbol && !e->X_add_number)
-	    {
-	      sym = e->X_add_symbol;
-	      continue;
-	    }
-	  sym = make_expr_symbol (e);
-	}
-
-      break;
-    }
-
+  /* i386_intel_simplify modifies its arg.  We don't want to make
+     premature changes to symbols here, particularly for a symbol
+     equate.  Changing a symbol may affect future uses of that
+     symbol.  So copy the symbol value and make a new symbol after
+     i386_intel_simplify has done its work.  Don't use structure
+     assignment to copy the value as that doesn't guarantee writing
+     any padding bytes, and we want to use memcmp below rather than
+     comparing every field.  */
+  expressionS *e = symbol_get_value_expression (sym);
+  expressionS exp;
+  memcpy (&exp, e, sizeof exp);
   symbol_mark_resolving (sym);
-  int ret = i386_intel_simplify (symbol_get_value_expression (sym), in_equate);
-  if (ret == 2)
-    S_SET_SEGMENT (sym, absolute_section);
+  int ret = i386_intel_simplify (&exp);
   symbol_clear_resolving (sym);
+  if (ret == 0)
+    return NULL;
 
-  return ret ? sym : NULL;
+  if (memcmp (&exp, e, sizeof exp) != 0)
+    sym = make_expr_symbol (&exp);
+  return sym;
 }
 
 static int
-i386_intel_simplify (expressionS *e, bool in_equate)
+i386_intel_simplify (expressionS *e)
 {
   const reg_entry *the_reg = (this_operand >= 0
 			      ? i.op[this_operand].regs : NULL);
@@ -440,7 +439,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
     case O_index:
       if (e->X_add_symbol)
 	{
-	  newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
+	  newsym = i386_intel_simplify_symbol (e->X_add_symbol);
 	  if (!newsym
 	      || !i386_intel_check(the_reg, intel_state.base,
 				   intel_state.index))
@@ -449,7 +448,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	}
       if (!intel_state.in_offset)
 	++intel_state.in_bracket;
-      newsym = i386_intel_simplify_symbol (e->X_op_symbol, in_equate);
+      newsym = i386_intel_simplify_symbol (e->X_op_symbol);
       if (!intel_state.in_offset)
 	--intel_state.in_bracket;
       if (!newsym)
@@ -476,7 +475,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
     case O_offset:
       intel_state.has_offset = 1;
       ++intel_state.in_offset;
-      newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
+      newsym = i386_intel_simplify_symbol (e->X_add_symbol);
       --intel_state.in_offset;
       if (!newsym || !i386_intel_check(the_reg, base, state_index))
 	return 0;
@@ -505,7 +504,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	  as_bad (_("invalid use of register"));
 	  return 0;
 	}
-      newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
+      newsym = i386_intel_simplify_symbol (e->X_add_symbol);
       if (!newsym)
 	return 0;
       e->X_add_symbol = newsym;
@@ -519,7 +518,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	  as_bad (_("invalid use of register"));
 	  return 0;
 	}
-      newsym = i386_intel_simplify_symbol (e->X_op_symbol, in_equate);
+      newsym = i386_intel_simplify_symbol (e->X_op_symbol);
       if (!newsym
 	  || !i386_intel_check(the_reg, intel_state.base,
 			       intel_state.index))
@@ -548,34 +547,32 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	  expressionS *left = NULL, *right = NULL;
 	  segT leftseg = NULL, rightseg = NULL;
 
-	  newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
-	  if (newsym)
-	    {
-	      e->X_add_symbol = newsym;
+	  newsym = i386_intel_simplify_symbol (e->X_add_symbol);
+	  if (!newsym)
+	    return 0;
+	  e->X_add_symbol = newsym;
 
-	      if (base != intel_state.base || state_index != intel_state.index)
-		{
-		  base = intel_state.base;
-		  state_index = intel_state.index;
-		  left = symbol_get_value_expression (newsym);
-		  resolve_expression (left);
-		  leftseg = S_GET_SEGMENT (newsym);
-		}
+	  if (base != intel_state.base || state_index != intel_state.index)
+	    {
+	      base = intel_state.base;
+	      state_index = intel_state.index;
+	      left = symbol_get_value_expression (newsym);
+	      resolve_expression (left);
+	      leftseg = S_GET_SEGMENT (newsym);
 	    }
 
-	  newsym = i386_intel_simplify_symbol (e->X_op_symbol, in_equate);
-	  if (newsym)
-	    {
-	      e->X_op_symbol = newsym;
+	  newsym = i386_intel_simplify_symbol (e->X_op_symbol);
+	  if (!newsym)
+	    return 0;
+	  e->X_op_symbol = newsym;
 
-	      if (base != intel_state.base || state_index != intel_state.index)
-		{
-		  base = intel_state.base;
-		  state_index = intel_state.index;
-		  right = symbol_get_value_expression (newsym);
-		  resolve_expression (right);
-		  rightseg = S_GET_SEGMENT (newsym);
-		}
+	  if (base != intel_state.base || state_index != intel_state.index)
+	    {
+	      base = intel_state.base;
+	      state_index = intel_state.index;
+	      right = symbol_get_value_expression (newsym);
+	      resolve_expression (right);
+	      rightseg = S_GET_SEGMENT (newsym);
 	    }
 
 	  if (left && right
@@ -609,7 +606,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	  if (!intel_state.in_scale++)
 	    intel_state.scale_factor = 1;
 
-	  newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
+	  newsym = i386_intel_simplify_symbol (e->X_add_symbol);
 	  if (newsym)
 	    {
 	      e->X_add_symbol = newsym;
@@ -620,7 +617,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 		  other = symbol_get_value_expression (e->X_add_symbol);
 		}
 
-	      newsym = i386_intel_simplify_symbol (e->X_op_symbol, in_equate);
+	      newsym = i386_intel_simplify_symbol (e->X_op_symbol);
 	    }
 
 	  if (newsym)
@@ -705,7 +702,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
     fallthrough:
       if (e->X_add_symbol)
 	{
-	  newsym = i386_intel_simplify_symbol (e->X_add_symbol, in_equate);
+	  newsym = i386_intel_simplify_symbol (e->X_add_symbol);
 	  if (!newsym)
 	    return 0;
 	  e->X_add_symbol = newsym;
@@ -722,7 +719,7 @@ i386_intel_simplify (expressionS *e, bool in_equate)
 	return 0;
       if (e->X_op_symbol)
 	{
-	  newsym = i386_intel_simplify_symbol (e->X_op_symbol, in_equate);
+	  newsym = i386_intel_simplify_symbol (e->X_op_symbol);
 	  if (!newsym)
 	    return 0;
 	  e->X_op_symbol = newsym;
@@ -798,7 +795,7 @@ i386_intel_operand (char *operand_string, int got_a_float)
   expr_mode = expr_operator_none;
   memset (&exp, 0, sizeof(exp));
   exp_seg = expression (&exp);
-  ret = i386_intel_simplify (&exp, false);
+  ret = i386_intel_simplify (&exp);
   intel_syntax = 1;
 
   SKIP_WHITESPACE ();
@@ -915,9 +912,11 @@ i386_intel_operand (char *operand_string, int got_a_float)
 	  i.types[this_operand].bitfield.tbyte = 1;
 	  if (got_a_float)
 	    break;
+	  const i386_operand_type *t_types
+	    = get_operand_types (current_templates.start);
 	  if (flag_code == CODE_64BIT
-	      && (current_templates.start->operand_types[0].bitfield.fword
-		  || current_templates.start->operand_types[0].bitfield.tbyte
+	      && (t_types[0].bitfield.fword
+		  || t_types[0].bitfield.tbyte
 		  || current_templates.start->opcode_modifier.jump == JUMP_DWORD
 		  || current_templates.start->opcode_modifier.jump == JUMP))
 	    suffix = QWORD_MNEM_SUFFIX; /* l[fgs]s, [ls][gi]dt, call, jmp */
@@ -1023,10 +1022,11 @@ i386_intel_operand (char *operand_string, int got_a_float)
 	      if (!t->opcode_modifier.modrm)
 		break;
 
-	      if (!t->operand_types[op].bitfield.baseindex)
+	      const i386_operand_type *t_types = get_operand_types (t);
+	      if (!t_types[op].bitfield.baseindex)
 		continue;
 
-	      switch (t->operand_types[op].bitfield.class)
+	      switch (t_types[op].bitfield.class)
 		{
 		case RegMMX:
 		case RegSIMD:

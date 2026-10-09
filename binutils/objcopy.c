@@ -1134,7 +1134,7 @@ add_specific_symbols (const char *filename, htab_t htab, char **buffer_p)
   unsigned int line_count;
 
   size = get_file_size (filename);
-  if (size == 0)
+  if (size < 1)
     {
       status = 1;
       return;
@@ -1532,6 +1532,15 @@ is_hidden_symbol (asymbol *sym)
   return false;
 }
 
+static void
+clear_visibility (asymbol *sym)
+{
+  elf_symbol_type *elf_sym = elf_symbol_from (sym);
+
+  if (elf_sym != NULL)
+    elf_sym->internal_elf_sym.st_other &= ~ELF_ST_VISIBILITY (~0);
+}
+
 /* Empty name is hopefully never a valid symbol name.  */
 static const char * empty_name = "";
 
@@ -1765,6 +1774,7 @@ filter_symbols (bfd *abfd, bfd *obfd, asymbol **osyms,
 	    {
 	      flags &= ~(BSF_GLOBAL | BSF_WEAK);
 	      flags |= BSF_LOCAL;
+	      clear_visibility (sym);
 	    }
 
 	  else if (!undefined
@@ -3062,13 +3072,13 @@ copy_object (bfd *ibfd, bfd *obfd, const bfd_arch_info_type *input_arch)
 	   pupdate = pupdate->next)
 	{
 	  pupdate->section = bfd_get_section_by_name (ibfd, pupdate->name);
-	  if (pupdate->section == NULL)
+	  if (pupdate->section == NULL
+	      || (osec = pupdate->section->output_section) == NULL)
 	    {
-	      non_fatal (_("error: %s not found, can't be updated"), pupdate->name);
+	      non_fatal (_("error: %s can't be updated"), pupdate->name);
 	      return false;
 	    }
 
-	  osec = pupdate->section->output_section;
 	  if (!bfd_set_section_size (osec, pupdate->size))
 	    {
 	      bfd_nonfatal_message (NULL, obfd, osec, NULL);

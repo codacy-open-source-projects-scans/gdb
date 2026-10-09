@@ -585,7 +585,7 @@ ppc_sysv_abi_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 	}
     }
 
-  /* Update %sp.   */
+  /* Update %sp.  */
   regcache_cooked_write_signed (regcache, gdbarch_sp_regnum (gdbarch), sp);
 
   /* Write the backchain (it occupies WORDSIZED bytes).  */
@@ -1749,7 +1749,7 @@ ppc64_sysv_abi_push_dummy_call (struct gdbarch *gdbarch,
 	}
     }
 
-  /* Update %sp.   */
+  /* Update %sp.  */
   regcache_cooked_write_signed (regcache, gdbarch_sp_regnum (gdbarch), sp);
 
   /* Write the backchain (it occupies WORDSIZED bytes).  */
@@ -2188,8 +2188,8 @@ ppc_sysv_get_return_buf_addr (struct type *val_type,
     }
   catch (const gdb_exception_error &e)
     {
-      warning ("Cannot determine the function return value.\n"
-	       "Try compiling with -fvar-tracking.");
+      warning (_("Cannot determine the function return value.\n"
+		 "Try compiling with -fvar-tracking."));
     }
   return return_val;
 }

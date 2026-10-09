@@ -1556,7 +1556,6 @@ run_dump_test "pr23633"
 run_dump_test "set-section-alignment"
 
 setup_xfail "hppa*-*-*"
-setup_xfail "spu-*-*"
 clear_xfail "hppa*64*-*-hpux*" "hppa*-*-linux*" "hppa*-*-lites*"
 clear_xfail "hppa*-*-*n*bsd*" "hppa*-*-*elf*"
 if { [istarget pdp11-*-*] } {
@@ -1568,6 +1567,11 @@ if { [istarget pdp11-*-*] } {
 set ldflags "-T$srcdir/$subdir/pr25662.ld"
 if { [istarget *-*-cygwin] || [istarget *-*-mingw*] } {
    append ldflags " --disable-reloc-section"
+}
+
+# Append LDFLAGS for milli.a archive
+if { [istarget hppa*64*-*-hpux*] } {
+   append ldflags " $LDFLAGS"
 }
 
 #xcoff doesn't support arbitrary sections

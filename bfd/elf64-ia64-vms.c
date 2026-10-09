@@ -234,9 +234,9 @@ static bool allocate_local_got
 static bool allocate_dynrel_entries
   (struct elf64_ia64_dyn_sym_info *, void *);
 static asection *get_pltoff
-  (bfd *, struct elf64_ia64_link_hash_table *);
+  (struct bfd_link_info *, struct elf64_ia64_link_hash_table *);
 static asection *get_got
-  (bfd *, struct elf64_ia64_link_hash_table *);
+  (struct bfd_link_info *, struct elf64_ia64_link_hash_table *);
 
 
 /* Given a ELF reloc, return the matching HOWTO structure.  */
@@ -1289,10 +1289,10 @@ elf64_ia64_create_dynamic_sections (bfd *abfd,
     return false;
   ia64_info->root.splt = s;
 
-  if (!get_got (abfd, ia64_info))
+  if (!get_got (info, ia64_info))
     return false;
 
-  if (!get_pltoff (abfd, ia64_info))
+  if (!get_pltoff (info, ia64_info))
     return false;
 
   s = bfd_make_section_anyway_with_flags (abfd, ".vmsdynstr",
@@ -1713,7 +1713,8 @@ get_dyn_sym_info (struct elf64_ia64_link_hash_table *ia64_info,
 }
 
 static asection *
-get_got (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
+get_got (struct bfd_link_info *info,
+	 struct elf64_ia64_link_hash_table *ia64_info)
 {
   asection *got;
   bfd *dynobj;
@@ -1723,9 +1724,9 @@ get_got (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
     {
       flagword flags;
 
-      dynobj = ia64_info->root.dynobj;
+      dynobj = _bfd_elf_link_dynobj (info);
       if (!dynobj)
-	ia64_info->root.dynobj = dynobj = abfd;
+	return NULL;
 
       /* The .got section is always aligned at 8 bytes.  */
       flags = get_elf_backend_data (dynobj)->dynamic_sec_flags;
@@ -1746,7 +1747,7 @@ get_got (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
    of a procedure, thus ensuring a unique address for each procedure.  */
 
 static asection *
-get_fptr (bfd *abfd, struct bfd_link_info *info,
+get_fptr (struct bfd_link_info *info,
 	  struct elf64_ia64_link_hash_table *ia64_info)
 {
   asection *fptr;
@@ -1755,9 +1756,9 @@ get_fptr (bfd *abfd, struct bfd_link_info *info,
   fptr = ia64_info->fptr_sec;
   if (!fptr)
     {
-      dynobj = ia64_info->root.dynobj;
+      dynobj = _bfd_elf_link_dynobj (info);
       if (!dynobj)
-	ia64_info->root.dynobj = dynobj = abfd;
+	return NULL;
 
       fptr = bfd_make_section_anyway_with_flags (dynobj, ".opd",
 						 (SEC_ALLOC
@@ -1800,7 +1801,8 @@ get_fptr (bfd *abfd, struct bfd_link_info *info,
 }
 
 static asection *
-get_pltoff (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
+get_pltoff (struct bfd_link_info *info,
+	    struct elf64_ia64_link_hash_table *ia64_info)
 {
   asection *pltoff;
   bfd *dynobj;
@@ -1808,9 +1810,9 @@ get_pltoff (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
   pltoff = ia64_info->pltoff_sec;
   if (!pltoff)
     {
-      dynobj = ia64_info->root.dynobj;
+      dynobj = _bfd_elf_link_dynobj (info);
       if (!dynobj)
-	ia64_info->root.dynobj = dynobj = abfd;
+	return NULL;
 
       pltoff = bfd_make_section_anyway_with_flags (dynobj,
 						   ELF_STRING_ia64_pltoff,
@@ -1835,7 +1837,7 @@ get_pltoff (bfd *abfd, struct elf64_ia64_link_hash_table *ia64_info)
 
 static asection *
 get_reloc_section (bfd *abfd,
-		   struct elf64_ia64_link_hash_table *ia64_info,
+		   struct bfd_link_info *info,
 		   asection *sec, bool create)
 {
   const char *srel_name;
@@ -1853,9 +1855,9 @@ get_reloc_section (bfd *abfd,
 	      || (startswith (srel_name, ".rel")
 		  && strcmp (bfd_section_name (sec), srel_name+4) == 0));
 
-  dynobj = ia64_info->root.dynobj;
+  dynobj = _bfd_elf_link_dynobj (info);
   if (!dynobj)
-    ia64_info->root.dynobj = dynobj = abfd;
+    return NULL;
 
   srel = bfd_get_linker_section (dynobj, srel_name);
   if (srel == NULL && create)
@@ -2228,7 +2230,7 @@ elf64_ia64_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	{
 	  if (!got)
 	    {
-	      got = get_got (abfd, ia64_info);
+	      got = get_got (info, ia64_info);
 	      if (!got)
 		return false;
 	    }
@@ -2242,7 +2244,7 @@ elf64_ia64_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	  /* Create the .opd section.  */
 	  if (!fptr)
 	    {
-	      fptr = get_fptr (abfd, info, ia64_info);
+	      fptr = get_fptr (info, ia64_info);
 	      if (!fptr)
 		return false;
 	    }
@@ -2252,8 +2254,9 @@ elf64_ia64_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	dyn_i->want_ltoff_fptr = 1;
       if (need_entry & (NEED_MIN_PLT | NEED_FULL_PLT))
 	{
-	  if (!ia64_info->root.dynobj)
-	    ia64_info->root.dynobj = abfd;
+	  if (!ia64_info->root.dynobj
+	      && !_bfd_elf_link_dynobj (info))
+	    return false;
 	  h->needs_plt = 1;
 	  dyn_i->want_plt = 1;
 	}
@@ -2265,7 +2268,7 @@ elf64_ia64_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	     link.  */
 	  if (!pltoff)
 	    {
-	      pltoff = get_pltoff (abfd, ia64_info);
+	      pltoff = get_pltoff (info, ia64_info);
 	      if (!pltoff)
 		return false;
 	    }
@@ -2276,7 +2279,7 @@ elf64_ia64_check_relocs (bfd *abfd, struct bfd_link_info *info,
 	{
 	  if (!srel)
 	    {
-	      srel = get_reloc_section (abfd, ia64_info, sec, true);
+	      srel = get_reloc_section (abfd, info, sec, true);
 	      if (!srel)
 		return false;
 	    }
@@ -2591,8 +2594,7 @@ elf64_ia64_adjust_dynamic_symbol (struct bfd_link_info *info ATTRIBUTE_UNUSED,
 }
 
 static bool
-elf64_ia64_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
-			       struct bfd_link_info *info)
+elf64_ia64_late_size_sections (struct bfd_link_info *info)
 {
   struct elf64_ia64_allocate_data data;
   struct elf64_ia64_link_hash_table *ia64_info;
@@ -2829,7 +2831,7 @@ elf64_ia64_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 
 	  if (!(abfd->flags & DYNAMIC))
 	    continue;
-	  BFD_ASSERT (abfd->xvec == output_bfd->xvec);
+	  BFD_ASSERT (abfd->xvec == info->output_bfd->xvec);
 
 	  if (!_bfd_elf_add_dynamic_entry (info, DT_IA_64_VMS_NEEDED_IDENT,
 					   elf_ia64_vms_ident (abfd)))
@@ -2906,10 +2908,10 @@ elf64_ia64_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       bed->s->swap_dyn_out (hash_table->dynobj, &dyn,
 			    dynsec->contents + strdyn_off + bed->s->sizeof_dyn);
 
-      elf_ia64_vms_tdata (output_bfd)->needed_count = shl_num;
+      elf_ia64_vms_tdata (info->output_bfd)->needed_count = shl_num;
 
       /* Note section.  */
-      if (!create_ia64_vms_notes (output_bfd, info, time_hi, time_lo))
+      if (!create_ia64_vms_notes (info->output_bfd, info, time_hi, time_lo))
 	return false;
     }
 
@@ -3369,8 +3371,7 @@ elf64_ia64_final_link (bfd *abfd, struct bfd_link_info *info)
 }
 
 static int
-elf64_ia64_relocate_section (bfd *output_bfd,
-			     struct bfd_link_info *info,
+elf64_ia64_relocate_section (struct bfd_link_info *info,
 			     bfd *input_bfd,
 			     asection *input_section,
 			     bfd_byte *contents,
@@ -3402,7 +3403,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	->this_hdr.sh_flags |= flags;
     }
 
-  gp_val = _bfd_get_gp_value (output_bfd);
+  gp_val = _bfd_get_gp_value (info->output_bfd);
 
   rel = relocs;
   relend = relocs + input_section->reloc_count;
@@ -3451,7 +3452,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	  sym = local_syms + r_symndx;
 	  sym_sec = local_sections[r_symndx];
 	  msec = sym_sec;
-	  value = _bfd_elf_rela_local_sym (output_bfd, sym, &msec, rel);
+	  value = _bfd_elf_rela_local_sym (info->output_bfd, sym, &msec, rel);
 	  if (!bfd_link_relocatable (info)
 	      && (sym_sec->flags & SEC_MERGE) != 0
 	      && ELF_ST_TYPE (sym->st_info) == STT_SECTION
@@ -3471,7 +3472,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 		    {
 		      msec = sym_sec;
 		      dynent->addend =
-			_bfd_merged_section_offset (output_bfd, &msec,
+			_bfd_merged_section_offset (info->output_bfd, &msec,
 						    sym->st_value
 						    + dynent->addend);
 		      dynent->addend -= sym->st_value;
@@ -3596,7 +3597,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 		  break;
 		}
 	      elf64_ia64_install_fixup
-		(output_bfd, ia64_info, h,
+		(info->output_bfd, ia64_info, h,
 		 dyn_r_type, input_section, rel->r_offset, addend);
 	      r = bfd_reloc_ok;
 	      break;
@@ -3647,7 +3648,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	case R_IA64_PLTOFF64MSB:
 	case R_IA64_PLTOFF64LSB:
 	  dyn_i = get_dyn_sym_info (ia64_info, h, input_bfd, rel, false);
-	  value = set_pltoff_entry (output_bfd, info, dyn_i, value, false);
+	  value = set_pltoff_entry (info->output_bfd, info, dyn_i, value, false);
 	  value -= gp_val;
 	  r = ia64_elf_install_value (hit_addr, value, r_type);
 	  break;
@@ -3661,7 +3662,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	  if (dyn_i->want_fptr)
 	    {
 	      if (!undef_weak_ref)
-		value = set_fptr_entry (output_bfd, info, dyn_i, value);
+		value = set_fptr_entry (info->output_bfd, info, dyn_i, value);
 	    }
 	  if (!dyn_i->want_fptr || bfd_link_pie (info))
 	    {
@@ -3692,7 +3693,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 
 	      /* VMS: FIXFD.  */
 	      elf64_ia64_install_fixup
-		(output_bfd, ia64_info, h, R_IA64_VMS_FIXFD,
+		(info->output_bfd, ia64_info, h, R_IA64_VMS_FIXFD,
 		 input_section, rel->r_offset, 0);
 	      r = bfd_reloc_ok;
 	      break;
@@ -3712,12 +3713,12 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	    {
 	      BFD_ASSERT (h == NULL || !h->def_dynamic);
 	      if (!undef_weak_ref)
-		value = set_fptr_entry (output_bfd, info, dyn_i, value);
+		value = set_fptr_entry (info->output_bfd, info, dyn_i, value);
 	    }
 	  else
 	    value = 0;
 
-	  value = set_got_entry (output_bfd, info, dyn_i,
+	  value = set_got_entry (info->output_bfd, info, dyn_i,
 				 rel->r_addend, value, R_IA64_FPTR64LSB);
 	  value -= gp_val;
 	  r = ia64_elf_install_value (hit_addr, value, r_type);
@@ -3814,7 +3815,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 	    {
 	      /* Find the segment that contains the output_section.  */
 	      Elf_Internal_Phdr *p = _bfd_elf_find_segment_containing_section
-		(output_bfd, sym_sec->output_section);
+		(info->output_bfd, sym_sec->output_section);
 
 	      if (p == NULL)
 		{
@@ -3995,8 +3996,7 @@ elf64_ia64_relocate_section (bfd *output_bfd,
 }
 
 static bool
-elf64_ia64_finish_dynamic_symbol (bfd *output_bfd,
-				  struct bfd_link_info *info,
+elf64_ia64_finish_dynamic_symbol (struct bfd_link_info *info,
 				  struct elf_link_hash_entry *h,
 				  Elf_Internal_Sym *sym)
 {
@@ -4014,11 +4014,12 @@ elf64_ia64_finish_dynamic_symbol (bfd *output_bfd,
       asection *plt_sec;
       bfd_vma plt_addr, pltoff_addr, gp_val;
 
-      gp_val = _bfd_get_gp_value (output_bfd);
+      gp_val = _bfd_get_gp_value (info->output_bfd);
 
       plt_sec = ia64_info->root.splt;
       plt_addr = 0;  /* Not used as overriden by FIXUPs.  */
-      pltoff_addr = set_pltoff_entry (output_bfd, info, dyn_i, plt_addr, true);
+      pltoff_addr = set_pltoff_entry (info->output_bfd, info, dyn_i,
+				      plt_addr, true);
 
       /* Initialize the FULL PLT entry, if needed.  */
       if (dyn_i->want_plt2)
@@ -4038,7 +4039,7 @@ elf64_ia64_finish_dynamic_symbol (bfd *output_bfd,
 
       /* VMS: FIXFD.  */
       elf64_ia64_install_fixup
-	(output_bfd, ia64_info, h, R_IA64_VMS_FIXFD, ia64_info->pltoff_sec,
+	(info->output_bfd, ia64_info, h, R_IA64_VMS_FIXFD, ia64_info->pltoff_sec,
 	 pltoff_addr - (ia64_info->pltoff_sec->output_section->vma
 			+ ia64_info->pltoff_sec->output_offset), 0);
     }
@@ -4053,8 +4054,7 @@ elf64_ia64_finish_dynamic_symbol (bfd *output_bfd,
 }
 
 static bool
-elf64_ia64_finish_dynamic_sections (bfd *abfd,
-				    struct bfd_link_info *info,
+elf64_ia64_finish_dynamic_sections (struct bfd_link_info *info,
 				    bfd_byte *buf ATTRIBUTE_UNUSED)
 {
   struct elf64_ia64_link_hash_table *ia64_info;
@@ -4084,7 +4084,7 @@ elf64_ia64_finish_dynamic_sections (bfd *abfd,
       dyncon = (Elf64_External_Dyn *) sdyn->contents;
       dynconend = (Elf64_External_Dyn *) (sdyn->contents + sdyn->size);
 
-      gp_val = _bfd_get_gp_value (abfd);
+      gp_val = _bfd_get_gp_value (info->output_bfd);
       phdr = _bfd_elf_find_segment_containing_section
 	(info->output_bfd, ia64_info->pltoff_sec->output_section);
       BFD_ASSERT (phdr != NULL);
@@ -4092,17 +4092,20 @@ elf64_ia64_finish_dynamic_sections (bfd *abfd,
       gp_seg = phdr - base_phdr;
       gp_off = gp_val - phdr->p_vaddr;
 
-      unwind_sec = bfd_get_section_by_name (abfd, ELF_STRING_ia64_unwind);
+      unwind_sec = bfd_get_section_by_name (info->output_bfd,
+					    ELF_STRING_ia64_unwind);
       if (unwind_sec != NULL)
 	{
 	  asection *code_sec;
 
-	  phdr = _bfd_elf_find_segment_containing_section (abfd, unwind_sec);
+	  phdr = _bfd_elf_find_segment_containing_section (info->output_bfd,
+							   unwind_sec);
 	  BFD_ASSERT (phdr != NULL);
 	  unwind_seg = phdr - base_phdr;
 
-	  code_sec = bfd_get_section_by_name (abfd, "$CODE$");
-	  phdr = _bfd_elf_find_segment_containing_section (abfd, code_sec);
+	  code_sec = bfd_get_section_by_name (info->output_bfd, "$CODE$");
+	  phdr = _bfd_elf_find_segment_containing_section (info->output_bfd,
+							   code_sec);
 	  BFD_ASSERT (phdr != NULL);
 	  code_seg = phdr - base_phdr;
 	}
@@ -4157,7 +4160,7 @@ elf64_ia64_finish_dynamic_sections (bfd *abfd,
 	      continue;
 	    }
 
-	  bfd_elf64_swap_dyn_out (abfd, &dyn, dyncon);
+	  bfd_elf64_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	}
     }
 

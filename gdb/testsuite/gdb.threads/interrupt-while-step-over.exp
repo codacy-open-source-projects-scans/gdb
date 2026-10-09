@@ -20,11 +20,11 @@ standard_testfile
 
 if {[prepare_for_testing "failed to prepare" $testfile $srcfile \
 	 {debug pthreads}] == -1} {
-    return -1
+    return
 }
 
 if {![runto_main]} {
-    return -1
+    return
 }
 
 # Read the number of threads out of the inferior.
@@ -63,7 +63,9 @@ proc enable_debug {enable} {
 
 proc return_if_nonzero { result } {
     if {$result != 0} {
-	return -code return $result
+	transparent_uplevel {
+	    return $result
+	}
     }
 }
 

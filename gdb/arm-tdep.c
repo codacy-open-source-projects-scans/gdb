@@ -95,7 +95,7 @@ struct arm_mapping_symbol
   { return this->value < other.value; }
 };
 
-typedef std::vector<arm_mapping_symbol> arm_mapping_symbol_vec;
+using arm_mapping_symbol_vec = std::vector<arm_mapping_symbol>;
 
 struct arm_per_bfd
 {
@@ -4450,7 +4450,7 @@ arm_vfp_cprc_sub_candidate (struct type *t,
       /* Arguments of complex T where T is one of the types float or
 	 double get treated as if they are implemented as:
 
-	 struct complexT
+	 struct complex_T
 	 {
 	   T real;
 	   T imag;
@@ -8751,7 +8751,7 @@ gdb_print_insn_arm (bfd_vma memaddr, disassemble_info *info)
 
    There are other ways of forcing a breakpoint.  GNU/Linux, RISC iX,
    and NetBSD all use a software interrupt rather than an undefined
-   instruction to force a trap.  This can be handled by by the
+   instruction to force a trap.  This can be handled by the
    abi-specific code during establishment of the gdbarch vector.  */
 
 #define ARM_LE_BREAKPOINT {0xFE,0xDE,0xFF,0xE7}
@@ -11546,7 +11546,7 @@ arm_record_extension_space (arm_insn_decode_record *arm_insn_r)
 	      if (0 == insn_op1 || 1 == insn_op1)
 		{
 		  /* SMLA<x><y>, SMLAW<y>, SMULW<y>.  */
-		  /* We dont do optimization for SMULW<y> where we
+		  /* We don't do optimization for SMULW<y> where we
 		     need only Rd.  */
 		  record_buf[0] = bits (arm_insn_r->arm_insn, 12, 15);
 		  record_buf[1] = ARM_PS_REGNUM;
@@ -14537,7 +14537,7 @@ class instruction_reader : public abstract_instruction_reader
 
 } // namespace
 
-typedef int (*sti_arm_hdl_fp_t) (arm_insn_decode_record*);
+using sti_arm_hdl_fp_t = int (*) (arm_insn_decode_record*);
 
 /* Decode arm/thumb insn depending on condition cods and opcodes; and
    dispatch it.  */
@@ -14911,8 +14911,6 @@ arm_process_record (struct gdbarch *gdbarch, struct regcache *regcache,
 	    }
 	}
 
-      if (record_full_arch_list_add_end ())
-	ret = -1;
     }
 
 

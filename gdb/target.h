@@ -63,7 +63,7 @@ struct inferior;
 
 /* Define const gdb_byte using one identifier, to make it easy for
    make-target-delegates.py to parse.  */
-typedef const gdb_byte const_gdb_byte;
+using const_gdb_byte = const gdb_byte;
 
 #include "infrun.h"
 #include "breakpoint.h"
@@ -237,9 +237,8 @@ enum target_xfer_status
 extern const char *
   target_xfer_status_to_string (enum target_xfer_status status);
 
-typedef enum target_xfer_status
-  target_xfer_partial_ftype (struct target_ops *ops,
-			     enum target_object object,
+using target_xfer_partial_ftype
+  = enum target_xfer_status (struct target_ops *ops, enum target_object object,
 			     const char *annex,
 			     gdb_byte *readbuf,
 			     const gdb_byte *writebuf,
@@ -1425,7 +1424,7 @@ struct target_ops_deleter
 };
 
 /* A unique pointer for target_ops.  */
-typedef std::unique_ptr<target_ops, target_ops_deleter> target_ops_up;
+using target_ops_up = std::unique_ptr<target_ops, target_ops_deleter>;
 
 /* A policy class to interface gdb::ref_ptr with target_ops.  */
 
@@ -1856,7 +1855,7 @@ extern int target_can_run ();
 
    However, if the target is hardware single-stepping a thread that is
    about to receive a signal, it needs to be reported in any case, even
-   if mentioned in a previous target_pass_signals call.   */
+   if mentioned in a previous target_pass_signals call.  */
 
 extern void target_pass_signals
   (gdb::array_view<const unsigned char> pass_signals);
@@ -2328,15 +2327,19 @@ extern LONGEST target_fileio_read_alloc (struct inferior *inf,
 					 const char *filename,
 					 gdb_byte **buf_p);
 
-/* Read target file FILENAME, in the filesystem as seen by INF.  If
-   INF is NULL, use the filesystem seen by the debugger (GDB or, for
-   remote targets, the remote stub).  The result is NUL-terminated and
-   returned as a string, allocated using xmalloc.  If an error occurs
-   or the transfer is unsupported, NULL is returned.  Empty objects
-   are returned as allocated but empty strings.  A warning is issued
-   if the result contains any embedded NUL bytes.  */
+/* Read the content of the target file FILENAME from the filesystem as
+   seen by INF.  If INF is NULL, use the filesystem seen by the debugger
+   (GDB or, for remote targets, the remote stub).
+
+   If LEN is not NULL, store the number of bytes read, excluding the
+   terminating NUL byte.
+
+   The returned buffer is NUL-terminated and allocated using xmalloc.
+   On error, or if the transfer is unsupported, return NULL and set
+   LEN to -1.  Empty files are returned as allocated but empty strings.
+   A warning is issued if the file content contains embedded NUL bytes.  */
 extern gdb::unique_xmalloc_ptr<char> target_fileio_read_stralloc
-    (struct inferior *inf, const char *filename);
+    (struct inferior *inf, const char *filename, LONGEST *len = nullptr);
 
 /* Invalidate the target associated with open handles that were open
    on target TARG, since we're about to close (and maybe destroy) the
@@ -2473,7 +2476,7 @@ int target_verify_memory (const gdb_byte *data,
    "target TARGET_NAME".  The callback routine takes the rest of the
    parameters from the command, and (if successful) pushes a new
    target onto the stack.  */
-typedef void target_open_ftype (const char *args, int from_tty);
+using target_open_ftype = void (const char *args, int from_tty);
 
 /* Add the target described by INFO to the list of possible targets
    and add a new command 'target $(INFO->shortname)'.  Set COMPLETER
@@ -2499,7 +2502,7 @@ struct target_unpusher
 
 /* A unique_ptr that unpushes a target on destruction.  */
 
-typedef std::unique_ptr<struct target_ops, target_unpusher> target_unpush_up;
+using target_unpush_up = std::unique_ptr<struct target_ops, target_unpusher>;
 
 extern void target_pre_inferior ();
 

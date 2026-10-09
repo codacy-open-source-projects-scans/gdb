@@ -121,7 +121,7 @@ struct value_ref_policy
 
 /* A gdb:;ref_ptr pointer to a struct value.  */
 
-typedef gdb::ref_ptr<struct value, value_ref_policy> value_ref_ptr;
+using value_ref_ptr = gdb::ref_ptr<struct value, value_ref_policy>;
 
 /* Note that the fields in this structure are arranged to save a bit
    of memory.  */
@@ -138,6 +138,7 @@ private:
       m_stack (false),
       m_is_zero (false),
       m_in_history (false),
+      m_fetch_lazy_failed (false),
       m_type (type_),
       m_enclosing_type (type_)
   {
@@ -279,7 +280,13 @@ public:
   { return m_lazy; }
 
   void set_lazy (bool val)
-  { m_lazy = val; }
+  {
+    m_lazy = val;
+    m_fetch_lazy_failed = false;
+  }
+
+  bool fetch_lazy_failed () const
+  { return m_fetch_lazy_failed; }
 
   /* If a value represents a C++ object, then the `type' field gives the
      object's compile-time type.  If the object actually belongs to some
@@ -689,6 +696,9 @@ private:
   /* True if this a value recorded in value history; false otherwise.  */
   bool m_in_history : 1;
 
+  /* True if fetch_lazy () did not finish successfully.  */
+  bool m_fetch_lazy_failed : 1;
+
   /* Location of value (if lval).  */
   union
   {
@@ -1051,7 +1061,7 @@ struct value *value_vector_widen (struct value *scalar_value,
 class frame_info_ptr;
 struct fn_field;
 
-extern int print_address_demangle (const struct value_print_options *,
+extern int print_address_demangle (const value_print_options &,
 				   struct gdbarch *, CORE_ADDR,
 				   struct ui_file *, int);
 
@@ -1557,7 +1567,7 @@ extern void print_floating (const gdb_byte *valaddr, struct type *type,
 			    struct ui_file *stream);
 
 extern void value_print (struct value *val, struct ui_file *stream,
-			 const struct value_print_options *options);
+			 const value_print_options &options);
 
 /* Release values from the value chain and return them.  Values
    created after MARK are released.  If MARK is nullptr, or if MARK is
@@ -1570,36 +1580,54 @@ extern std::vector<value_ref_ptr> value_release_to_mark
 
 extern void common_val_print (struct value *val,
 			      struct ui_file *stream, int recurse,
-			      const struct value_print_options *options,
+			      const value_print_options &options,
 			      const struct language_defn *language);
 
 extern int val_print_string (struct type *elttype, const char *encoding,
 			     CORE_ADDR addr, int len,
 			     struct ui_file *stream,
-			     const struct value_print_options *options);
+			     const value_print_options &options);
+
+/* Track the shadowing status of a variable.  */
+enum class var_shadowing
+{
+  /* This variable is not shadowed, and not shadowing.  */
+  NONE,
+
+  /* This variable is shadowed by a later one.  */
+  SHADOWED,
+
+  /* This variable is shadowing an earlier one, and is not itself
+     shadowed.  */
+  SHADOWING
+};
 
 /* Print the value in stack frame FRAME of a variable specified by a
    struct symbol.  STREAM is the ui_file on which to print the value.
    INDENT specifies the number of indent levels to print before
    printing the variable name.  LANGUAGE is the language to use for
-   printing.  */
+   printing.  SHADOW_STATUS specifies the variable shadowing
+   information.  */
 
 extern void print_variable_value (symbol *var,
 				  const frame_info_ptr &frame,
 				  ui_file *stream, int indent,
-				  const language_defn *language);
+				  const language_defn *language,
+				  var_shadowing shadow_status);
 
 /* Print the value in stack frame FRAME of a variable specified by a
    struct symbol.  NAME is the name to print; if NULL then VAR's print
    name will be used.  STREAM is the ui_file on which to print the
    value.  INDENT specifies the number of indent levels to print
-   before printing the variable name.  */
+   before printing the variable name.  SHADOW_STATUS specifies the
+   variable shadowing information.  */
 
 extern void print_variable_and_value (const char *name,
 				      symbol *var,
 				      const frame_info_ptr &frame,
 				      ui_file *stream,
-				      int indent);
+				      int indent,
+				      var_shadowing shadow_status);
 
 extern void typedef_print (struct type *type, struct symbol *news,
 			   struct ui_file *stream);

@@ -74,7 +74,7 @@ static const int inv_reg_perm[N_PHYSICAL_REGISTERS] =
 static const char *
 s12z_register_name (struct gdbarch *gdbarch, int regnum)
 {
-  /*  Registers is declared in opcodes/s12z.h.   */
+  /*  Registers is declared in opcodes/s12z.h.  */
   return registers[reg_perm[regnum]].name;
 }
 
@@ -456,7 +456,7 @@ static const struct frame_unwind_legacy s12z_frame_unwind (
 
 constexpr gdb_byte s12z_break_insn[] = {0x00};
 
-typedef BP_MANIPULATION (s12z_break_insn) s12z_breakpoint;
+using s12z_breakpoint = BP_MANIPULATION (s12z_break_insn);
 
 struct s12z_gdbarch_tdep : gdbarch_tdep_base
 {

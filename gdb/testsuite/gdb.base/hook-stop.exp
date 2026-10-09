@@ -16,7 +16,7 @@
 standard_testfile
 
 if { [build_executable ${testfile}.exp "${testfile}" $srcfile {debug nowarnings}] } {
-    return -1
+    return
 }
 
 # Define the hook-stop that runs COMMANDS.
@@ -40,7 +40,9 @@ proc setup {commands} {
     clean_restart $::testfile
 
     if {![runto_main]} {
-	return -code return
+	transparent_uplevel {
+	    return
+	}
     }
 
     gdb_test "break func" \

@@ -188,7 +188,7 @@ queue_stop_reply (ptid_t ptid, const target_waitstatus &status)
   new_notif->ptid = ptid;
   new_notif->status = status;
 
-  notif_event_enque (&notif_stop, new_notif);
+  notif_event_enqueue (&notif_stop, new_notif);
 }
 
 static bool
@@ -305,7 +305,7 @@ attach_inferior (int pid)
      0 if it succeeded, and call error() otherwise.  */
 
   if (find_process_pid (pid) != nullptr)
-    error ("Already attached to process %d\n", pid);
+    error (_("Already attached to process %d\n"), pid);
 
   if (myattach (pid) != 0)
     return -1;
@@ -1252,7 +1252,7 @@ handle_search_memory (char *own_buf, int packet_len)
 
   pattern = (gdb_byte *) malloc (packet_len);
   if (pattern == NULL)
-    error ("Unable to allocate memory to perform the search");
+    error (_("Unable to allocate memory to perform the search"));
 
   if (decode_search_memory_packet (own_buf + cmd_name_len,
 				   packet_len - cmd_name_len,
@@ -1260,7 +1260,7 @@ handle_search_memory (char *own_buf, int packet_len)
 				   pattern, &pattern_len) < 0)
     {
       free (pattern);
-      error ("Error in parsing qSearch:memory packet");
+      error (_("Error in parsing qSearch:memory packet"));
     }
 
   auto read_memory = [] (CORE_ADDR addr, gdb_byte *result, size_t len)
@@ -1318,7 +1318,7 @@ handle_detach (char *own_buf)
 		 "Persistent commands are present, "
 		 "leaving gdbserver attached to the process\n");
 
-      /* Make sure we're in non-stop/async mode, so we we can both
+      /* Make sure we're in non-stop/async mode, so we can both
 	 wait for an async socket accept, and handle async target
 	 events simultaneously.  There's also no point either in
 	 having the target stop all threads, when we're going to
@@ -1561,7 +1561,7 @@ parse_debug_options (const char *options)
       std::string opt (options, end - options);
 
       if (opt.size () == 0)
-	error ("invalid empty debug option");
+	error (_("invalid empty debug option"));
 
       bool is_opt_all = opt == "all";
 
@@ -1576,7 +1576,7 @@ parse_debug_options (const char *options)
 	  }
 
       if (!found)
-	error ("unknown debug option '%s'", opt.c_str ());
+	error (_("unknown debug option '%s'"), opt.c_str ());
 
       options = (*end == ',') ? end + 1 : end;
     }
@@ -3129,8 +3129,8 @@ static void gdb_wants_all_threads_stopped (void);
 static void resume (struct thread_resume *actions, size_t n);
 
 /* The callback that is passed to visit_actioned_threads.  */
-typedef int (visit_actioned_threads_callback_ftype)
-  (const struct thread_resume *, thread_info *);
+using visit_actioned_threads_callback_ftype
+  = int (const struct thread_resume *, thread_info *);
 
 /* Call CALLBACK for any thread to which ACTIONS applies to.  Returns
    true if CALLBACK returns true.  Returns false if no matching thread
@@ -3707,7 +3707,7 @@ queue_stop_reply_callback (thread_info *thread)
       new_notif->status = thread->last_status;
       /* Pass the last stop reply back to GDB, but don't notify
 	 yet.  */
-      notif_event_enque (&notif_stop, new_notif);
+      notif_event_enqueue (&notif_stop, new_notif);
     }
   else
     {
@@ -4588,7 +4588,7 @@ captured_main (int argc, char *argv[])
   else if (pid != 0)
     {
       if (attach_inferior (pid) == -1)
-	error ("Attaching not supported on this target");
+	error (_("Attaching not supported on this target"));
 
       /* Otherwise succeeded.  */
     }
@@ -4614,7 +4614,7 @@ captured_main (int argc, char *argv[])
     was_running = true;
 
   if (!was_running && !multi_mode)
-    error ("No program to debug");
+    error (_("No program to debug"));
 
   while (1)
     {
@@ -4676,7 +4676,7 @@ captured_main (int argc, char *argv[])
 	    {
 	      if (disconnected_tracing)
 		{
-		  /* Try to enable non-stop/async mode, so we we can
+		  /* Try to enable non-stop/async mode, so we can
 		     both wait for an async socket accept, and handle
 		     async target events simultaneously.  There's also
 		     no point either in having the target always stop

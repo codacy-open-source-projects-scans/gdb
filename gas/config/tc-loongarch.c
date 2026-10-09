@@ -82,6 +82,9 @@ struct loongarch_cl_insn
      The macros or instructions expanded from macros do not output register
      deprecated warning.  */
   unsigned int expand_from_macro;
+
+  /* Whether the instruction is linker-relaxable.  */
+  bool linker_relax;
 };
 
 #ifndef DEFAULT_ARCH
@@ -118,6 +121,9 @@ static const char default_arch[] = DEFAULT_ARCH;
 
 static bool call_reloc = 0;
 
+/* Whether has .reloc *, R_LARCH_RELAX.  */
+static bool has_relax_reloc = false;
+
 /* The dwarf2 data alignment, adjusted for 32 or 64 bit.  */
 int loongarch_cie_data_alignment;
 
@@ -133,8 +139,6 @@ int loongarch_cie_data_alignment;
 
 #define ALIGN_MAX_ADDEND(n, max) ((max << 8) | n)
 #define ALIGN_MAX_NOP_BYTES(addend) ((1 << (addend & 0xff)) - 4)
-#define FRAG_AT_START_OF_SECTION(frag)	\
-  (0 == frag->fr_address && 0 == frag->fr_fix)
 
 enum options
 {
@@ -243,7 +247,7 @@ md_parse_option (int c, const char *arg)
       break;
 
     case OPTION_IGNORE_START_ALIGN:
-      LARCH_opts.ignore_start_align = 1;
+      as_warn (_("mignore-start-align is deprecated!"));
       break;
 
     case OPTION_IGNORE:
@@ -816,6 +820,7 @@ loongarch_args_parser_can_match_arg_helper (char esc_ch1, char esc_ch2,
 	  ip->reloc_info[ip->reloc_num].type = BFD_RELOC_LARCH_RELAX;
 	  ip->reloc_info[ip->reloc_num].value = const_0;
 	  ip->reloc_num++;
+	  ip->linker_relax = true;
 	}
       else
 	ip->match_now = 0;
@@ -889,6 +894,7 @@ loongarch_args_parser_can_match_arg_helper (char esc_ch1, char esc_ch2,
 		  ip->reloc_info[ip->reloc_num].type = BFD_RELOC_LARCH_RELAX;
 		  ip->reloc_info[ip->reloc_num].value = const_0;
 		  ip->reloc_num++;
+		  ip->linker_relax = true;
 		}
 
 	      /* Only one register macros (used in normal code model)
@@ -896,8 +902,7 @@ loongarch_args_parser_can_match_arg_helper (char esc_ch1, char esc_ch2,
 		 LARCH_opts.ase_labs and LARCH_opts.ase_gabs are used
 		 to generate the code model of absolute addresses, and
 		 we do not relax this code model.  */
-	      if (LARCH_opts.relax && (ip->expand_from_macro & 1)
-		    && !(LARCH_opts.ase_labs | LARCH_opts.ase_gabs)
+	      if (LARCH_opts.relax
 		    && (BFD_RELOC_LARCH_PCALA_HI20 == reloc_type
 			|| BFD_RELOC_LARCH_PCALA_LO12 == reloc_type
 			|| BFD_RELOC_LARCH_GOT_PC_HI20 == reloc_type
@@ -917,9 +922,19 @@ loongarch_args_parser_can_match_arg_helper (char esc_ch1, char esc_ch2,
 			|| BFD_RELOC_LARCH_TLS_IE_PCADD_HI20 == reloc_type
 			|| BFD_RELOC_LARCH_TLS_IE_PCADD_LO12 == reloc_type))
 		{
-		  ip->reloc_info[ip->reloc_num].type = BFD_RELOC_LARCH_RELAX;
-		  ip->reloc_info[ip->reloc_num].value = const_0;
-		  ip->reloc_num++;
+		  /* R_LARCH_RELAX can be emitted by .reloc, so always set
+		     link_relax for instructions.
+		     For example:
+		     .reloc  .,R_LARCH_RELAX
+		     pcalau12i       $r12,%ie_pc_hi20(.LANCHOR0)  */
+		  ip->linker_relax = true;
+		  if ((ip->expand_from_macro & 1)
+		      && !(LARCH_opts.ase_labs | LARCH_opts.ase_gabs))
+		    {
+		      ip->reloc_info[ip->reloc_num].type = BFD_RELOC_LARCH_RELAX;
+		      ip->reloc_info[ip->reloc_num].value = const_0;
+		      ip->reloc_num++;
+		    }
 		}
 	      break;
 	    }
@@ -1173,13 +1188,27 @@ move_insn (struct loongarch_cl_insn *insn, fragS *frag, long where)
 	}
     }
   install_insn (insn);
+
+  /* Mark the current section and frag as linker relaxable.  */
+  if (insn->linker_relax)
+    {
+      now_seg->sec_flg1 = true;
+      insn->frag->tc_frag_data.linker_relax = true;
+    }
 }
 
 /* Add INSN to the end of the output.  */
 static void
 append_fixed_insn (struct loongarch_cl_insn *insn)
 {
-  /* Ensure the jirl is emitted to the same frag as the pcaddu18i.  */
+  /* Start a new frag only used for relaxable instrucntions.  */
+  if (LARCH_opts.relax && insn->linker_relax)
+    {
+      frag_wane (frag_now);
+      frag_new (0);
+    }
+
+  /* Ensure pcaddu18i/pcaddu12i + jirl in the same frag.  */
   if (insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL36
       || insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL30)
     frag_grow (8);
@@ -1187,19 +1216,45 @@ append_fixed_insn (struct loongarch_cl_insn *insn)
   char *f = frag_more (insn->insn_length);
   move_insn (insn, frag_now, f - frag_now->fr_literal);
 
-  if (call_reloc)
+  /* We need to start a new frag after any instruction that can be
+     optimized away or compressed by the linker during relaxation, to prevent
+     the assembler from computing static offsets across such an instruction.
+
+     This is necessary to get correct .eh_frame FDE DW_CFA_advance_loc info.
+     If one cfi_insn_data's two symbols are not in the same frag, it will
+     generate ADD and SUB relocations pairs to calculate DW_CFA_advance_loc.
+     (gas/dw2gencfi.c: output_cfi_insn:
+     if (symbol_get_frag (to) == symbol_get_frag (from)))
+
+     Since the relocations of the normal code model and the extreme code model
+     of the old LE instruction sequence are the same, it is impossible to
+     distinguish which code model it is based on relocation alone, so the
+     extreme code model has to be relaxed.  */
+
+  /* End the frag to ensure it only used for relaxable instructions.  */
+  if (LARCH_opts.relax && insn->linker_relax
+      && insn->reloc_info[0].type != BFD_RELOC_LARCH_CALL36
+      && insn->reloc_info[0].type != BFD_RELOC_LARCH_CALL30)
+    {
+      frag_wane (frag_now);
+      frag_new (0);
+    }
+
+  /* To ensure pcaddu18i/pcaddu12i + jirl in the same frag.
+     End the frag after the jirl instruction.  */
+  if (LARCH_opts.relax && call_reloc)
     {
       if (strcmp (insn->name, "jirl") == 0)
 	{
-	  /* See comment at end of append_fixp_and_insn.  */
 	  frag_wane (frag_now);
 	  frag_new (0);
 	}
       call_reloc = 0;
     }
 
-  if (insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL36
-      || insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL30)
+  if (LARCH_opts.relax
+      && (insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL36
+	  || insn->reloc_info[0].type == BFD_RELOC_LARCH_CALL30))
     call_reloc = 1;
 }
 
@@ -1269,43 +1324,6 @@ append_fixp_and_insn (struct loongarch_cl_insn *ip)
     as_fatal (_("Internal error: not support relax now"));
   else
     append_fixed_insn (ip);
-
-  /* We need to start a new frag after any instruction that can be
-     optimized away or compressed by the linker during relaxation, to prevent
-     the assembler from computing static offsets across such an instruction.
-
-     This is necessary to get correct .eh_frame FDE DW_CFA_advance_loc info.
-     If one cfi_insn_data's two symbols are not in the same frag, it will
-     generate ADD and SUB relocations pairs to calculate DW_CFA_advance_loc.
-     (gas/dw2gencfi.c: output_cfi_insn:
-     if (symbol_get_frag (to) == symbol_get_frag (from)))
-
-     For macro instructions, only the first instruction expanded from macro
-     need to start a new frag.
-     Since the relocations of the normal code model and the extreme code model
-     of the old LE instruction sequence are the same, it is impossible to
-     distinguish which code model it is based on relocation alone, so the
-     extreme code model has to be relaxed.  */
-  if (LARCH_opts.relax
-      && (BFD_RELOC_LARCH_PCALA_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_GOT_PC_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE_HI20_R == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE_ADD_R == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LD_PC_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_GD_PC_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_DESC_PC_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_IE_PC_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE_LO12 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE64_LO20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_LE64_HI12 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_GOT_PCADD_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_IE_PCADD_HI20 == reloc_info[0].type
-	  || BFD_RELOC_LARCH_TLS_DESC_PCADD_HI20 == reloc_info[0].type))
-    {
-      frag_wane (frag_now);
-      frag_new (0);
-    }
 }
 
 /* Ask helper for returning a malloced c_str or NULL.  */
@@ -1539,12 +1557,12 @@ md_number_to_chars (char *buf, valueT val, int n)
   number_to_chars_littleendian (buf, val, n);
 }
 
-/* The location from which a PC relative jump should be calculated,
-   given a PC relative reloc.  */
+/* On LoongArch, PC-relative offset are relative to the start of the
+   current instruction.  */
 long
 md_pcrel_from (fixS *fixP ATTRIBUTE_UNUSED)
 {
-  return 0;
+  return fixP->fx_frag->fr_address + fixP->fx_where;
 }
 
 /* Return 1 if the relocation must be forced, and 0 if the relocation
@@ -1573,28 +1591,115 @@ loongarch_force_relocation (struct fix *fixp)
   return generic_force_reloc (fixp);
 }
 
-/* If subsy of BFD_RELOC32/64 and PC in same segment, and without relax
-   or PC at start of subsy or with relax but sub_symbol_segment not in
-   SEC_CODE, we generate 32/64_PCREL.  */
+/* Whether emit relocations for label subtraction in same section.  */
+static bool
+_loongarch_force_relocation_sub_same (segT sec,
+				      fragS *addfrag,
+				      fragS *subfrag)
+{
+  if (!LARCH_opts.relax)
+    return false;
+
+  /* Not emit relocation if section has no relaxable frag.  */
+  if (!sec->sec_flg1)
+    return false;
+
+  /* Not emit relocation if addsy and subsy are in the same frag.  */
+  if (addfrag == subfrag)
+    {
+      if (addfrag->tc_frag_data.linker_relax)
+	return true;
+      else
+	return false;
+    }
+
+  /* Emit relocation if find a frag is relaxable from addsy to subsy.  */
+  fragS *s;
+  for (s = subfrag; s != NULL && s != addfrag; s = s->fr_next)
+    {
+      if (s->tc_frag_data.linker_relax)
+	return true;
+    }
+  if (s == addfrag)
+    return false;
+
+  for (s = addfrag; s != NULL && s != subfrag; s = s->fr_next)
+    {
+      if (s->tc_frag_data.linker_relax)
+	return true;
+    }
+  if (s == subfrag)
+    return false;
+
+  return true;
+}
+
+/* Don't allow the generic code to convert fixups involving the
+   subtraction of a label in the current section to pc-relative.  */
 bool
 loongarch_force_relocation_sub_local (fixS *fixp, segT sec ATTRIBUTE_UNUSED)
 {
-  return !(LARCH_opts.thin_add_sub
-	   && (fixp->fx_r_type == BFD_RELOC_32
-	       || fixp->fx_r_type == BFD_RELOC_64)
-	   && (!LARCH_opts.relax
-	       || (S_GET_VALUE (fixp->fx_subsy)
-		   == fixp->fx_frag->fr_address + fixp->fx_where)
-	       || (S_GET_SEGMENT (fixp->fx_subsy)->flags & SEC_CODE) == 0));
+  if (! LARCH_opts.thin_add_sub)
+    return true;
+
+  /* LoongArch only has R_LARCH_32/64_PCREL.  BFD_RELOC_32/64 can change
+     to R_LARCH_32/64_PCREL.  */
+  if (fixp->fx_r_type != BFD_RELOC_32
+      && fixp->fx_r_type != BFD_RELOC_64)
+    return true;
+
+  fragS *pcfrag = fixp->fx_frag;
+  fragS *subfrag = symbol_get_frag (fixp->fx_subsy);
+  segT subsec = S_GET_SEGMENT (fixp->fx_subsy);
+
+  if (! _loongarch_force_relocation_sub_same (subsec, pcfrag, subfrag))
+    return false;
+
+  return true;
 }
 
-/* Postpone text-section label subtraction calculation until linking, since
-   linker relaxations might change the deltas.  */
+/* Use DW_LNS_fixed_advance_pc with relocations if there are linker-relaxable
+   instructions between from and to symbols.  Otherwise, use special opcodes
+   without relocations.  */
 bool
-loongarch_force_relocation_sub_same(fixS *fixp ATTRIBUTE_UNUSED, segT sec)
+loongarch_fixed_advance_pc (symbolS *from, symbolS *to)
 {
-  return LARCH_opts.relax && (sec->flags & SEC_CODE) != 0;
+  /* If any R_LARCH_RELAX is set by .reloc, conservatively use
+     DW_LNS_fixed_advance_pc.  Because this function used before
+     loongarch_frob_file_before_fix update frag and section flag.  */
+  if (has_relax_reloc)
+    return true;
+
+  segT fromsec = S_GET_SEGMENT (from);
+  segT tosec = S_GET_SEGMENT (to);
+  if (fromsec != tosec)
+    return false;
+  fragS *fromfrag = symbol_get_frag (from);
+  fragS *tofrag = symbol_get_frag (to);
+  return _loongarch_force_relocation_sub_same (fromsec, fromfrag, tofrag);
 }
+
+/* Similar to loongarch_fixed_advance_pc, used for frag.  */
+bool
+loongarch_fixed_advance_pc_frag (fragS *frag)
+{
+  expressionS *exp = symbol_get_value_expression (frag->fr_symbol);
+
+  if (exp->X_op != O_subtract)
+    return false;
+  return loongarch_fixed_advance_pc (exp->X_op_symbol, exp->X_add_symbol);
+}
+
+/* Postpone text-section label subtraction calculation until linking,
+   since linker relaxations might change the deltas.  */
+bool
+loongarch_force_relocation_sub_same (fixS *fixp ATTRIBUTE_UNUSED, segT sec)
+{
+  fragS *addfrag = symbol_get_frag (fixp->fx_addsy);
+  fragS *subfrag = symbol_get_frag (fixp->fx_subsy);
+  return _loongarch_force_relocation_sub_same (sec, addfrag, subfrag);
+}
+
 
 static void fix_reloc_insn (fixS *fixP, bfd_vma reloc_val, char *buf)
 {
@@ -1698,39 +1803,8 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
       fix_reloc_insn (fixP, (bfd_vma)stack_top, buf);
       break;
 
-    /* LARCH only has R_LARCH_64/32, not has R_LARCH_24/16/8.
-       For BFD_RELOC_64/32, if fx_addsy and fx_subsy not null, wer need
-       generate BFD_RELOC_LARCH_ADD64/32 and BFD_RELOC_LARCH_SUB64/32 here.
-       Then will parse howto table bfd_reloc_code_real_type to generate
-       R_LARCH_ADD64/32 and R_LARCH_SUB64/32 reloc at tc_gen_reloc function.
-       If only fx_addsy not null, skip here directly, then generate
-       R_LARCH_64/32.
-
-       For BFD_RELOC_24/16/8, if fx_addsy and fx_subsy not null, wer need
-       generate BFD_RELOC_LARCH_ADD24/16/8 and BFD_RELOC_LARCH_SUB24/16/8 here.
-       Then will parse howto table bfd_reloc_code_real_type to generate
-       R_LARCH_ADD24/16/8 and R_LARCH_SUB24/16/8 reloc at tc_gen_reloc
-       function. If only fx_addsy not null, we generate
-       BFD_RELOC_LARCH_ADD24/16/8 only, then generate R_LARCH_24/16/8.
-       To avoid R_LARCH_ADDxx add extra value, we write 0 first
-       (use md_number_to_chars (buf, 0, fixP->fx_size)).  */
     case BFD_RELOC_64:
     case BFD_RELOC_32:
-      if (fixP->fx_pcrel)
-	{
-	  switch (fixP->fx_r_type)
-	    {
-	    case BFD_RELOC_64:
-	      fixP->fx_r_type = BFD_RELOC_64_PCREL;
-	      break;
-	    case BFD_RELOC_32:
-	      fixP->fx_r_type = BFD_RELOC_32_PCREL;
-	      break;
-	    default:
-	      break;
-	    }
-	}
-
       /* If symbol in .eh_frame the address may be adjusted, and contents of
 	 .eh_frame will be adjusted, so use pc-relative relocation for FDE
 	 initial location.
@@ -1747,33 +1821,65 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
 	  fixP->fx_subsy = NULL;
 	  break;
 	}
-
-      if (fixP->fx_addsy && fixP->fx_subsy)
+      else if (fixP->fx_pcrel && LARCH_opts.thin_add_sub)
 	{
-	  fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
-	  fixP->fx_next->fx_addsy = fixP->fx_subsy;
-	  fixP->fx_next->fx_subsy = NULL;
-	  fixP->fx_next->fx_offset = 0;
-	  fixP->fx_subsy = NULL;
-
 	  switch (fixP->fx_r_type)
 	    {
 	    case BFD_RELOC_64:
-	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD64;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB64;
+	      fixP->fx_r_type = BFD_RELOC_64_PCREL;
 	      break;
 	    case BFD_RELOC_32:
-	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD32;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB32;
+	      fixP->fx_r_type = BFD_RELOC_32_PCREL;
 	      break;
 	    default:
 	      break;
 	    }
+	}
+      else
+	{
+	  /* For .long 0x2eef - 1b, fx_addsy is set to NULL in fixup_segment.
+	     If fx_addsy and fx_subsy both is NULL, no need to emit relocations.
+	     If fx_sybsy is not NULL, fake up a local symbol in the absolute
+	     section, just as fixup_segment dose for fx_pcrel relocations.  */
+	  if (fixP->fx_addsy == NULL
+	      && fixP->fx_subsy != NULL)
+	    fixP->fx_addsy = abs_section_sym;
 
-	  md_number_to_chars (buf, 0, fixP->fx_size);
+	  /* For .4byte/.8byte symbol, fx_addsy is not NULL, fx_subsy is NULL.
+	     Not need to enter this if branch, just emit R_LARCH_32/64 directly.
+	     BFD_RELOC_32/64 -> R_LARCH_32/64.  */
+	  if (fixP->fx_addsy && fixP->fx_subsy)
+	    {
+	      fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
+	      fixP->fx_next->fx_addsy = fixP->fx_subsy;
+	      fixP->fx_next->fx_subsy = NULL;
+	      fixP->fx_next->fx_offset = 0;
+	      fixP->fx_subsy = NULL;
+
+	      switch (fixP->fx_r_type)
+		{
+		case BFD_RELOC_64:
+		  fixP->fx_r_type = BFD_RELOC_LARCH_ADD64;
+		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB64;
+		  break;
+		case BFD_RELOC_32:
+		  fixP->fx_r_type = BFD_RELOC_LARCH_ADD32;
+		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB32;
+		  break;
+		default:
+		  break;
+		}
+
+	      /* Because we use ADD/SUB relocations, clear the position
+		 to avoid the linker adding an extra value.  */
+	      md_number_to_chars (buf, 0, fixP->fx_size);
+	    }
 	}
 
-      if (fixP->fx_addsy == NULL)
+      /* If all symbols are resolved, write the value without emitting
+	 relocatiosn.  */
+      if (fixP->fx_addsy == NULL
+	  && fixP->fx_subsy == NULL)
 	{
 	  fixP->fx_done = 1;
 	  md_number_to_chars (buf, *valP, fixP->fx_size);
@@ -1783,39 +1889,61 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
     case BFD_RELOC_24:
     case BFD_RELOC_16:
     case BFD_RELOC_8:
+      /* Similar with BFD_RELOC_64/32.  */
+      if (fixP->fx_addsy == NULL
+	  && fixP->fx_subsy != NULL)
+	fixP->fx_addsy = abs_section_sym;
+
+      /* For .byte/.2byte/.3byte(if supported) symbol, fx_addsy is not NULL,
+	 fx_subsy is NULL.  There are no corresponding R_LARCH_8/16/24, need
+	 to enter this if branch to emit R_LARCH_ADD8/16/24.
+	 BFD_RELOC_8/16/24 -> BFD_RELOC_LARCH_ADD8/16/24 -> R_LARCH_ADD8/16/24.  */
       if (fixP->fx_addsy)
 	{
-	  fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
-	  fixP->fx_next->fx_addsy = fixP->fx_subsy;
-	  fixP->fx_next->fx_subsy = NULL;
-	  fixP->fx_next->fx_offset = 0;
-	  fixP->fx_subsy = NULL;
-
 	  switch (fixP->fx_r_type)
 	    {
 	    case BFD_RELOC_24:
 	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD24;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB24;
 	      break;
 	    case BFD_RELOC_16:
 	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD16;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB16;
 	      break;
 	    case BFD_RELOC_8:
 	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD8;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB8;
 	      break;
 	    default:
 	      break;
 	    }
 
-	  md_number_to_chars (buf, 0, fixP->fx_size);
+	  if (fixP->fx_subsy != NULL)
+	    {
+	      fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
+	      fixP->fx_next->fx_addsy = fixP->fx_subsy;
+	      fixP->fx_next->fx_subsy = NULL;
+	      fixP->fx_next->fx_offset = 0;
+	      fixP->fx_subsy = NULL;
 
-	  if (fixP->fx_next->fx_addsy == NULL)
-	    fixP->fx_next->fx_done = 1;
+	      switch (fixP->fx_r_type)
+		{
+		case BFD_RELOC_LARCH_ADD24:
+		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB24;
+		  break;
+		case BFD_RELOC_LARCH_ADD16:
+		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB16;
+		  break;
+		case BFD_RELOC_LARCH_ADD8:
+		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB8;
+		  break;
+		default:
+		  break;
+		}
+	    }
+
+	  md_number_to_chars (buf, 0, fixP->fx_size);
 	}
 
-      if (fixP->fx_addsy == NULL)
+      if (fixP->fx_addsy == NULL
+	  && fixP->fx_subsy == NULL)
 	{
 	  fixP->fx_done = 1;
 	  md_number_to_chars (buf, *valP, fixP->fx_size);
@@ -1823,64 +1951,72 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
       break;
 
     case BFD_RELOC_LARCH_CFA:
-      if (fixP->fx_addsy && fixP->fx_subsy)
-	{
-	  fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
-	  fixP->fx_next->fx_addsy = fixP->fx_subsy;
-	  fixP->fx_next->fx_subsy = NULL;
-	  fixP->fx_next->fx_offset = 0;
-	  fixP->fx_subsy = NULL;
+      {
+	unsigned int subtype;
+	fragS *opfrag = (fragS *) fixP->fx_frag->fr_opcode;
+	subtype = bfd_get_8 (NULL, opfrag->fr_literal + fixP->fx_where);
 
-	  unsigned int subtype;
-	  offsetT loc;
-	  fragS *opfrag = (fragS *) fixP->fx_frag->fr_opcode;
-	  subtype = bfd_get_8 (NULL, opfrag->fr_literal + fixP->fx_where);
-	  loc = fixP->fx_frag->fr_fix - (subtype & 7);
-	  switch (subtype)
-	    {
-	    case DW_CFA_advance_loc1:
-	      fixP->fx_where = loc + 1;
-	      fixP->fx_next->fx_where = loc + 1;
-	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD8;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB8;
-	      md_number_to_chars (buf+1, 0, fixP->fx_size);
-	      break;
+	/* Update to the real size after relax_segment.  */
+	if (subtype == DW_CFA_advance_loc2)
+	  fixP->fx_size = 2;
+	if (subtype == DW_CFA_advance_loc4)
+	  fixP->fx_size = 4;
 
-	    case DW_CFA_advance_loc2:
-	      fixP->fx_size = 2;
-	      fixP->fx_next->fx_size = 2;
-	      fixP->fx_where = loc + 1;
-	      fixP->fx_next->fx_where = loc + 1;
-	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD16;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB16;
-	      md_number_to_chars (buf+1, 0, fixP->fx_size);
-	      break;
+	if (fixP->fx_addsy && fixP->fx_subsy)
+	  {
+	    fixP->fx_next = xmemdup (fixP, sizeof (*fixP), sizeof (*fixP));
+	    fixP->fx_next->fx_addsy = fixP->fx_subsy;
+	    fixP->fx_next->fx_subsy = NULL;
+	    fixP->fx_next->fx_offset = 0;
+	    fixP->fx_subsy = NULL;
 
-	    case DW_CFA_advance_loc4:
-	      fixP->fx_size = 4;
-	      fixP->fx_next->fx_size = 4;
-	      fixP->fx_where = loc;
-	      fixP->fx_next->fx_where = loc;
-	      fixP->fx_r_type = BFD_RELOC_LARCH_ADD32;
-	      fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB32;
-	      md_number_to_chars (buf+1, 0, fixP->fx_size);
-	      break;
+	    offsetT loc;
+	    loc = fixP->fx_frag->fr_fix - (subtype & 7);
+	    switch (subtype)
+	      {
+	      case DW_CFA_advance_loc1:
+		fixP->fx_where = loc + 1;
+		fixP->fx_next->fx_where = loc + 1;
+		fixP->fx_r_type = BFD_RELOC_LARCH_ADD8;
+		fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB8;
+		md_number_to_chars (buf+1, 0, fixP->fx_size);
+		break;
 
-	    default:
-	      if (subtype < 0x80 && (subtype & 0x40))
-		{
-		  /* DW_CFA_advance_loc.  */
-		  fixP->fx_frag = opfrag;
-		  fixP->fx_next->fx_frag = fixP->fx_frag;
-		  fixP->fx_r_type = BFD_RELOC_LARCH_ADD6;
-		  fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB6;
-		  md_number_to_chars (buf, 0x40, fixP->fx_size);
+	      case DW_CFA_advance_loc2:
+		fixP->fx_where = loc + 1;
+		fixP->fx_next->fx_where = loc + 1;
+		fixP->fx_r_type = BFD_RELOC_LARCH_ADD16;
+		fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB16;
+		md_number_to_chars (buf+1, 0, fixP->fx_size);
+		break;
+
+	      case DW_CFA_advance_loc4:
+		fixP->fx_where = loc;
+		fixP->fx_next->fx_where = loc;
+		fixP->fx_r_type = BFD_RELOC_LARCH_ADD32;
+		fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB32;
+		md_number_to_chars (buf+1, 0, fixP->fx_size);
+		break;
+
+	      default:
+		if (subtype < 0x80 && (subtype & 0x40))
+		  {
+		    /* DW_CFA_advance_loc.  */
+		    fixP->fx_frag = opfrag;
+		    fixP->fx_next->fx_frag = fixP->fx_frag;
+		    fixP->fx_r_type = BFD_RELOC_LARCH_ADD6;
+		    fixP->fx_next->fx_r_type = BFD_RELOC_LARCH_SUB6;
+		    md_number_to_chars (buf, 0x40, fixP->fx_size);
 		  }
-	      else
-		as_fatal (_("internal: bad CFA value #%d"), subtype);
-	      break;
-	    }
-	}
+		else
+		  as_fatal (_("internal: bad CFA value #%d"), subtype);
+		break;
+	      }
+	  }
+
+	if (fixP->fx_addsy == NULL)
+	  fixP->fx_done = 1;
+      }
       break;
 
     case BFD_RELOC_LARCH_B16:
@@ -1900,7 +2036,10 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
 
 	  /* If relax, symbol value may change at link time, so reloc need to
 	     be saved.  */
-	  if (!LARCH_opts.relax)
+	  fragS *addfrag = symbol_get_frag (fixP->fx_addsy);
+	  if (! _loongarch_force_relocation_sub_same (seg,
+						      addfrag,
+						      fixP->fx_frag))
 	    fixP->fx_done = 1;
 	}
       break;
@@ -1924,7 +2063,7 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
 /* Estimate the size of a frag before relaxing.  */
 
 int
-md_estimate_size_before_relax (fragS *fragp, asection *sec)
+md_estimate_size_before_relax (fragS *fragp, asection *sec ATTRIBUTE_UNUSED)
 {
   /* align pseudo instunctions.  */
   if (rs_align_code == fragp->fr_subtype)
@@ -1936,18 +2075,16 @@ md_estimate_size_before_relax (fragS *fragp, asection *sec)
 	nop_bytes = ALIGN_MAX_NOP_BYTES (fragp->fr_offset);
 
       /* Normally, nop_bytes should be >= 4.  */
-      gas_assert (nop_bytes > 0);
+      gas_assert (nop_bytes >= 4);
 
-      if (FRAG_AT_START_OF_SECTION (fragp)
-	  && 0 == ((1 << sec->alignment_power) % (nop_bytes + 4)))
-	return (fragp->fr_var = 0);
-      else
-	  return (fragp->fr_var = nop_bytes);
+      /* Reserve all nop bytes.  */
+      return (fragp->fr_var = nop_bytes);
     }
+  else if (RELAX_BRANCH (fragp->fr_subtype))
+    /* Branch instructions have 4 bytes fr_var.  */
+    return (fragp->fr_var = 4);
 
-  /* branch instructions and other instructions.
-     branch instructions may become 8 bytes after relaxing.  */
-  return (fragp->fr_var = 4);
+  return 0;
 }
 
 /* Translate internal representation of relocation info to BFD target
@@ -2021,12 +2158,44 @@ tc_loongarch_parse_to_dw2regnum (expressionS *exp)
     expression_and_evaluate (exp);
 }
 
+/* Convert an rs_machine_dependent alignment frag before the first
+   linker-relaxable instruction into an ordinary rs_align_code frag.
+   GAS will compute the exact NOP count from the final addresses, so no
+   R_LARCH_ALIGN is emitted.  */
+static void
+loongarch_resolve_align_before_relax (fragS *frag)
+{
+  int n = 0; /* Alignment.  */
+  int max = 0; /* Maximum number of bytes can be skipped.  */
+  if (frag->fr_symbol == NULL) /* No third maximum expression.  */
+    {
+      offsetT align_bytes = frag->fr_offset + 4;
+      while (align_bytes > 1)
+	{
+	  align_bytes >>= 1;
+	  n++;
+	}
+    }
+  else
+    {
+      n = frag->fr_offset & 0xff;
+      max = frag->fr_offset >> 8;
+    }
+
+  frag->fr_type = rs_align_code;
+  frag->fr_fix = 0;
+  frag->fr_var = 1;
+  frag->fr_offset = n;
+  frag->fr_subtype = max;
+  frag->fr_symbol = NULL;
+  frag->tc_frag_data.linker_relax = false;
+}
 
 void
 loongarch_pre_output_hook (void)
 {
+  segT sec;
   const frchainS *frch;
-  segT s;
 
   if (!LARCH_opts.relax)
     return;
@@ -2035,10 +2204,11 @@ loongarch_pre_output_hook (void)
   segT seg = now_seg;
   subsegT subseg = now_subseg;
 
-  for (s = stdoutput->sections; s; s = s->next)
-    for (frch = seg_info (s)->frchainP; frch; frch = frch->frch_next)
+  for (sec = stdoutput->sections; sec; sec = sec->next)
+    for (frch = seg_info (sec)->frchainP; frch; frch = frch->frch_next)
       {
 	fragS *frag;
+	bool seen_relax = false;
 
 	for (frag = frch->frch_root; frag; frag = frag->fr_next)
 	  {
@@ -2055,16 +2225,84 @@ loongarch_pre_output_hook (void)
 
 		/* We must set the segment before creating a frag after all
 		   frag chains have been chained together.  */
-		subseg_set (s, frch->frch_subseg);
+		subseg_set (sec, frch->frch_subseg);
 
+		/* Set the size to 1 temporary.  The size may change in
+		   relax_segment. Update to the real size in md_apply_fix.  */
 		fix_new_exp (frag, (int) frag->fr_offset, 1, &exp, 0,
 			     BFD_RELOC_LARCH_CFA);
 	      }
+	    else if (frag->fr_type == rs_machine_dependent
+		     && frag->fr_subtype == rs_align_code
+		     && ! has_relax_reloc
+		     && ! seen_relax)
+	      loongarch_resolve_align_before_relax (frag);
+
+	    if (frag->tc_frag_data.linker_relax)
+	      seen_relax = true;
 	  }
       }
 
   /* Restore the original segment info.  */
   subseg_set (seg, subseg);
+}
+
+/* Called after size_seg and before fix_segment, when reloc addresses are final.
+   Mark the frag and section targeted by each .reloc *, R_LARCH_RELAX as
+   linker-relaxable, then update sec_flg1 from the remaining linker-relaxable
+   frags.  */
+void
+loongarch_frob_file_before_fix (void)
+{
+  if (! LARCH_opts.relax)
+    return;
+
+  if (has_relax_reloc)
+    for (struct reloc_list *r = reloc_list; r != NULL; r = r->next)
+      {
+	segT sec = r->u.b.sec;
+
+	if (sec == NULL || (sec->flags & SEC_CODE) == 0)
+	  continue;
+
+	if (r->u.b.r.howto->type != R_LARCH_RELAX)
+	  continue;
+
+	segment_info_type *seginfo = seg_info (sec);
+	if (seginfo == NULL)
+	  continue;
+
+	fragS *frag = get_frag_for_address (NULL, seginfo, r->u.b.r.address);
+	if (frag == NULL)
+	  continue;
+
+	sec->sec_flg1 = true;
+	frag->tc_frag_data.linker_relax = true;
+      }
+
+  /* Update sec_flg1 because converting an rs_machine_dependent align frag
+     to rs_align_code may clear sec_flg1.  */
+  for (segT sec = stdoutput->sections; sec != NULL; sec = sec->next)
+    {
+      segment_info_type *seginfo = seg_info (sec);
+
+      if (seginfo == NULL || seginfo->frchainP == NULL)
+	{
+	  sec->sec_flg1 = false;
+	  continue;
+	}
+
+      bool has_relax_frag = false;
+      for (fragS *frag = seginfo->frchainP->frch_root;
+	   frag != NULL; frag = frag->fr_next)
+	if (frag->tc_frag_data.linker_relax)
+	  {
+	    has_relax_frag = true;
+	    break;
+	  }
+
+      sec->sec_flg1 = has_relax_frag;
+    }
 }
 
 void
@@ -2100,7 +2338,6 @@ bool
 loongarch_frag_align_code (int n, int max)
 {
   char *nops;
-  expressionS ex;
   symbolS *s = NULL;
 
   /* When not relaxing, loongarch_handle_align handles code alignment.  */
@@ -2129,42 +2366,25 @@ loongarch_frag_align_code (int n, int max)
       addend = ALIGN_MAX_ADDEND (n, max);
     }
 
-  if (LARCH_opts.ignore_start_align)
-    {
-      frag_grow (worst_case_bytes);
-      /* Use relaxable frag for .align.
-	 If .align at the start of section, do nothing. Section alignment can
-	 ensure correct alignment.
-	 If .align is not at the start of a section, reserve NOP instructions
-	 and R_LARCH_ALIGN relocation.  */
-      nops = frag_var (rs_machine_dependent, worst_case_bytes, worst_case_bytes,
-		       rs_align_code, s, addend, NULL);
-    }
-  else
-    {
-      nops = frag_more (worst_case_bytes);
-      if (align_max)
-	{
-	  ex.X_add_symbol = s;
-	  ex.X_op = O_symbol;
-	}
-      else
-	  ex.X_op = O_constant;
+  /* Start a new frag only used for alignment.  */
+  frag_wane (frag_now);
+  frag_new (0);
 
-      ex.X_add_number = addend;
-
-      fix_new_exp (frag_now, nops - frag_now->fr_literal, 0,
-		   &ex, false, BFD_RELOC_LARCH_ALIGN);
-    }
+  frag_grow (worst_case_bytes);
+  /* frag_new in frag_var start a new frag, save frag_now before frag_var.  */
+  fragS *align_frag = frag_now;
+  /* Use relaxable frag for .align.
+     If .align before the first relax reloc, no need to align reloc.  */
+  nops = frag_var (rs_machine_dependent, worst_case_bytes, worst_case_bytes,
+		   rs_align_code, s, addend, NULL);
+  /* TC_FRAG_INIT in frag_var resets this flag, so set it after frag_var.  */
+  align_frag->tc_frag_data.linker_relax = true;
+  /* This frag may be converted to rs_align_code, reset sec_flg1 in
+     loongarch_frob_file_before_fix.  */
+  now_seg->sec_flg1 = true;
 
   /* Default write NOP for aligned bytes.  */
   loongarch_make_nops (nops, worst_case_bytes);
-
-  /* We need to start a new frag after the alignment which may be removed by
-     the linker, to prevent the assembler from computing static offsets.
-     This is necessary to get correct EH info.  */
-  frag_wane (frag_now);
-  frag_new (0);
 
   return true;
 }
@@ -2204,6 +2424,24 @@ loongarch_handle_align (fragS *fragp)
   fragp->fr_var = size;
 }
 
+
+/* Whether force relocation for label subtraction calculation,
+   sincc linker relaxation might change the deltas.  */
+
+static bool
+loongarch_force_reloc_sub (symbolS *addsy, symbolS *subsy)
+{
+  segT addsec = S_GET_SEGMENT (addsy);
+  segT subsec = S_GET_SEGMENT (subsy);
+  if (addsec != subsec)
+    return true;
+
+  fragS *addfrag = symbol_get_frag (addsy);
+  fragS *subfrag = symbol_get_frag (subsy);
+  return _loongarch_force_relocation_sub_same (addsec, addfrag, subfrag);
+}
+
+
 /* Scan uleb128 subtraction expressions and insert fixups for them.
    e.g., .uleb128 .L1 - .L0
    Because relaxation may change the value of the subtraction, we
@@ -2235,6 +2473,9 @@ loongarch_insert_uleb128_fixes (bfd *abfd ATTRIBUTE_UNUSED,
       if (fragP->fr_subtype != 0)
 	continue;
 
+      if (! loongarch_force_reloc_sub (exp->X_add_symbol, exp->X_op_symbol))
+	continue;
+
       exp_dup = xmemdup (exp, sizeof (*exp), sizeof (*exp));
       exp_dup->X_op = O_symbol;
       exp_dup->X_op_symbol = NULL;
@@ -2258,13 +2499,27 @@ loongarch_insert_uleb128_fixes (bfd *abfd ATTRIBUTE_UNUSED,
     }
 }
 
+/* If any .reloc *, R_LARCH_RELAX is present.  */
+static bool
+loongarch_has_relax_reloc (void)
+{
+  for (struct reloc_list *r = reloc_list; r != NULL; r = r->next)
+    if (r->u.a.howto->type == R_LARCH_RELAX)
+      return true;
+
+  return false;
+}
+
 void
 loongarch_md_finish (void)
 {
-  /* Insert relocations for uleb128 directives, so the values can be recomputed
-     at link time.  */
   if (LARCH_opts.relax)
-    bfd_map_over_sections (stdoutput, loongarch_insert_uleb128_fixes, NULL);
+    {
+      has_relax_reloc = loongarch_has_relax_reloc ();
+      /* Insert relocations for uleb128 directives, so the values can be
+	 recomputed at link time.  */
+      bfd_map_over_sections (stdoutput, loongarch_insert_uleb128_fixes, NULL);
+    }
 }
 
 void
@@ -2334,17 +2589,10 @@ loongarch_relax_frag (asection *sec, fragS *fragp,
 	nop_bytes = ALIGN_MAX_NOP_BYTES (fragp->fr_offset);
 
       /* Normally, nop_bytes should be >= 4.  */
-      gas_assert (nop_bytes > 0);
+      gas_assert (nop_bytes >= 4);
 
-      offsetT old_var = fragp->fr_var;
-      /* If .align at the start of a section, do nothing. Section alignment
-       * can ensure correct alignment.  */
-      if (FRAG_AT_START_OF_SECTION (fragp)
-	  && 0 == ((1 << sec->alignment_power) % (nop_bytes + 4)))
-	fragp->fr_var = 0;
-      else
-	fragp->fr_var = nop_bytes;
-      return fragp->fr_var - old_var;
+      /* Reserve all nops, no change.  */
+      return 0;
     }
   return 0;
 }
@@ -2423,7 +2671,7 @@ loongarch_convert_frag_branch (fragS *fragp)
 /*  Relax .align frag.  */
 
 static void
-loongarch_convert_frag_align (fragS *fragp, asection *sec)
+loongarch_convert_frag_align (fragS *fragp, asection *sec ATTRIBUTE_UNUSED)
 {
   char *buf = fragp->fr_literal + fragp->fr_fix;
 
@@ -2434,24 +2682,19 @@ loongarch_convert_frag_align (fragS *fragp, asection *sec)
     nop_bytes = ALIGN_MAX_NOP_BYTES (fragp->fr_offset);
 
   /* Normally, nop_bytes should be >= 4.  */
-  gas_assert (nop_bytes > 0);
+  gas_assert (nop_bytes >= 4);
 
-  if (!(FRAG_AT_START_OF_SECTION (fragp)
-	&& 0 == ((1 << sec->alignment_power) % (nop_bytes + 4))))
-    {
-      expressionS exp;
-      exp.X_op = O_symbol;
-      exp.X_add_symbol = fragp->fr_symbol;
-      exp.X_add_number = fragp->fr_offset;
+  expressionS exp;
+  exp.X_op = O_symbol;
+  exp.X_add_symbol = fragp->fr_symbol;
+  exp.X_add_number = fragp->fr_offset;
 
-      fixS *fixp = fix_new_exp (fragp, buf - fragp->fr_literal,
-				nop_bytes, &exp, false, BFD_RELOC_LARCH_ALIGN);
-      fixp->fx_file = fragp->fr_file;
-      fixp->fx_line = fragp->fr_line;
+  fixS *fixp = fix_new_exp (fragp, buf - fragp->fr_literal, nop_bytes,
+			    &exp, false, BFD_RELOC_LARCH_ALIGN);
+  fixp->fx_file = fragp->fr_file;
+  fixp->fx_line = fragp->fr_line;
 
-      buf += nop_bytes;
-    }
-
+  buf += nop_bytes;
   gas_assert (buf == fragp->fr_literal + fragp->fr_fix + fragp->fr_var);
 
   fragp->fr_fix += fragp->fr_var;

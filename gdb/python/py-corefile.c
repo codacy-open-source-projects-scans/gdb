@@ -65,6 +65,8 @@ struct corefile_mapped_file_object : public PyObject
   bool is_main_exec_p;
 };
 
+static_assert (gdb::is_python_allocatable_v<corefile_mapped_file_object>);
+
 extern PyTypeObject corefile_mapped_file_object_type;
 
 /* A gdb.CorefileMappedFileRegion object.  */
@@ -79,6 +81,8 @@ struct corefile_mapped_file_region_object : public PyObject
   /* The offset within the mapped file for this mapping.  */
   ULONGEST file_offset;
 };
+
+static_assert (gdb::is_python_allocatable_v<corefile_mapped_file_region_object>);
 
 extern PyTypeObject corefile_mapped_file_region_object_type;
 
@@ -117,9 +121,9 @@ gdbpy_core_file_from_inferior (inferior *inf)
   gdb_assert (inf->pspace != nullptr);
 
   if (get_inferior_core_bfd (inf) == nullptr)
-    return gdbpy_ref<>::new_reference (Py_None);
+    return py_none ();
 
-  PyObject *result = (PyObject *) cfpy_inferior_corefile_data_key.get (inf);
+  PyObject *result = cfpy_inferior_corefile_data_key.get (inf);
   if (result != nullptr)
     return gdbpy_ref<>::new_reference (result);
 
@@ -199,9 +203,9 @@ cfpy_is_valid (PyObject *self, PyObject *args)
   corefile_object *obj = (corefile_object *) self;
 
   if (!cfpy_corefile_object_is_valid (obj))
-    Py_RETURN_FALSE;
+    return py_false ().release ();
 
-  Py_RETURN_TRUE;
+  return py_true ().release ();
 }
 
 /* Implement gdb.Corefile.mapped_files ().  Return a List of
@@ -265,7 +269,7 @@ cfpy_mapped_files (PyObject *self, PyObject *args)
 	    return nullptr;
 	}
       else
-	build_id = gdbpy_ref<>::new_reference (Py_None);
+	build_id = py_none ();
 
       /* List to hold all the gdb.CorefileMappedFileRegion objects.  */
       gdbpy_ref<> regions (PyTuple_New (file.regions.size ()));
@@ -290,7 +294,7 @@ cfpy_mapped_files (PyObject *self, PyObject *args)
 
 	  /* Add to the gdb.CorefileMappedFileRegion list.  */
 	  if (PyTuple_SetItem (regions.get (), regions_idx++,
-			       (PyObject *) region_obj.release ()) < 0)
+			       region_obj.release ()) < 0)
 	    return nullptr;
 	}
 
@@ -309,7 +313,7 @@ cfpy_mapped_files (PyObject *self, PyObject *args)
 
       /* Add to the gdb.CorefileMappedFile list.  */
       if (PyTuple_SetItem (tuple.get (), tuple_idx++,
-			   (PyObject *) entry.release ()) < 0)
+			   entry.release ()) < 0)
 	return nullptr;
     }
 
@@ -328,7 +332,7 @@ static int
 emit_corefile_changed_event (inferior *inf)
 {
   /* If there are no listeners then we are done.  */
-  if (evregpy_no_listeners_p (gdb_py_events.corefile_changed))
+  if (!evregpy_has_listeners_p (gdb_py_events.corefile_changed))
     return 0;
 
   gdbpy_ref<> event_obj
@@ -338,11 +342,10 @@ emit_corefile_changed_event (inferior *inf)
 
   gdbpy_ref<inferior_object> inf_obj = inferior_to_inferior_object (inf);
   if (inf_obj == nullptr
-      || evpy_add_attribute (event_obj.get (), "inferior",
-			     inf_obj.get ()) < 0)
+      || evpy_add_attribute (event_obj, "inferior", inf_obj) < 0)
     return -1;
 
-  return evpy_emit_event (event_obj.get (), gdb_py_events.corefile_changed);
+  return evpy_emit_event (event_obj, gdb_py_events.corefile_changed);
 }
 
 /* Callback from gdb::observers::core_file_changed.  The core file for
@@ -396,7 +399,7 @@ cfpy_repr (PyObject *self)
   bfd *core_bfd = get_inferior_core_bfd (obj->inferior);
   gdb_assert (core_bfd != nullptr);
   return PyUnicode_FromFormat ("<%s inferior=%d filename='%s'>",
-			       gdbpy_py_obj_tp_name (self),
+			       gdbpy_py_obj_tp_name (self).c_str (),
 			       obj->inferior->num,
 			       bfd_get_filename (core_bfd));
 }
@@ -469,9 +472,9 @@ cfmf_is_main_exec (PyObject *self, void *closure)
     = (corefile_mapped_file_object *) self;
 
   if (obj->is_main_exec_p)
-    Py_RETURN_TRUE;
+    return py_true ().release ();
   else
-    Py_RETURN_FALSE;
+    return py_false ().release ();
 }
 
 

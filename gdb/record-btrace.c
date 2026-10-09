@@ -729,7 +729,7 @@ btrace_find_line_range (CORE_ADDR pc)
   if (nlines <= 0)
     return btrace_mk_line_range (symtab, 0, 0);
 
-  struct objfile *objfile = symtab->compunit ()->objfile ();
+  struct objfile *objfile = symtab->compunit ().objfile ();
   unrelocated_addr unrel_pc
     = unrelocated_addr (pc - objfile->text_section_offset ());
 
@@ -2799,7 +2799,7 @@ record_btrace_set_replay (struct thread_info *tp,
   record_btrace_clear_histories (btinfo);
 
   tp->set_stop_pc (regcache_read_pc (get_thread_regcache (tp)));
-  print_stack_frame (get_selected_frame (NULL), 1, SRC_AND_LOC, 1);
+  print_stack_frame (get_selected_frame (), 1, SRC_AND_LOC, 1);
 }
 
 /* The goto_record_begin method of target record-btrace.  */

@@ -2320,6 +2320,8 @@ ENUM
 ENUMX
   BFD_RELOC_386_PLT32
 ENUMX
+  BFD_RELOC_386_PC32_TO_PLT32
+ENUMX
   BFD_RELOC_386_TLS_TPOFF
 ENUMX
   BFD_RELOC_386_TLS_IE
@@ -2394,6 +2396,8 @@ ENUMX
   BFD_RELOC_X86_64_PC32_BND
 ENUMX
   BFD_RELOC_X86_64_PLT32_BND
+ENUMX
+  BFD_RELOC_X86_64_PC32_TO_PLT32
 ENUMX
   BFD_RELOC_X86_64_GOTPCRELX
 ENUMX
@@ -6028,6 +6032,26 @@ ENUMDOC
   relocation types, giving full 8/16 value ranges.
 
 ENUM
+  BFD_RELOC_XTENSA_PDIFF_ULEB128
+ENUMDOC
+  Xtensa relocation to mark a positive difference of two local symbols
+  encoded as an unsigned LEB128 value.  This works like
+  BFD_RELOC_XTENSA_PDIFF32, but the linker rewrites the difference in
+  place using the number of bytes the assembler originally emitted, so
+  that the size of the containing section never changes.  Without it the
+  assembler would have to inhibit linker relaxation of all code covered
+  by such a difference, which DWARF 5 location and range lists produce
+  for virtually every function.
+
+ENUM
+  BFD_RELOC_XTENSA_32_ABS
+ENUMDOC
+  Xtensa 32-bit absolute address, computed as S + A with the addend taken
+  only from the r_addend field.  Unlike R_XTENSA_32, to which BFD_RELOC_32
+  maps and which is partial_inplace, the contents of the relocated word do
+  not contribute to the result.
+
+ENUM
   BFD_RELOC_Z80_DISP8
 ENUMDOC
   8 bit signed offset in (ix+d) or (iy+d).
@@ -8045,7 +8069,7 @@ SYNOPSIS
 	bfd_byte *bfd_generic_get_relocated_section_contents
 	  (bfd *abfd,
 	   struct bfd_link_info *link_info,
-	   struct bfd_link_order *link_order,
+	   const struct bfd_link_order *link_order,
 	   bfd_byte *data,
 	   bool relocatable,
 	   asymbol **symbols);
@@ -8056,12 +8080,13 @@ DESCRIPTION
 */
 
 bfd_byte *
-bfd_generic_get_relocated_section_contents (bfd *abfd,
-					    struct bfd_link_info *link_info,
-					    struct bfd_link_order *link_order,
-					    bfd_byte *data,
-					    bool relocatable,
-					    asymbol **symbols)
+bfd_generic_get_relocated_section_contents
+  (bfd *abfd,
+   struct bfd_link_info *link_info,
+   const struct bfd_link_order *link_order,
+   bfd_byte *data,
+   bool relocatable,
+   asymbol **symbols)
 {
   bfd *input_bfd = link_order->u.indirect.section->owner;
   asection *input_section = link_order->u.indirect.section;
@@ -8148,8 +8173,9 @@ bfd_generic_get_relocated_section_contents (bfd *abfd,
 	    {
 	      if ((symbol->flags & BSF_SECTION_SYM)
 		  && symbol->section->sec_info_type == SEC_INFO_TYPE_MERGE
-		  /* This, while apparently necessary, feels bogus.  */
-		  && !(symbol->section->flags & SEC_DEBUGGING))
+		  /* bfd_simple_get_relocated_section_contents() is special.  */
+		  && (!(input_section->flags & SEC_DEBUGGING)
+		      || link_info->input_bfds != link_info->output_bfd))
 		{
 		  asection *sec = symbol->section;
 

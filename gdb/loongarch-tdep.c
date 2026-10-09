@@ -734,7 +734,7 @@ loongarch_frame_prev_register (const frame_info_ptr &this_frame,
 
   /* If we are asked to unwind the PC, then we need to return the RA
      instead.  The prologue may save PC, but it will point into this
-     frame's prologue, not the previou frame's resume location.  */
+     frame's prologue, not the previous frame's resume location.  */
   if (regnum == LOONGARCH_PC_REGNUM)
     {
       CORE_ADDR ra;
@@ -1905,7 +1905,7 @@ loongarch_dwarf2_reg_to_regnum (struct gdbarch *gdbarch, int regnum)
 }
 
 static constexpr gdb_byte loongarch_default_breakpoint[] = {0x05, 0x00, 0x2a, 0x00};
-typedef BP_MANIPULATION (loongarch_default_breakpoint) loongarch_breakpoint;
+using loongarch_breakpoint = BP_MANIPULATION (loongarch_default_breakpoint);
 
 /* Extract a set of required target features out of ABFD.  If ABFD is nullptr
    then a LOONGARCH_GDBARCH_FEATURES is returned in its default state.  */
@@ -2299,8 +2299,8 @@ struct loongarch_record_s
 {
   struct gdbarch *gdbarch;
   struct regcache *regcache;
-  CORE_ADDR this_addr;                 /* Addr of insn to be recorded.   */
-  uint32_t insn;                       /* Insn to be recorded.           */
+  CORE_ADDR this_addr;                 /* Addr of insn to be recorded.  */
+  uint32_t insn;                       /* Insn to be recorded.  */
 };
 
 /* Record handler for data processing instructions.  */
@@ -2789,8 +2789,6 @@ loongarch_process_record (struct gdbarch *gdbarch, struct regcache *regcache,
 					 LOONGARCH_PC_REGNUM))
 	return -1;
 
-      if (record_full_arch_list_add_end ())
-	return -1;
     }
 
   return ret;

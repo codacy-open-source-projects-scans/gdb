@@ -35,6 +35,7 @@
 #include "interps.h"
 #include "target.h"
 #include "arch-utils.h"
+#include "cli/cli-style.h"
 #include "cli/cli-utils.h"
 #include "filenames.h"
 #include "ada-lang.h"
@@ -1036,20 +1037,16 @@ linespec_lexer_consume_token (linespec_parser *parser)
 static linespec_token
 linespec_lexer_peek_token (linespec_parser *parser)
 {
-  linespec_token next;
-  const char *saved_stream = parser->lexer.stream;
-  linespec_token saved_token = parser->lexer.current;
-  int saved_completion_quote_char = parser->completion_quote_char;
-  const char *saved_completion_quote_end = parser->completion_quote_end;
-  const char *saved_completion_word = parser->completion_word;
+  scoped_restore stream_restore = make_scoped_restore (&parser->lexer.stream);
+  scoped_restore token_restore = make_scoped_restore (&parser->lexer.current);
+  scoped_restore completion_quote_char_restore
+    = make_scoped_restore (&parser->completion_quote_char);
+  scoped_restore completion_quote_end_restore
+    = make_scoped_restore (&parser->completion_quote_end);
+  scoped_restore completion_word_restore
+    = make_scoped_restore (&parser->completion_word);
 
-  next = linespec_lexer_consume_token (parser);
-  parser->lexer.stream = saved_stream;
-  parser->lexer.current = saved_token;
-  parser->completion_quote_char = saved_completion_quote_char;
-  parser->completion_quote_end = saved_completion_quote_end;
-  parser->completion_word = saved_completion_word;
-  return next;
+  return linespec_lexer_consume_token (parser);
 }
 
 /* Helper functions.  */
@@ -1148,7 +1145,7 @@ iterate_over_all_matching_symtabs
 		{
 		  const struct block *block;
 		  int i;
-		  const blockvector *bv = symtab->compunit ()->blockvector ();
+		  const blockvector *bv = symtab->compunit ().blockvector ();
 
 		  for (i = FIRST_LOCAL_BLOCK; i < bv->num_blocks (); i++)
 		    {
@@ -1183,7 +1180,7 @@ get_current_search_block (void)
   /* get_selected_block can change the current language when there is
      no selected frame yet.  */
   scoped_restore_current_language save_language;
-  return get_selected_block (0);
+  return get_selected_block ();
 }
 
 /* Iterate over static and global blocks.  */
@@ -1196,7 +1193,7 @@ iterate_over_file_blocks
 {
   const struct block *block;
 
-  for (block = symtab->compunit ()->blockvector ()->static_block ();
+  for (block = symtab->compunit ().blockvector ()->static_block ();
        block != NULL;
        block = block->superblock ())
     current_language->for_each_symbol (block, name, domain, callback);
@@ -1525,7 +1522,8 @@ symbol_not_found_error (const char *symbol, const char *filename)
       && !current_program_space->has_partial_symbols ()
       && !current_program_space->has_minimal_symbols ())
     throw_error (NOT_FOUND_ERROR,
-		 _("No symbol table is loaded.  Use the \"file\" command."));
+		 _("No symbol table is loaded.  Use the \"%ps\" command."),
+		 styled_string (command_style.style (), "file"));
 
   /* If SYMBOL starts with '$', the user attempted to either lookup
      a function/variable in his code starting with '$' or an internal
@@ -1536,7 +1534,8 @@ symbol_not_found_error (const char *symbol, const char *filename)
       if (filename)
 	throw_error (NOT_FOUND_ERROR,
 		     _("Undefined convenience variable or function \"%s\" "
-		       "not defined in \"%s\"."), symbol, filename);
+		       "not defined in \"%ps\"."), symbol,
+		     styled_string (file_name_style.style (), filename));
       else
 	throw_error (NOT_FOUND_ERROR,
 		     _("Undefined convenience variable or function \"%s\" "
@@ -1546,11 +1545,13 @@ symbol_not_found_error (const char *symbol, const char *filename)
     {
       if (filename)
 	throw_error (NOT_FOUND_ERROR,
-		     _("Function \"%s\" not defined in \"%s\"."),
-		     symbol, filename);
+		     _("Function \"%ps\" not defined in \"%ps\"."),
+		     styled_string (function_name_style.style (), symbol),
+		     styled_string (file_name_style.style (), filename));
       else
 	throw_error (NOT_FOUND_ERROR,
-		     _("Function \"%s\" not defined."), symbol);
+		     _("Function \"%ps\" not defined."),
+		     styled_string (function_name_style.style (), symbol));
     }
 }
 
@@ -1589,8 +1590,9 @@ undefined_label_error (const char *function, const char *label)
 {
   if (function != NULL)
     throw_error (NOT_FOUND_ERROR,
-		_("No label \"%s\" defined in function \"%s\"."),
-		label, function);
+		 _("No label \"%s\" defined in function \"%ps\"."),
+		 label,
+		 styled_string (function_name_style.style (), function));
   else
     throw_error (NOT_FOUND_ERROR,
 		_("No label \"%s\" defined in current function."),
@@ -1602,7 +1604,8 @@ undefined_label_error (const char *function, const char *label)
 [[noreturn]] static void
 source_file_not_found_error (const char *name)
 {
-  throw_error (NOT_FOUND_ERROR, _("No source file named %s."), name);
+  throw_error (NOT_FOUND_ERROR, _("No source file named %ps."),
+	       styled_string (file_name_style.style (), name));
 }
 
 /* Unless at EIO, save the current stream position as completion word
@@ -2141,12 +2144,16 @@ create_sals_line_offset (struct linespec_state *self,
     {
       if (ls->explicit_loc.source_filename)
 	throw_error (NOT_FOUND_ERROR,
-		     _("No compiled code for line %d in file \"%s\"."),
-		     line, ls->explicit_loc.source_filename.get ());
+		     _("No compiled code for line %ps in file \"%ps\"."),
+		     styled_string (line_number_style.style (),
+				    plongest (line)),
+		     styled_string (file_name_style.style (),
+				    ls->explicit_loc.source_filename.get ()));
       else
 	throw_error (NOT_FOUND_ERROR,
-		     _("No compiled code for line %d in the current file."),
-		     line);
+		     _("No compiled code for line %ps in the current file."),
+		     styled_string (line_number_style.style (),
+				    plongest (line)));
     }
 
   return values;
@@ -2187,7 +2194,7 @@ convert_linespec_to_sals (struct linespec_state *state, linespec *ls)
       for (const auto &sym : ls->labels.label_symbols)
 	{
 	  struct program_space *pspace
-	    = sym.symbol->symtab ()->compunit ()->objfile ()->pspace ();
+	    = sym.symbol->symtab ()->compunit ().objfile ()->pspace ();
 	  std::optional<symtab_and_line> sal
 	    = symbol_to_sal (state->funfirstline, sym.symbol);
 
@@ -2210,7 +2217,7 @@ convert_linespec_to_sals (struct linespec_state *state, linespec *ls)
 	  for (const auto &sym : ls->function_symbols)
 	    {
 	      program_space *pspace
-		= sym.symbol->symtab ()->compunit ()->objfile ()->pspace ();
+		= sym.symbol->symtab ()->compunit ().objfile ()->pspace ();
 	      set_current_program_space (pspace);
 
 	      /* Don't skip to the first line of the function if we
@@ -3392,7 +3399,7 @@ lookup_prefix_sym (struct linespec_state *state,
 	{
 	  /* Program spaces that are executing startup should have
 	     been filtered out earlier.  */
-	  program_space *pspace = elt->compunit ()->objfile ()->pspace ();
+	  program_space *pspace = elt->compunit ().objfile ()->pspace ();
 
 	  gdb_assert (!pspace->executing_startup);
 	  set_current_program_space (pspace);
@@ -3441,8 +3448,8 @@ compare_symbols (const block_symbol &a, const block_symbol &b)
      which gives unstable sorting results.  While the assumption is that this
      doesn't matter, play it safe and compare program space IDs instead.  */
   int cmp
-    = compare_pspace (a.symbol->symtab ()->compunit ()->objfile ()->pspace (),
-		      b.symbol->symtab ()->compunit ()->objfile ()->pspace ());
+    = compare_pspace (a.symbol->symtab ()->compunit ().objfile ()->pspace (),
+		      b.symbol->symtab ()->compunit ().objfile ()->pspace ());
   if (cmp == -1)
     return true;
   if (cmp == 1)
@@ -3549,7 +3556,7 @@ find_method (struct linespec_state *self,
 
       /* Program spaces that are executing startup should have
 	 been filtered out earlier.  */
-      pspace = sym->symtab ()->compunit ()->objfile ()->pspace ();
+      pspace = sym->symtab ()->compunit ().objfile ()->pspace ();
       gdb_assert (!pspace->executing_startup);
       set_current_program_space (pspace);
       t = check_typedef (sym->type ());
@@ -3561,7 +3568,7 @@ find_method (struct linespec_state *self,
       if (ix == sym_classes->size () - 1
 	  || (pspace
 	      != (sym_classes->at (ix + 1).symbol->symtab ()
-		  ->compunit ()->objfile ()->pspace ())))
+		  ->compunit ().objfile ()->pspace ())))
 	{
 	  /* If we did not find a direct implementation anywhere in
 	     this program space, consider superclasses.  */
@@ -3645,7 +3652,8 @@ symtabs_from_filename (const char *filename,
 	  && !current_program_space->has_partial_symbols ())
 	throw_error (NOT_FOUND_ERROR,
 		     _("No symbol table is loaded.  "
-		       "Use the \"file\" command."));
+		       "Use the \"%ps\" command."),
+		     styled_string (command_style.style (), "file"));
       source_file_not_found_error (filename);
     }
 
@@ -3879,7 +3887,7 @@ find_label_symbols (struct linespec_state *self,
 	{
 	  fn_sym = elt.symbol;
 	  set_current_program_space
-	    (fn_sym->symtab ()->compunit ()->objfile ()->pspace ());
+	    (fn_sym->symtab ()->compunit ().objfile ()->pspace ());
 	  block = fn_sym->value_block ();
 
 	  find_label_symbols_in_block (block, name, fn_sym, completion_mode,
@@ -3906,7 +3914,7 @@ decode_digits_list_mode (linespec_state *self, linespec *ls, int line)
       /* The logic above should ensure this.  */
       gdb_assert (elt != NULL);
 
-      program_space *pspace = elt->compunit ()->objfile ()->pspace ();
+      program_space *pspace = elt->compunit ().objfile ()->pspace ();
       set_current_program_space (pspace);
 
       /* Simplistic search just for the list command.  */
@@ -3943,7 +3951,7 @@ decode_digits_ordinary (struct linespec_state *self,
       /* The logic above should ensure this.  */
       gdb_assert (elt != NULL);
 
-      objfile *objfile = elt->compunit ()->objfile ();
+      objfile *objfile = elt->compunit ().objfile ();
       program_space *pspace = objfile->pspace ();
       set_current_program_space (pspace);
 
@@ -4154,7 +4162,7 @@ search_minsyms_for_name (struct collect_info *info,
     }
   else
     {
-      objfile &objfile = *symtab->compunit ()->objfile ();
+      objfile &objfile = *symtab->compunit ().objfile ();
       program_space *pspace = objfile.pspace ();
 
       if (search_pspace == NULL || pspace == search_pspace)
@@ -4252,13 +4260,14 @@ add_matching_symbols_to_info (const char *name,
 					     add_symbol);
 	  search_minsyms_for_name (info, lookup_name, pspace, NULL);
 	}
-      else if (pspace == NULL || pspace == elt->compunit ()->objfile ()->pspace ())
+      else if (pspace == NULL
+	       || pspace == elt->compunit ().objfile ()->pspace ())
 	{
 	  int prev_len = info->symbols->size ();
 
 	  /* Program spaces that are executing startup should have
 	     been filtered out earlier.  */
-	  program_space *elt_pspace = elt->compunit ()->objfile ()->pspace ();
+	  program_space *elt_pspace = elt->compunit ().objfile ()->pspace ();
 	  gdb_assert (!elt_pspace->executing_startup);
 	  set_current_program_space (elt_pspace);
 	  iterate_over_file_blocks (elt, lookup_name, SEARCH_VFT, add_symbol);
@@ -4293,7 +4302,7 @@ symbol_to_sal (bool funfirstline, symbol *sym)
 	  result.symbol = sym;
 	  result.line = sym->line ();
 	  result.pc = sym->value_address ();
-	  result.pspace = result.symtab->compunit ()->objfile ()->pspace ();
+	  result.pspace = result.symtab->compunit ().objfile ()->pspace ();
 	  result.explicit_pc = 1;
 	  return result;
 	}
@@ -4309,7 +4318,7 @@ symbol_to_sal (bool funfirstline, symbol *sym)
 	  result.symbol = sym;
 	  result.line = sym->line ();
 	  result.pc = sym->value_address ();
-	  result.pspace = result.symtab->compunit ()->objfile ()->pspace ();
+	  result.pspace = result.symtab->compunit ().objfile ()->pspace ();
 	  return result;
 	}
     }

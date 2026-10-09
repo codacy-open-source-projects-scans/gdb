@@ -75,9 +75,9 @@ infrun_debug_show_threads (const char *title, ThreadRange threads)
 }
 
 
-/* Nonzero if we want to give control to the user when we're notified
+/* True if we want to give control to the user when we're notified
    of shared library events by the dynamic linker.  */
-extern int stop_on_solib_events;
+extern bool stop_on_solib_events;
 
 /* True if execution commands resume all threads of all processes by
    default; otherwise, resume only threads of the current inferior
@@ -129,7 +129,7 @@ extern void start_remote (int from_tty);
    continued or stepped.  First do this, then set the ones you want,
    then call `proceed'.  STEP indicates whether we're preparing for a
    step/stepi command.  Set ABOUT_TO_PROCEED to false if we're not
-   calling `proceeed` yet.  */
+   calling `proceed` yet.  */
 extern void clear_proceed_status (int step, bool about_to_proceed = true);
 
 extern void proceed (CORE_ADDR, enum gdb_signal);
@@ -319,6 +319,12 @@ extern void all_uis_on_sync_execution_starting (void);
 /* In all-stop, restart the target if it had to be stopped to
    detach.  */
 extern void restart_after_all_stop_detach (process_stratum_target *proc_target);
+
+/* While detaching, return the signal PTID was supposed to be resumed
+   with, if it were resumed, so we can pass it down to PTID while
+   detaching.  */
+extern gdb_signal get_detach_signal (process_stratum_target *proc_target,
+				     ptid_t ptid);
 
 /* RAII object to temporarily disable the requirement for target
    stacks to commit their resumed threads.

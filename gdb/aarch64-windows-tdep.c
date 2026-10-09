@@ -27,7 +27,7 @@
    and BRK #0xf000 triggers a breakpoint exception in the debugger.  */
 constexpr gdb_byte aarch64_windows_breakpoint[] = {0x00, 0x00, 0x3e, 0xd4};
 
-typedef BP_MANIPULATION (aarch64_windows_breakpoint) aarch64_w_breakpoint;
+using aarch64_w_breakpoint = BP_MANIPULATION (aarch64_windows_breakpoint);
 
 /* gdbarch initialization for Windows on AArch64.  */
 
@@ -62,8 +62,11 @@ aarch64_windows_osabi_sniffer (bfd *abfd)
 
 INIT_GDB_FILE (aarch64_windows_tdep)
 {
-  gdbarch_register_osabi (bfd_arch_aarch64, 0, GDB_OSABI_WINDOWS,
+  gdbarch_register_osabi (bfd_arch_aarch64, 0, GDB_OSABI_WINDOWS_GNU,
 			  aarch64_windows_init_abi);
+  gdbarch_register_osabi (bfd_arch_aarch64, 0, GDB_OSABI_WINDOWS_MSVC,
+			  aarch64_windows_init_abi);
+  gdbarch_add_osabi_name (GDB_OSABI_WINDOWS);
 
   gdbarch_register_osabi_sniffer (bfd_arch_aarch64, bfd_target_coff_flavour,
 				  aarch64_windows_osabi_sniffer);

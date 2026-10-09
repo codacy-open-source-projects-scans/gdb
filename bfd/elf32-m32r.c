@@ -98,7 +98,7 @@ m32r_elf_do_10_pcrel_reloc (bfd *abfd,
   bfd_reloc_status_type status;
 
   /* Sanity check the address (offset in section).  */
-  if (offset > bfd_get_section_limit (abfd, input_section))
+  if (!bfd_reloc_offset_in_range (howto, abfd, input_section, offset))
     return bfd_reloc_outofrange;
 
   relocation = symbol_value + addend;
@@ -192,7 +192,8 @@ m32r_elf_generic_reloc (bfd *input_bfd,
      a section relative addend which is wrong.  */
 
   /* Sanity check the address (offset in section).  */
-  if (reloc_entry->address > bfd_get_section_limit (input_bfd, input_section))
+  if (!bfd_reloc_offset_in_range (reloc_entry->howto, input_bfd,
+				  input_section, reloc_entry->address))
     return bfd_reloc_outofrange;
 
   ret = bfd_reloc_ok;
@@ -2015,8 +2016,7 @@ allocate_dynrelocs (struct elf_link_hash_entry *h, void * inf)
 /* Set the sizes of the dynamic sections.  */
 
 static bool
-m32r_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
-			     struct bfd_link_info *info)
+m32r_elf_late_size_sections (struct bfd_link_info *info)
 {
   struct elf_link_hash_table *htab;
   bfd *dynobj;
@@ -2174,7 +2174,7 @@ m32r_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
       s->alloced = 1;
     }
 
-  return _bfd_elf_add_dynamic_tags (output_bfd, info, relocs);
+  return _bfd_elf_add_dynamic_tags (info, relocs);
 }
 
 /* Relocate an M32R/D ELF section.
@@ -2211,8 +2211,7 @@ m32r_elf_late_size_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
    accordingly.  */
 
 static int
-m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
-			   struct bfd_link_info *info,
+m32r_elf_relocate_section (struct bfd_link_info *info,
 			   bfd *input_bfd,
 			   asection *input_section,
 			   bfd_byte *contents,
@@ -2237,7 +2236,6 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 
   sgot = htab->sgot;
   splt = htab->splt;
-  sreloc = NULL;
 
   rel = relocs;
   relend = relocs + input_section->reloc_count;
@@ -2299,7 +2297,8 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 
 	  if (!use_rel)
 	    {
-	      relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
+	      relocation = _bfd_elf_rela_local_sym (info->output_bfd,
+						    sym, &sec, rel);
 	      addend = rel->r_addend;
 	    }
 	  else
@@ -2381,7 +2380,7 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 			      + sec->output_section->vma
 			      + sec->output_offset);
 	      else if (!bfd_link_relocatable (info)
-		       && (_bfd_elf_section_offset (output_bfd, info,
+		       && (_bfd_elf_section_offset (info->output_bfd, info,
 						    input_section,
 						    rel->r_offset)
 			   != (bfd_vma) -1))
@@ -2578,7 +2577,7 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 			off &= ~1;
 		      else
 			{
-			  bfd_put_32 (output_bfd, relocation,
+			  bfd_put_32 (info->output_bfd, relocation,
 				      sgot->contents + off);
 			  h->got.offset |= 1;
 			}
@@ -2603,7 +2602,8 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 		    off &= ~1;
 		  else
 		    {
-		      bfd_put_32 (output_bfd, relocation, sgot->contents + off);
+		      bfd_put_32 (info->output_bfd, relocation,
+				  sgot->contents + off);
 
 		      if (bfd_link_pic (info))
 			{
@@ -2622,7 +2622,8 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 			  outrel.r_addend = relocation;
 			  loc = srelgot->contents;
 			  loc += srelgot->reloc_count * sizeof (Elf32_External_Rela);
-			  bfd_elf32_swap_reloca_out (output_bfd, &outrel,loc);
+			  bfd_elf32_swap_reloca_out (info->output_bfd,
+						     &outrel,loc);
 			  ++srelgot->reloc_count;
 			}
 
@@ -2694,18 +2695,14 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 		  /* When generating a shared object, these relocations
 		     are copied into the output file to be resolved at run
 		     time.  */
+		  sreloc = elf_section_data (input_section)->sreloc;
 		  if (sreloc == NULL)
-		    {
-		      sreloc = _bfd_elf_get_dynamic_reloc_section
-			(input_bfd, input_section, /*rela?*/ true);
-		      if (sreloc == NULL)
-			return false;
-		    }
+		    return false;
 
 		  skip = false;
 		  relocate = false;
 
-		  outrel.r_offset = _bfd_elf_section_offset (output_bfd,
+		  outrel.r_offset = _bfd_elf_section_offset (info->output_bfd,
 							     info,
 							     input_section,
 							     rel->r_offset);
@@ -2749,7 +2746,7 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
 
 		  loc = sreloc->contents;
 		  loc += sreloc->reloc_count * sizeof (Elf32_External_Rela);
-		  bfd_elf32_swap_reloca_out (output_bfd, &outrel,loc);
+		  bfd_elf32_swap_reloca_out (info->output_bfd, &outrel,loc);
 		  ++sreloc->reloc_count;
 
 		  /* If this reloc is against an external symbol, we do
@@ -2921,8 +2918,7 @@ m32r_elf_relocate_section (bfd *output_bfd ATTRIBUTE_UNUSED,
    dynamic sections here.  */
 
 static bool
-m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
-				struct bfd_link_info *info,
+m32r_elf_finish_dynamic_symbol (struct bfd_link_info *info,
 				struct elf_link_hash_entry *h,
 				Elf_Internal_Sym *sym)
 {
@@ -2969,50 +2965,50 @@ m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
       /* Fill in the entry in the procedure linkage table.  */
       if (! bfd_link_pic (info))
 	{
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD0b
 	       + (((sgot->output_section->vma
 		    + sgot->output_offset
 		    + got_offset) >> 16) & 0xffff)),
 	      splt->contents + h->plt.offset);
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD1b
 	       + ((sgot->output_section->vma
 		   + sgot->output_offset
 		   + got_offset) & 0xffff)),
 	      splt->contents + h->plt.offset + 4);
-	  bfd_put_32 (output_bfd, PLT_ENTRY_WORD2,
+	  bfd_put_32 (info->output_bfd, PLT_ENTRY_WORD2,
 	      splt->contents + h->plt.offset + 8);
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD3
 	       + plt_index * sizeof (Elf32_External_Rela)),
 	      splt->contents + h->plt.offset + 12);
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD4
 	       + (((unsigned int) ((- (h->plt.offset + 16)) >> 2)) & 0xffffff)),
 	      splt->contents + h->plt.offset + 16);
 	}
       else
 	{
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      PLT_ENTRY_WORD0 + got_offset,
 	      splt->contents + h->plt.offset);
-	  bfd_put_32 (output_bfd, PLT_ENTRY_WORD1,
+	  bfd_put_32 (info->output_bfd, PLT_ENTRY_WORD1,
 	      splt->contents + h->plt.offset + 4);
-	  bfd_put_32 (output_bfd, PLT_ENTRY_WORD2,
+	  bfd_put_32 (info->output_bfd, PLT_ENTRY_WORD2,
 	      splt->contents + h->plt.offset + 8);
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD3
 	       + plt_index * sizeof (Elf32_External_Rela)),
 	      splt->contents + h->plt.offset + 12);
-	  bfd_put_32 (output_bfd,
+	  bfd_put_32 (info->output_bfd,
 	      (PLT_ENTRY_WORD4
 	       + (((unsigned int) ((- (h->plt.offset + 16)) >> 2)) & 0xffffff)),
 	      splt->contents + h->plt.offset + 16);
 	}
 
       /* Fill in the entry in the global offset table.  */
-      bfd_put_32 (output_bfd,
+      bfd_put_32 (info->output_bfd,
 		  (splt->output_section->vma
 		   + splt->output_offset
 		   + h->plt.offset
@@ -3027,7 +3023,7 @@ m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
       rela.r_addend = 0;
       loc = srela->contents;
       loc += plt_index * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
 
       if (!h->def_regular)
 	{
@@ -3073,14 +3069,14 @@ m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
       else
 	{
 	  BFD_ASSERT ((h->got.offset & 1) == 0);
-	  bfd_put_32 (output_bfd, (bfd_vma) 0, sgot->contents + h->got.offset);
+	  bfd_put_32 (info->output_bfd, 0, sgot->contents + h->got.offset);
 	  rela.r_info = ELF32_R_INFO (h->dynindx, R_M32R_GLOB_DAT);
 	  rela.r_addend = 0;
 	}
 
       loc = srela->contents;
       loc += srela->reloc_count * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
       ++srela->reloc_count;
     }
 
@@ -3105,7 +3101,7 @@ m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
       rela.r_addend = 0;
       loc = s->contents;
       loc += s->reloc_count * sizeof (Elf32_External_Rela);
-      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+      bfd_elf32_swap_reloca_out (info->output_bfd, &rela, loc);
       ++s->reloc_count;
     }
 
@@ -3120,8 +3116,7 @@ m32r_elf_finish_dynamic_symbol (bfd *output_bfd,
 /* Finish up the dynamic sections.  */
 
 static bool
-m32r_elf_finish_dynamic_sections (bfd *output_bfd,
-				  struct bfd_link_info *info,
+m32r_elf_finish_dynamic_sections (struct bfd_link_info *info,
 				  bfd_byte *buf ATTRIBUTE_UNUSED)
 {
   struct elf_link_hash_table *htab;
@@ -3171,13 +3166,13 @@ m32r_elf_finish_dynamic_sections (bfd *output_bfd,
 	      s = htab->srelplt;
 	    get_vma:
 	      dyn.d_un.d_ptr = s->output_section->vma + s->output_offset;
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 
 	    case DT_PLTRELSZ:
 	      s = htab->srelplt;
 	      dyn.d_un.d_val = s->size;
-	      bfd_elf32_swap_dyn_out (output_bfd, &dyn, dyncon);
+	      bfd_elf32_swap_dyn_out (info->output_bfd, &dyn, dyncon);
 	      break;
 	    }
 	}
@@ -3188,26 +3183,34 @@ m32r_elf_finish_dynamic_sections (bfd *output_bfd,
 	{
 	  if (bfd_link_pic (info))
 	    {
-	      bfd_put_32 (output_bfd, PLT0_PIC_ENTRY_WORD0, splt->contents);
-	      bfd_put_32 (output_bfd, PLT0_PIC_ENTRY_WORD1, splt->contents + 4);
-	      bfd_put_32 (output_bfd, PLT0_PIC_ENTRY_WORD2, splt->contents + 8);
-	      bfd_put_32 (output_bfd, PLT0_PIC_ENTRY_WORD3, splt->contents + 12);
-	      bfd_put_32 (output_bfd, PLT0_PIC_ENTRY_WORD4, splt->contents + 16);
+	      bfd_put_32 (info->output_bfd, PLT0_PIC_ENTRY_WORD0,
+			  splt->contents);
+	      bfd_put_32 (info->output_bfd, PLT0_PIC_ENTRY_WORD1,
+			  splt->contents + 4);
+	      bfd_put_32 (info->output_bfd, PLT0_PIC_ENTRY_WORD2,
+			  splt->contents + 8);
+	      bfd_put_32 (info->output_bfd, PLT0_PIC_ENTRY_WORD3,
+			  splt->contents + 12);
+	      bfd_put_32 (info->output_bfd, PLT0_PIC_ENTRY_WORD4,
+			  splt->contents + 16);
 	    }
 	  else
 	    {
 	      unsigned long addr;
 	      /* addr = .got + 4 */
 	      addr = sgot->output_section->vma + sgot->output_offset + 4;
-	      bfd_put_32 (output_bfd,
+	      bfd_put_32 (info->output_bfd,
 			  PLT0_ENTRY_WORD0 | ((addr >> 16) & 0xffff),
 			  splt->contents);
-	      bfd_put_32 (output_bfd,
+	      bfd_put_32 (info->output_bfd,
 			  PLT0_ENTRY_WORD1 | (addr & 0xffff),
 			  splt->contents + 4);
-	      bfd_put_32 (output_bfd, PLT0_ENTRY_WORD2, splt->contents + 8);
-	      bfd_put_32 (output_bfd, PLT0_ENTRY_WORD3, splt->contents + 12);
-	      bfd_put_32 (output_bfd, PLT0_ENTRY_WORD4, splt->contents + 16);
+	      bfd_put_32 (info->output_bfd, PLT0_ENTRY_WORD2,
+			  splt->contents + 8);
+	      bfd_put_32 (info->output_bfd, PLT0_ENTRY_WORD3,
+			  splt->contents + 12);
+	      bfd_put_32 (info->output_bfd, PLT0_ENTRY_WORD4,
+			  splt->contents + 16);
 	    }
 
 	  elf_section_data (splt->output_section)->this_hdr.sh_entsize =
@@ -3219,13 +3222,13 @@ m32r_elf_finish_dynamic_sections (bfd *output_bfd,
   if (sgot && sgot->size > 0)
     {
       if (sdyn == NULL)
-	bfd_put_32 (output_bfd, (bfd_vma) 0, sgot->contents);
+	bfd_put_32 (info->output_bfd, 0, sgot->contents);
       else
-	bfd_put_32 (output_bfd,
+	bfd_put_32 (info->output_bfd,
 		    sdyn->output_section->vma + sdyn->output_offset,
 		    sgot->contents);
-      bfd_put_32 (output_bfd, (bfd_vma) 0, sgot->contents + 4);
-      bfd_put_32 (output_bfd, (bfd_vma) 0, sgot->contents + 8);
+      bfd_put_32 (info->output_bfd, 0, sgot->contents + 4);
+      bfd_put_32 (info->output_bfd, 0, sgot->contents + 8);
 
       elf_section_data (sgot->output_section)->this_hdr.sh_entsize = 4;
     }
@@ -3455,7 +3458,11 @@ m32r_elf_check_relocs (bfd *abfd,
 	    case R_M32R_GOTPC_LO:
 	    case R_M32R_GOT24:
 	      if (dynobj == NULL)
-		htab->dynobj = dynobj = abfd;
+		{
+		  dynobj = _bfd_elf_link_dynobj (info);
+		  if (dynobj == NULL)
+		    return false;
+		}
 	      if (!_bfd_elf_create_got_section (dynobj, info))
 		return false;
 	      break;
@@ -3572,7 +3579,11 @@ m32r_elf_check_relocs (bfd *abfd,
 	      struct elf_dyn_relocs **head;
 
 	      if (dynobj == NULL)
-		htab->dynobj = dynobj = abfd;
+		{
+		  dynobj = _bfd_elf_link_dynobj (info);
+		  if (dynobj == NULL)
+		    return false;
+		}
 
 	      /* When creating a shared object, we must copy these
 		 relocs into the output file.  We create a reloc

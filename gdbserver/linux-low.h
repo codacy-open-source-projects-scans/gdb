@@ -36,8 +36,8 @@
 #define PTRACE_XFER_TYPE long
 
 #ifdef HAVE_LINUX_REGSETS
-typedef void (*regset_fill_func) (struct regcache *, void *);
-typedef void (*regset_store_func) (struct regcache *, const void *);
+using regset_fill_func = void (*) (struct regcache *, void *);
+using regset_store_func = void (*) (struct regcache *, const void *);
 enum regset_type {
   GENERAL_REGS,
   FP_REGS,
@@ -976,5 +976,13 @@ CORE_ADDR linux_get_hwcap (int pid, int wordsize);
    WORDSIZE, of process with pid PID.  If no entry was found, return 0.  */
 
 CORE_ADDR linux_get_hwcap2 (int pid, int wordsize);
+
+/* Fetch the AT_HWCAP3 entry from the auxv vector, where entries are length
+   WORDSIZE, of process with pid PID.  If no entry was found, return 0.  */
+CORE_ADDR linux_get_hwcap3 (int pid, int wordsize);
+
+/* Fetch the AT_HWCAP4 entry from the auxv vector, where entries are length
+   WORDSIZE, of process with pid PID.  If no entry was found, return 0.  */
+CORE_ADDR linux_get_hwcap4 (int pid, int wordsize);
 
 #endif /* GDBSERVER_LINUX_LOW_H */

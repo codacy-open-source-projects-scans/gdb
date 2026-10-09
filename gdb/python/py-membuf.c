@@ -31,6 +31,8 @@ struct membuf_object : public PyObject
   CORE_ADDR length;
 };
 
+static_assert (gdb::is_python_allocatable_v<membuf_object>);
+
 extern PyTypeObject membuf_object_type;
 
 /* Wrap BUFFER, ADDRESS, and LENGTH into a gdb.Membuf object.  ADDRESS is
@@ -51,7 +53,7 @@ gdbpy_buffer_to_membuf (gdb::unique_xmalloc_ptr<gdb_byte> buffer,
   membuf_obj->addr = address;
   membuf_obj->length = length;
 
-  return PyMemoryView_FromObject ((PyObject *) membuf_obj.get ());
+  return PyMemoryView_FromObject (membuf_obj.get ());
 }
 
 /* Destructor for gdb.Membuf objects.  */

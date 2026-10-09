@@ -41,6 +41,7 @@ PARSE_AND_LIST_ARGS_CASES=${PARSE_AND_LIST_ARGS_CASES}'
 '
 
 fragment <<EOF
+
 static void
 larch_elf_before_allocation (void)
 {
@@ -61,6 +62,134 @@ larch_elf_before_allocation (void)
   link_info.relax_pass = 3;
 }
 
+/* Traverse the linker tree to insert the align section
+   before input section.  */
+
+static bool
+hook_in_align (lang_statement_list_type add,
+	       asection *input_section,
+	       lang_statement_union_type **lp)
+{
+  bool ret;
+  lang_statement_union_type *l;
+
+  for (; (l = *lp) != NULL; lp = &l->header.next)
+    {
+      switch (l->header.type)
+	{
+	case lang_constructors_statement_enum:
+	  ret = hook_in_align (add, input_section, &constructor_list.head);
+	  if (ret)
+	    return ret;
+	  break;
+
+	case lang_output_section_statement_enum:
+	  ret = hook_in_align (add, input_section,
+			       &l->output_section_statement.children.head);
+	  if (ret)
+	    return ret;
+	  break;
+
+	case lang_wild_statement_enum:
+	  ret = hook_in_align (add, input_section,
+			       &l->wild_statement.children.head);
+	  if (ret)
+	    return ret;
+	  break;
+
+	case lang_group_statement_enum:
+	  ret = hook_in_align (add, input_section,
+			       &l->group_statement.children.head);
+	  if (ret)
+	    return ret;
+	  break;
+
+	case lang_input_section_enum:
+	  if (l->input_section.section == input_section)
+	    {
+	      /* We've found our section.  Insert the align immediately
+		 before its associated input section.  */
+	      *lp = add.head;
+	      add.head->header.next = l;
+	      return true;
+	    }
+	  break;
+
+	case lang_data_statement_enum:
+	case lang_reloc_statement_enum:
+	case lang_object_symbols_statement_enum:
+	case lang_output_statement_enum:
+	case lang_target_statement_enum:
+	case lang_input_statement_enum:
+	case lang_assignment_statement_enum:
+	case lang_padding_statement_enum:
+	case lang_address_statement_enum:
+	case lang_fill_statement_enum:
+	  break;
+
+	default:
+	  FAIL ();
+	  break;
+	}
+    }
+
+  return false;
+}
+
+/* Create a new align section, and arrange for it to be linked
+   immediately before INPUT_SECTION.  */
+
+static asection *
+elf${ELFSIZE}_loongarch_add_align_section (const char *align_sec_name,
+					   asection *input_section)
+{
+  flagword flags;
+  asection *align_sec;
+  asection *output_section;
+  lang_statement_list_type add_child;
+  lang_output_section_statement_type *os;
+
+  flags = (SEC_ALLOC | SEC_LOAD | SEC_READONLY | SEC_CODE
+	   | SEC_HAS_CONTENTS | SEC_RELOC | SEC_IN_MEMORY | SEC_KEEP);
+  align_sec = bfd_make_section_anyway_with_flags (stub_file->the_bfd,
+						  align_sec_name, flags);
+  if (align_sec == NULL)
+    goto err_ret;
+
+  align_sec->veneer = 1;
+  bfd_set_section_alignment (align_sec, 2);
+
+  output_section = input_section->output_section;
+  os = lang_output_section_get (output_section);
+
+  lang_list_init (&add_child);
+  lang_add_section (&add_child, align_sec, NULL, NULL, os);
+
+  if (add_child.head == NULL)
+    goto err_ret;
+
+  align_sec->size = (1 << input_section->alignment_power) - 4;
+  align_sec->contents = bfd_alloc (stub_file->the_bfd, align_sec->size);
+  if (align_sec->contents == NULL && align_sec->size != 0)
+    goto err_ret;
+  align_sec->alloced = 1;
+
+  if (hook_in_align (add_child, input_section, &os->children.head))
+    return align_sec;
+
+ err_ret:
+  einfo (_("%X%P: can not make align section: %E\n"));
+  return NULL;
+}
+
+static void
+gldloongarch_layout_sections_again (void)
+{
+  /* If we have changed sizes of the align sections, then we need
+     to recalculate all the section offsets.  */
+  ldelf_map_segments (true);
+}
+
 static void
 gld${EMULATION_NAME}_after_allocation (void)
 {
@@ -70,10 +199,25 @@ gld${EMULATION_NAME}_after_allocation (void)
      as we can't reliably tell if they're used until after relaxation.  */
   if (!bfd_link_relocatable (&link_info))
     {
-      need_layout = bfd_elf_discard_info (link_info.output_bfd, &link_info);
+      need_layout = bfd_elf_discard_info (&link_info);
       if (need_layout < 0)
 	{
 	  einfo (_("%X%P: .eh_frame/.stab edit: %E\n"));
+	  return;
+	}
+    }
+
+  /* If generating a relocatable output file, we have to add align
+     at the start of sections.  */
+  if (stub_file != NULL && bfd_link_relocatable (&link_info))
+    {
+      if (! elf${ELFSIZE}_loongarch_size_aligns (link_info.output_bfd,
+			stub_file->the_bfd,
+			&link_info,
+			&elf${ELFSIZE}_loongarch_add_align_section,
+			&gldloongarch_layout_sections_again))
+	{
+	  einfo (_("%X%P: can not size align section: %E\n"));
 	  return;
 	}
     }

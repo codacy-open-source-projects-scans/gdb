@@ -2353,6 +2353,7 @@ objdump [@option{-a}|@option{--archive-headers}]
         [@option{--debug-dir=@file{dir}}]
         [@option{--map-global-vars}]
         [@option{-L}|@option{--process-links}]
+        [@option{--btf=}@var{section}]
         [@option{--ctf=}@var{section}]
         [@option{--sframe=}@var{section}]
         [@option{-G}|@option{--stabs}]
@@ -2691,7 +2692,15 @@ compilers.
 For AArch64 targets this switch can be used to set whether instructions are
 disassembled as the most general instruction using the @option{-M no-aliases}
 option or whether instruction notes should be generated as comments in the
-disasssembly using @option{-M notes}.
+disasssembly using @option{-M notes}.  In addition the @option{-M
+annotate} option can be used to customise the handling of undefined
+instructions when disassembling executables and shared libraries.
+Normally the disassembler will just show the hexadecimal value of tge
+undefined instruction, but if annotation is enabled it will first try
+to find a symbol whose value matches the instruction's encoding.  If
+there is a match then the symbol name will be displayed instead.  This
+can be useful when disassembling non-code sections which may contain
+function and data addresses.
 
 For the x86, some of the options duplicate functions of the @option{-m}
 switch, but allow finer grained control.
@@ -3008,6 +3017,12 @@ Enable additional checks for consistency of Dwarf information.
 
 @item --debug-dir=@file{dir}
 Search @file{dir} when looking for separate debug info files.
+
+@item --btf[=@var{section}]
+@cindex BTF
+@cindex BPF Type Format
+Display the contents of the specified BTF section.
+By default, display the contents of the section named @var{.BTF}.
 
 @include ctf.options.texi
 

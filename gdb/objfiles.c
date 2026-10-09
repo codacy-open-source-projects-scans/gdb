@@ -462,7 +462,7 @@ objfile::~objfile ()
      and if so, call clear_last_displayed_sal.  */
   if (symtab *last_displayed_symtab = get_last_displayed_symtab ();
       last_displayed_symtab != nullptr
-      && last_displayed_symtab->compunit ()->objfile () == this)
+      && last_displayed_symtab->compunit ().objfile () == this)
     clear_last_displayed_sal ();
 
   /* Rebuild section map next time we need it.  */
@@ -927,7 +927,7 @@ bsearch_cmp (const void *key, const void *elt)
   return 1;
 }
 
-/* Returns a section whose range includes PC or NULL if none found.   */
+/* Returns a section whose range includes PC or NULL if none found.  */
 
 struct obj_section *
 find_pc_section (CORE_ADDR pc)

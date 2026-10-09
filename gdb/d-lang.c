@@ -21,6 +21,7 @@
 #include "language.h"
 #include "varobj.h"
 #include "d-lang.h"
+#include "d-exp-parser.h"
 #include "c-lang.h"
 #include "demangle.h"
 #include "cp-support.h"
@@ -160,7 +161,7 @@ public:
 
   void value_print_inner
 	(struct value *val, struct ui_file *stream, int recurse,
-	 const struct value_print_options *options) const override
+	 const value_print_options &options) const override
   {
     return d_value_print_inner (val, stream, recurse, options);
   }
@@ -233,13 +234,8 @@ build_d_types (struct gdbarch *gdbarch)
     = init_float_type (alloc, gdbarch_long_double_bit (gdbarch),
 		       "real", gdbarch_long_double_format (gdbarch));
 
-  builtin_d_type->builtin_byte->set_instance_flags
-    (builtin_d_type->builtin_byte->instance_flags ()
-     | TYPE_INSTANCE_FLAG_NOTTEXT);
-
-  builtin_d_type->builtin_ubyte->set_instance_flags
-    (builtin_d_type->builtin_ubyte->instance_flags ()
-     | TYPE_INSTANCE_FLAG_NOTTEXT);
+  builtin_d_type->builtin_byte->set_nottext (true);
+  builtin_d_type->builtin_ubyte->set_nottext (true);
 
   /* Imaginary and complex types.  */
   builtin_d_type->builtin_ifloat

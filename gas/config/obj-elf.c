@@ -275,7 +275,6 @@ elf_common_parse (int ignore ATTRIBUTE_UNUSED, symbolS *symbolP, addressT size)
 	      *input_line_pointer = '\0';
 	      as_bad (_("bad .common segment %s"), p);
 	      *input_line_pointer = c;
-	      ignore_rest_of_line ();
 	      return NULL;
 	    }
 	  /* ??? Don't ask me why these are always global.  */
@@ -404,21 +403,24 @@ static void
 obj_elf_visibility (int visibility)
 {
   int c;
-  symbolS *symbolP;
-  asymbol *bfdsym;
-  elf_symbol_type *elfsym;
 
   do
     {
-      symbolP = get_sym_from_input_line_and_check ();
-
-      bfdsym = symbol_get_bfdsym (symbolP);
-      elfsym = elf_symbol_from (bfdsym);
+      symbolS *symbolP = get_sym_from_input_line_and_check ();
+      const asymbol *bfdsym = symbol_get_bfdsym (symbolP);
+      elf_symbol_type *elfsym = elf_symbol_from (bfdsym);
+      int current = ELF_ST_VISIBILITY (elfsym->internal_elf_sym.st_other);
 
       gas_assert (elfsym);
 
-      elfsym->internal_elf_sym.st_other &= ~3;
-      elfsym->internal_elf_sym.st_other |= visibility;
+      if (!current || visibility <= current)
+	{
+	  elfsym->internal_elf_sym.st_other &= ~ELF_ST_VISIBILITY (~0);
+	  elfsym->internal_elf_sym.st_other |= visibility;
+	}
+      else
+	as_warn (_("visibility of `%s' is already `%s'"), S_GET_NAME (symbolP),
+		 current == STV_HIDDEN ? "hidden" : "internal");
 
       c = *input_line_pointer;
       if (c == ',')
@@ -2017,6 +2019,14 @@ obj_elf_get_vtable_inherit (void)
 void
 obj_elf_vtable_inherit (int ignore ATTRIBUTE_UNUSED)
 {
+  static bool warned = false;
+
+  if (!warned)
+    {
+      warned = true;
+      as_warn(".vtable_inherit has been deprecated");
+    }
+
   (void) obj_elf_get_vtable_inherit ();
 }
 
@@ -2059,6 +2069,14 @@ obj_elf_get_vtable_entry (void)
 void
 obj_elf_vtable_entry (int ignore ATTRIBUTE_UNUSED)
 {
+  static bool warned = false;
+
+  if (!warned)
+    {
+      warned = true;
+      as_warn("'.vtable_entry' has been deprecated");
+    }
+
   (void) obj_elf_get_vtable_entry ();
 }
 
@@ -2726,6 +2744,26 @@ void
 elf_adjust_symtab (void)
 {
   unsigned int i;
+
+  if (!had_errors ())
+    for (symbolS *symp = symbol_rootP; symp; symp = symbol_next (symp))
+      if (!symbol_removed_p (symp)
+	  && S_IS_DEFINED (symp)
+	  && (bfd_keep_unused_section_symbols (stdoutput)
+	      || !symbol_section_p (symp)
+	      || symbol_used_in_reloc_p (symp)))
+	{
+	  const asymbol *bfdsym = symbol_get_bfdsym (symp);
+	  elf_symbol_type *elfsym = elf_symbol_from (bfdsym);
+
+	  /* Allow local symbol with non-protected visibility:
+	     https://sourceware.org/bugzilla/show_bug.cgi?id=34312 */
+	  if ((ELF_ST_VISIBILITY (elfsym->internal_elf_sym.st_other)
+	       == STV_PROTECTED)
+	      && !(bfdsym->flags & (BSF_GLOBAL | BSF_WEAK | BSF_GNU_UNIQUE)))
+	    as_warn (_("local symbol `%s' has protected visibility"),
+		     S_GET_NAME (symp));
+	}
 
   /* Make the SHT_GROUP sections that describe each section group.  We
      can't set up the section contents here yet, because elf section

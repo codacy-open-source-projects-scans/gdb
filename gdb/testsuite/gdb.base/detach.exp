@@ -19,7 +19,7 @@
 
 # Only GNU/Linux is known to support this.
 if { ! [istarget "*-*-linux*"] } {
-  return 0
+    return
 }
 
 standard_testfile attach.c
@@ -41,7 +41,6 @@ proc do_detach_tests {} {
   gdb_test "detach" "Detaching from program: .*$escapedbinfile, .*" "detach, $pass"
 }
 
-global pass
 set pass "one"
 do_detach_tests
 

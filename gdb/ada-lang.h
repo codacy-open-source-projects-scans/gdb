@@ -153,8 +153,6 @@ extern int ada_get_field_index (const struct type *type,
 				const char *field_name,
 				int maybe_missing);
 
-extern int ada_parse (struct parser_state *);    /* Defined in ada-exp.y */
-
 			/* Defined in ada-typeprint.c */
 extern void ada_print_type (struct type *, const char *, struct ui_file *, int,
 			    int, const struct type_print_options *);
@@ -165,10 +163,10 @@ extern void ada_print_typedef (struct type *type, struct symbol *new_symbol,
 /* Implement la_value_print_inner for Ada.  */
 
 extern void ada_value_print_inner (struct value *, struct ui_file *, int,
-				   const struct value_print_options *);
+				   const value_print_options &);
 
 extern void ada_value_print (struct value *, struct ui_file *,
-			     const struct value_print_options *);
+			     const value_print_options &);
 
 				/* Defined in ada-lang.c */
 
@@ -372,8 +370,8 @@ extern struct ada_task_info *ada_get_task_info_from_ptid (ptid_t ptid);
 
 extern int ada_get_task_number (thread_info *thread);
 
-typedef gdb::function_view<void (struct ada_task_info *task)>
-  ada_task_list_iterator_ftype;
+using ada_task_list_iterator_ftype
+  = gdb::function_view<void (struct ada_task_info *task)>;
 extern void iterate_over_live_ada_tasks
   (ada_task_list_iterator_ftype iterator);
 

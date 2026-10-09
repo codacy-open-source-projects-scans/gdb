@@ -20,7 +20,7 @@ standard_testfile scope0.c scope1.c
 
 if {[build_executable "failed to build" ${testfile} \
 	 [list $srcfile $srcfile2] {debug}]} {
-    return -1
+    return
 }
 
 # Test locating various things when stopped just inside main, after
@@ -321,7 +321,7 @@ proc_with_prefix test_at_localscopes {} {
 
 # Note, we don't pass a binfile to clean_restart because we need to
 # avoid gdb_load here.  With remote targets, gdb_load connects to the
-# remote target, and we specificaly want the following tests to run
+# remote target, and we specifically want the following tests to run
 # before the program is started.
 clean_restart
 gdb_file_cmd $binfile

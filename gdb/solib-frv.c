@@ -36,8 +36,8 @@ struct frv_solib_ops : public solib_ops
 
   void relocate_section_addresses (solib &so, target_section *) const override;
   void clear_solib (program_space *pspace) const override;
-  void create_inferior_hook (int from_tty) const override;
-  owning_intrusive_list<solib> current_sos () const override;
+  void create_inferior_hook (int from_tty) override;
+  owning_intrusive_list<solib> current_sos () override;
   bool in_dynsym_resolve_code (CORE_ADDR pc) const override;
 };
 
@@ -46,7 +46,7 @@ struct frv_solib_ops : public solib_ops
 solib_ops_up
 make_frv_solib_ops (program_space *pspace)
 {
-  return std::make_unique<frv_solib_ops> (pspace);
+  return std::make_unique<frv_solib_ops> (pspace, true);
 }
 
 /* FR-V pointers are four bytes wide.  */
@@ -57,9 +57,9 @@ enum { FRV_PTR_SIZE = 4 };
 /* External versions; the size and alignment of the fields should be
    the same as those on the target.  When loaded, the placement of
    the bits in each field will be the same as on the target.  */
-typedef gdb_byte ext_Elf32_Half[2];
-typedef gdb_byte ext_Elf32_Addr[4];
-typedef gdb_byte ext_Elf32_Word[4];
+using ext_Elf32_Half = gdb_byte[2];
+using ext_Elf32_Addr = gdb_byte[4];
+using ext_Elf32_Word = gdb_byte[4];
 
 struct ext_elf32_fdpic_loadseg
 {
@@ -196,7 +196,7 @@ fetch_loadmap (CORE_ADDR ldmaddr)
 
 /* External link_map and elf32_fdpic_loadaddr struct definitions.  */
 
-typedef gdb_byte ext_ptr[4];
+using ext_ptr = gdb_byte[4];
 
 struct ext_elf32_fdpic_loadaddr
 {
@@ -321,7 +321,7 @@ lm_base (void)
 }
 
 owning_intrusive_list<solib>
-frv_solib_ops::current_sos () const
+frv_solib_ops::current_sos ()
 {
   bfd_endian byte_order = gdbarch_byte_order (current_inferior ()->arch ());
   CORE_ADDR lm_addr, mgot;
@@ -789,7 +789,7 @@ frv_relocate_main_executable (void)
    enabled.  */
 
 void
-frv_solib_ops::create_inferior_hook (int from_tty) const
+frv_solib_ops::create_inferior_hook (int from_tty)
 {
   /* Relocate main executable.  */
   frv_relocate_main_executable ();

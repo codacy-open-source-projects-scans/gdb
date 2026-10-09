@@ -896,17 +896,23 @@ void set_gdbarch_cannot_step_breakpoint (struct gdbarch *gdbarch, bool cannot_st
 bool gdbarch_have_nonsteppable_watchpoint (struct gdbarch *gdbarch);
 void set_gdbarch_have_nonsteppable_watchpoint (struct gdbarch *gdbarch, bool have_nonsteppable_watchpoint);
 
-bool gdbarch_address_class_type_flags_p (struct gdbarch *gdbarch);
+/* Given the DWARF identifier for an architecture-specific address class,
+   return the id of that address class. */
 
-using gdbarch_address_class_type_flags_ftype = type_instance_flags (int byte_size, int dwarf2_addr_class);
-type_instance_flags gdbarch_address_class_type_flags (struct gdbarch *gdbarch, int byte_size, int dwarf2_addr_class);
-void set_gdbarch_address_class_type_flags (struct gdbarch *gdbarch, gdbarch_address_class_type_flags_ftype *address_class_type_flags);
+bool gdbarch_address_class_dwarf_to_id_p (struct gdbarch *gdbarch);
 
-bool gdbarch_address_class_type_flags_to_name_p (struct gdbarch *gdbarch);
+using gdbarch_address_class_dwarf_to_id_ftype = unsigned int (int byte_size, int dwarf2_addr_class);
+unsigned int gdbarch_address_class_dwarf_to_id (struct gdbarch *gdbarch, int byte_size, int dwarf2_addr_class);
+void set_gdbarch_address_class_dwarf_to_id (struct gdbarch *gdbarch, gdbarch_address_class_dwarf_to_id_ftype *address_class_dwarf_to_id);
 
-using gdbarch_address_class_type_flags_to_name_ftype = const char *(struct gdbarch *gdbarch, type_instance_flags type_flags);
-const char *gdbarch_address_class_type_flags_to_name (struct gdbarch *gdbarch, type_instance_flags type_flags);
-void set_gdbarch_address_class_type_flags_to_name (struct gdbarch *gdbarch, gdbarch_address_class_type_flags_to_name_ftype *address_class_type_flags_to_name);
+/* Given an architecture-specific address class identifier, return the
+   name of that address class. */
+
+bool gdbarch_address_class_id_to_name_p (struct gdbarch *gdbarch);
+
+using gdbarch_address_class_id_to_name_ftype = const char *(struct gdbarch *gdbarch, unsigned int address_class);
+const char *gdbarch_address_class_id_to_name (struct gdbarch *gdbarch, unsigned int address_class);
+void set_gdbarch_address_class_id_to_name (struct gdbarch *gdbarch, gdbarch_address_class_id_to_name_ftype *address_class_id_to_name);
 
 /* Execute vendor-specific DWARF Call Frame Instruction.  OP is the instruction.
    FS are passed from the generic execute_cfa_program function. */
@@ -915,15 +921,15 @@ using gdbarch_execute_dwarf_cfa_vendor_op_ftype = bool (struct gdbarch *gdbarch,
 bool gdbarch_execute_dwarf_cfa_vendor_op (struct gdbarch *gdbarch, gdb_byte op, struct dwarf2_frame_state *fs);
 void set_gdbarch_execute_dwarf_cfa_vendor_op (struct gdbarch *gdbarch, gdbarch_execute_dwarf_cfa_vendor_op_ftype *execute_dwarf_cfa_vendor_op);
 
-/* Return the appropriate type_flags for the supplied address class.
+/* Return the appropriate address class id for the supplied address class name.
    This function should return true if the address class was recognized and
-   type_flags was set, false otherwise. */
+   address_class was set, false otherwise. */
 
-bool gdbarch_address_class_name_to_type_flags_p (struct gdbarch *gdbarch);
+bool gdbarch_address_class_name_to_id_p (struct gdbarch *gdbarch);
 
-using gdbarch_address_class_name_to_type_flags_ftype = bool (struct gdbarch *gdbarch, const char *name, type_instance_flags *type_flags_ptr);
-bool gdbarch_address_class_name_to_type_flags (struct gdbarch *gdbarch, const char *name, type_instance_flags *type_flags_ptr);
-void set_gdbarch_address_class_name_to_type_flags (struct gdbarch *gdbarch, gdbarch_address_class_name_to_type_flags_ftype *address_class_name_to_type_flags);
+using gdbarch_address_class_name_to_id_ftype = bool (struct gdbarch *gdbarch, const char *name, unsigned int &address_class);
+bool gdbarch_address_class_name_to_id (struct gdbarch *gdbarch, const char *name, unsigned int &address_class);
+void set_gdbarch_address_class_name_to_id (struct gdbarch *gdbarch, gdbarch_address_class_name_to_id_ftype *address_class_name_to_id);
 
 /* Is a register in a group */
 
@@ -1696,8 +1702,8 @@ void set_gdbarch_get_pc_address_flags (struct gdbarch *gdbarch, gdbarch_get_pc_a
 
 /* Read core file mappings */
 
-using gdbarch_read_core_file_mappings_ftype = void (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_pre_loop_ftype pre_loop_cb, read_core_file_mappings_loop_ftype loop_cb);
-void gdbarch_read_core_file_mappings (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_pre_loop_ftype pre_loop_cb, read_core_file_mappings_loop_ftype loop_cb);
+using gdbarch_read_core_file_mappings_ftype = void (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_loop_ftype loop_cb);
+void gdbarch_read_core_file_mappings (struct gdbarch *gdbarch, struct bfd *cbfd, read_core_file_mappings_loop_ftype loop_cb);
 void set_gdbarch_read_core_file_mappings (struct gdbarch *gdbarch, gdbarch_read_core_file_mappings_ftype *read_core_file_mappings);
 
 /* Return true if the target description for all threads should be read from the
@@ -1752,3 +1758,26 @@ void set_gdbarch_shadow_stack_push (struct gdbarch *gdbarch, gdbarch_shadow_stac
 using gdbarch_get_shadow_stack_pointer_ftype = std::optional<CORE_ADDR> (struct gdbarch *gdbarch, regcache *regcache, bool &shadow_stack_enabled);
 std::optional<CORE_ADDR> gdbarch_get_shadow_stack_pointer (struct gdbarch *gdbarch, regcache *regcache, bool &shadow_stack_enabled);
 void set_gdbarch_get_shadow_stack_pointer (struct gdbarch *gdbarch, gdbarch_get_shadow_stack_pointer_ftype *get_shadow_stack_pointer);
+
+/* True if architecture has imprecise page fault reporting, where a
+   memory access violation may be reported several instructions after the
+   faulting instruction.
+
+   On such architectures, if an instruction causes a memory access violation,
+   the backend may report the stop at a later instruction where a breakpoint
+   happens to be installed.  GDB's normal logic would incorrectly assume that
+   the SIGSEGV was caused by hitting the breakpoint and convert it to SIGTRAP.
+
+   However, if an architecture never reports breakpoints via SIGSEGV (e.g.,
+   breakpoints are always reported via a dedicated mechanism), then receiving
+   a SIGSEGV at a breakpoint location means we have a genuine SIGSEGV, not a
+   breakpoint hit.
+
+   Set to true for architectures with imprecise fault reporting to disable the
+   SIGSEGV-to-SIGTRAP conversion.  The default is false (conversion enabled)
+   to preserve existing behavior for architectures where breakpoints may be
+   reported as SIGSEGV (e.g., executing a breakpoint instruction on a
+   non-executable stack). */
+
+bool gdbarch_imprecise_pagefault_reporting (struct gdbarch *gdbarch);
+void set_gdbarch_imprecise_pagefault_reporting (struct gdbarch *gdbarch, bool imprecise_pagefault_reporting);

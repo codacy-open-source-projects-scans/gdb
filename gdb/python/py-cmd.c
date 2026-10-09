@@ -63,6 +63,8 @@ struct cmdpy_object : public PyObject
   struct cmd_list_element *sub_list;
 };
 
+static_assert (gdb::is_python_allocatable_v<cmdpy_object>);
+
 extern PyTypeObject cmdpy_object_type;
 
 /* Constants used by this module.  */
@@ -76,7 +78,7 @@ static PyObject *
 cmdpy_dont_repeat (PyObject *self, PyObject *args)
 {
   dont_repeat ();
-  Py_RETURN_NONE;
+  return py_none ().release ();
 }
 
 
@@ -109,7 +111,7 @@ cmdpy_function (const char *args, int from_tty, cmd_list_element *command)
      'invoke' method when it was created.  If the 'invoke' method is now
      missing, then the user has done something weird (like deleting the
      invoke method, yuck!).  */
-  if (!PyObject_HasAttr ((PyObject *) obj, invoke_cst))
+  if (!PyObject_HasAttr (obj, invoke_cst))
     error (_("Python command object missing 'invoke' method."));
 
   if (args == nullptr)
@@ -123,7 +125,7 @@ cmdpy_function (const char *args, int from_tty, cmd_list_element *command)
     }
 
   gdbpy_ref<> ttyobj (PyBool_FromLong (from_tty));
-  gdbpy_ref<> result (PyObject_CallMethodObjArgs ((PyObject *) obj, invoke_cst,
+  gdbpy_ref<> result (PyObject_CallMethodObjArgs (obj, invoke_cst,
 						  argobj.get (), ttyobj.get (),
 						  NULL));
 
@@ -168,7 +170,7 @@ cmdpy_completer_helper (struct cmd_list_element *command,
 
   if (obj == NULL)
     error (_("Invalid invocation of Python command object."));
-  if (!PyObject_HasAttr ((PyObject *) obj, complete_cst))
+  if (!PyObject_HasAttr (obj, complete_cst))
     {
       /* If there is no complete method, don't error.  */
       return NULL;
@@ -186,7 +188,7 @@ cmdpy_completer_helper (struct cmd_list_element *command,
   if (word == NULL)
     {
       /* "brkchars" phase.  */
-      wordobj = gdbpy_ref<>::new_reference (Py_None);
+      wordobj = py_none ();
     }
   else
     {
@@ -199,7 +201,7 @@ cmdpy_completer_helper (struct cmd_list_element *command,
 	}
     }
 
-  gdbpy_ref<> resultobj (PyObject_CallMethodObjArgs ((PyObject *) obj,
+  gdbpy_ref<> resultobj (PyObject_CallMethodObjArgs (obj,
 						     complete_cst,
 						     textobj.get (),
 						     wordobj.get (), NULL));
